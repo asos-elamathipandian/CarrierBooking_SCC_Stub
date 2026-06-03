@@ -1,0 +1,130 @@
+<XMLBundle>
+<XMLTransmission CtrlNumber="91800255" Receiver="E2ASOS" Sender="DAVIESTN" Timestamp="20260528 115030">
+  <XMLGroup CtrlNumber="91800255" GroupType="BP" IncludedMessages="1">
+    <XMLTransaction CtrlNumber="91800255" TransactionType="BPM-VBKREQ">
+      <BpMessage MessageType="VBKREQ" PurposeCd="15">
+        <Mode>30</Mode>
+        <Reference RefTypeCd="QY" SourceRefTypeCd="128">CFS</Reference>
+        <Reference RefTypeCd="4B" SourceRefTypeCd="128">TR</Reference>
+        <Reference RefTypeCd="BH" SourceRefTypeCd="128">N</Reference>
+        <Reference RefTypeCd="SFZ" SourceRefTypeCd="128">13</Reference>
+        <Reference RefTypeCd="CC" SourceRefTypeCd="128">Green</Reference>
+        <Reference RefTypeCd="CD" SourceRefTypeCd="128">Delivery</Reference>
+        <TradePartner RoleCd="SU">
+          <TradePartnerName>Difuzed - FOB</TradePartnerName>
+          <TradePartnerID Qualifier="93">2002900003</TradePartnerID>
+        </TradePartner>
+        <TradePartner RoleCd="FA">
+          <TradePartnerName>Ozon Tekstil Konfeksiyon San Ve Tic AS Sivas</TradePartnerName>
+          <TradePartnerID Qualifier="93">F103330</TradePartnerID>
+          <TradePartnerAddress>
+            <Street>Ahmet Turan Gazi</Street>
+            <Street>OSB Mahallesi 18.</Street>
+            <Street>Sokak No:5</Street>
+            <City>Sivas</City>
+            <PostalCd>58050</PostalCd>
+            <CountryCd>TR</CountryCd>
+          </TradePartnerAddress>
+        </TradePartner>
+        <TradePartner RoleCd="FD">
+          <TradePartnerName>FC01 Barnsley</TradePartnerName>
+          <TradePartnerID Qualifier="93">FC01</TradePartnerID>
+          <TradePartnerAddress>
+            <Street>Greater London House</Street>
+            <Street>Hampstead Road -</Street>
+            <Street>London</Street>
+            <City>London</City>
+            <StateProvinceCd>YorkShire</StateProvinceCd>
+            <PostalCd>NW1 7FB</PostalCd>
+            <CountryCd>GB</CountryCd>
+          </TradePartnerAddress>
+        </TradePartner>
+        <TradePartner RoleCd="CA">
+          <TradePartnerID Qualifier="93">3</TradePartnerID>
+        </TradePartner>
+        <TradePartner RoleCd="SL">
+          <TradePartnerID Qualifier="93">POROP</TradePartnerID>
+        </TradePartner>
+        <TradePartner RoleCd="FD">
+          <TradePartnerID Qualifier="93">FC01 Barnsley</TradePartnerID>
+        </TradePartner>
+        <Status>
+          <Date DateTypeCd="018" TimeZone="LT">20260522</Date>
+        </Status>
+        <Status>
+          <Date DateTypeCd="081" TimeZone="LT">20260522</Date>
+        </Status>
+        <Status>
+          <Location LocTypeCd="L">
+            <LocationID Qualifier="UN">POROP</LocationID>
+          </Location>
+        </Status>
+        <Status>
+          <Location LocTypeCd="E">
+            <LocationID Qualifier="UN">GBBSY</LocationID>
+          </Location>
+        </Status>
+        <Status>
+          <Location LocTypeCd="D">
+            <LocationID Qualifier="UN">GBBSY</LocationID>
+          </Location>
+        </Status>
+        <Status>
+          <Date DateTypeCd="211" TimeZone="LT">20260522 115023</Date>
+        </Status>
+        <Status>
+          <Date DateTypeCd="OSBT" TimeZone="LT">20260522 115023</Date>
+        </Status>
+        <Status>
+          <Date DateTypeCd="238">20260619</Date>
+        </Status>
+        <Status>
+          <Date DateTypeCd="065">20260704</Date>
+        </Status>
+        <Status>
+          <Date DateTypeCd="OSBK">20260522 115023</Date>
+        </Status>
+        <Status>
+          <Date DateTypeCd="SBK">20260522 115023</Date>
+        </Status>
+        <Document DocType="BOOK" Key="VB-0000002160">
+          <Reference RefTypeCd="ACE" SourceRefTypeCd="128">VB-0000002160</Reference>
+          <Reference RefTypeCd="V0" SourceRefTypeCd="128">2.0</Reference>
+          <Measure Qualifier="N" SourceQualifier="738" SourceUOMCd="355" UOMCd="KG">2</Measure>
+          <Measure Qualifier="G" SourceQualifier="738" SourceUOMCd="355" UOMCd="KG">4.8000</Measure>
+          <Measure Qualifier="VOL" SourceQualifier="738" SourceUOMCd="355" UOMCd="M3">0.1440</Measure>
+          <Measure Qualifier="QUR" SourceQualifier="738" SourceUOMCd="355" UOMCd="CT">2.0000</Measure>
+          <Measure Qualifier="BKQ" SourceQualifier="738" SourceUOMCd="355" UOMCd="UN">200.000000</Measure>
+          <Order Key="500034227415" OrderType="PO">
+            <OrderID>500034227415</OrderID>
+            <LineItem Key="500034227415_148609059_49870000002840">
+              <LineItemDescription>Sku Publish1148609059</LineItemDescription>
+              <Attribute AttributeTypeCd="SI">49870000002840</Attribute>
+              <Attribute AttributeTypeCd="SK">148609059</Attribute>
+              <Attribute AttributeTypeCd="CL">MBLUE</Attribute>
+              <Attribute AttributeTypeCd="CM">2003</Attribute>
+              <Attribute AttributeTypeCd="IZ">W24L28</Attribute>
+              <Reference RefTypeCd="PAC" SourceRefTypeCd="128">Bulk Flat</Reference>
+              <Reference RefTypeCd="PT" SourceRefTypeCd="128">149409035</Reference>
+              <Reference RefTypeCd="HZ" SourceRefTypeCd="128">N/A</Reference>
+              <Reference RefTypeCd="DSC" SourceRefTypeCd="128">Sku Publish1148609059</Reference>
+              <Reference RefTypeCd="98" SourceRefTypeCd="128">BDCM1</Reference>
+              <Reference RefTypeCd="LN" SourceRefTypeCd="128">60.0000</Reference>
+              <Reference RefTypeCd="WD" SourceRefTypeCd="128">30.0000</Reference>
+              <Reference RefTypeCd="HT" SourceRefTypeCd="128">40.0000</Reference>
+              <Measure Qualifier="BKQ" SourceQualifier="738" SourceUOMCd="355" UOMCd="UN">100.000000</Measure>
+              <Measure Qualifier="G" SourceQualifier="738" SourceUOMCd="355" UOMCd="KG">2.4000</Measure>
+              <Measure Qualifier="N" SourceQualifier="738" SourceUOMCd="355" UOMCd="KG">1.0000</Measure>
+              <Measure Qualifier="VOL" SourceQualifier="738" SourceUOMCd="355" UOMCd="M3">0.0720</Measure>
+              <Measure Qualifier="QUR" SourceQualifier="738" SourceUOMCd="355" UOMCd="CT">1.0000</Measure>
+              <TradePartner RoleCd="FS">
+                <TradePartnerID Qualifier="93">FC01</TradePartnerID>
+              </TradePartner>
+            </LineItem>
+          </Order>
+        </Document>
+      </BpMessage>
+    </XMLTransaction>
+  </XMLGroup>
+</XMLTransmission>
+</XMLBundle>

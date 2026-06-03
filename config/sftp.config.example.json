@@ -1,0 +1,7 @@
+{
+  "host": "sftp.e2open.com",
+  "port": 22,
+  "username": "your-username",
+  "privateKeyPath": "./keys/e2open.pem",
+  "uploadPath": "/inbound/vbkreq/"
+}

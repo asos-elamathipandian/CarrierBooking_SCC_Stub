@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CarrierBookingStub — VBKREQ Generator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f4f8;
+      color: #1a202c;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #1F4E79 0%, #2E75B6 100%);
+      color: #fff;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    header .logo { font-size: 28px; }
+    header h1 { font-size: 22px; font-weight: 600; letter-spacing: .3px; }
+    header p  { font-size: 12px; opacity: .8; margin-top: 2px; }
+
+    /* ── Layout ── */
+    main {
+      max-width: 960px;
+      margin: 32px auto;
+      padding: 0 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ── Step card ── */
+    .step-card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.1);
+      overflow: hidden;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      background: #EBF5FB;
+      border-bottom: 1px solid #D6EAF8;
+    }
+    .step-badge {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: #1F4E79;
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-badge.done   { background: #27AE60; }
+    .step-badge.active { background: #E67E22; }
+    .step-title { font-size: 15px; font-weight: 600; color: #1F4E79; }
+    .step-desc  { font-size: 12px; color: #5d6d7e; margin-top: 2px; }
+
+    .step-body { padding: 16px 20px; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 22px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s, opacity .2s, transform .1s;
+    }
+    .btn:active:not(:disabled) { transform: scale(.97); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-primary   { background: #1F4E79; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #154360; }
+    .btn-success   { background: #27AE60; color: #fff; }
+    .btn-success:hover:not(:disabled) { background: #1E8449; }
+    .btn-warning   { background: #E67E22; color: #fff; }
+    .btn-warning:hover:not(:disabled) { background: #CA6F1E; }
+    .btn-danger    { background: #C0392B; color: #fff; }
+    .btn-danger:hover:not(:disabled) { background: #A93226; }
+    .btn-secondary { background: #5D6D7E; color: #fff; }
+    .btn-secondary:hover:not(:disabled) { background: #4A5568; }
+
+    /* ── File input ── */
+    .file-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .file-label {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 18px;
+      border: 2px dashed #2E75B6;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #2E75B6;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .file-label:hover { background: #EBF5FB; }
+    .file-label.has-file { border-color: #27AE60; color: #27AE60; background: #EAFAF1; }
+    #supplierFileInput { display: none; }
+    .file-name { font-size: 12px; color: #555; font-style: italic; }
+
+    /* ── Status messages ── */
+    .status-box {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      line-height: 1.5;
+      display: none;
+    }
+    .status-box.info    { background: #EBF5FB; border-left: 4px solid #2E75B6; color: #1a5276; display: block; }
+    .status-box.success { background: #EAFAF1; border-left: 4px solid #27AE60; color: #1E8449; display: block; }
+    .status-box.error   { background: #FDEDEC; border-left: 4px solid #E74C3C; color: #922B21; display: block; }
+    .status-box.loading { background: #FEF9E7; border-left: 4px solid #F39C12; color: #784212; display: block; }
+
+    /* ── XML preview ── */
+    .xml-preview-wrap {
+      margin-top: 12px;
+      display: none;
+    }
+    .xml-preview-wrap.visible { display: block; }
+    .xml-preview-wrap label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; display: block; }
+    pre#xmlPreview {
+      background: #1e2533;
+      color: #a8d8a8;
+      padding: 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.6;
+      max-height: 380px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ── Ref tags ── */
+    .ref-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .tag {
+      background: #EBF5FB;
+      border: 1px solid #AED6F1;
+      color: #1A5276;
+      border-radius: 12px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* ── Log table ── */
+    .log-table-wrap { margin-top: 12px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: #1F4E79; color: #fff; padding: 7px 10px; text-align: left; }
+    td { padding: 6px 10px; border-bottom: 1px solid #e8edf3; }
+    tr:hover td { background: #F4F6F7; }
+    .badge-ok   { background: #27AE60; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+    .badge-fail { background: #E74C3C; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+
+    /* ── Download link ── */
+    .download-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 8px;
+      color: #1F4E79;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .download-link:hover { text-decoration: underline; }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: inline-block;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 11px;
+      color: #999;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🚢</div>
+  <div>
+    <h1>CarrierBookingStub — VBKREQ Generator</h1>
+    <p>Generate &amp; upload VBKREQ XML to E2open SFTP | Sender: DAVIESTN → Receiver: E2ASOS</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Step 1: Upload Supplier Excel ── -->
+  <div class="step-card" id="card1">
+    <div class="step-header">
+      <div class="step-badge active" id="badge1">1</div>
+      <div>
+        <div class="step-title">Upload Supplier Excel</div>
+        <div class="step-desc">Upload the supplier's Excel file containing PO numbers and ASN references</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <div class="file-row">
+        <label class="file-label" id="fileLabel" for="supplierFileInput">
+          📂 Choose Excel File (.xlsx)
+        </label>
+        <input type="file" id="supplierFileInput" accept=".xlsx,.xls" />
+        <span class="file-name" id="fileName">No file selected</span>
+        <button class="btn btn-primary" id="btnParseSupplier" disabled>
+          📂 Upload &amp; Parse
+        </button>
+      </div>
+      <div class="status-box" id="status1"></div>
+      <div id="refsPreview"></div>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Fetch Feeds from Blob ── -->
+  <div class="step-card" id="card2">
+    <div class="step-header">
+      <div class="step-badge" id="badge2">2</div>
+      <div>
+        <div class="step-title">Fetch PO &amp; ASN Feeds from Azure Blob</div>
+        <div class="step-desc">Retrieves matching ASOS PO and ASN XML files from Azure Blob Storage using the extracted refs</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <button class="btn btn-primary" id="btnFetchFeeds" disabled>
+        🔗 Fetch PO &amp; ASN Feeds
+      </button>
+      <div class="status-box" id="status2"></div>
+    </div>
+  </div>
+
+  <!-- ── Step 3: Build Bible ── -->
+  <div class="step-card" id="card3">
+    <div class="step-header">
+      <div class="step-badge" id="badge3">3</div>
+      <div>
+        <div class="step-title">Build Bible Excel</div>
+        <div class="step-desc">Merges supplier data + PO feed + ASN feed into MASTER sheet — generates working Bible Excel</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <button class="btn btn-warning" id="btnBuildBible" disabled>
+        📊 Build Bible
+      </button>
+      <div class="status-box" id="status3"></div>
+    </div>
+  </div>
+
+  <!-- ── Step 4: Generate VBKREQ ── -->
+  <div class="step-card" id="card4">
+    <div class="step-header">
+      <div class="step-badge" id="badge4">4</div>
+      <div>
+        <div class="step-title">Generate VBKREQ XML</div>
+        <div class="step-desc">Reads MASTER sheet and builds the VBKREQ XML ready for E2open</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <button class="btn btn-success" id="btnGenerateVbkreq" disabled>
+        ⚙ Generate VBKREQ
+      </button>
+      <div class="status-box" id="status4"></div>
+      <div class="xml-preview-wrap" id="xmlPreviewWrap">
+        <label>Generated XML Preview:</label>
+        <pre id="xmlPreview"></pre>
+        <a class="download-link" id="xmlDownloadLink" href="#" download>⬇ Download XML</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 5: Upload to SFTP ── -->
+  <div class="step-card" id="card5">
+    <div class="step-header">
+      <div class="step-badge" id="badge5">5</div>
+      <div>
+        <div class="step-title">Upload to E2open SFTP</div>
+        <div class="step-desc">Uploads the generated VBKREQ XML to E2open SFTP — carrier and TA will receive it</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <button class="btn btn-danger" id="btnUploadSftp" disabled>
+        ⬆ Upload to E2open SFTP
+      </button>
+      <div class="status-box" id="status5"></div>
+    </div>
+  </div>
+
+  <!-- ── Generation Log ── -->
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-badge btn-secondary" style="background:#5D6D7E">📋</div>
+      <div>
+        <div class="step-title">Generation Log</div>
+        <div class="step-desc">Last 50 VBKREQ generations</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <button class="btn btn-secondary" id="btnRefreshLog" style="margin-bottom:10px">🔄 Refresh Log</button>
+      <div class="log-table-wrap">
+        <table id="logTable">
+          <thead>
+            <tr>
+              <th>Timestamp</th><th>Booking Ref</th><th>PO Numbers</th>
+              <th>Filename</th><th>Ctrl#</th><th>SFTP</th>
+            </tr>
+          </thead>
+          <tbody id="logBody"><tr><td colspan="6" style="text-align:center;color:#999">No entries yet</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer>CarrierBookingStub v1.0 &nbsp;|&nbsp; DAVIESTN → E2ASOS &nbsp;|&nbsp; QA Stub Tool</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

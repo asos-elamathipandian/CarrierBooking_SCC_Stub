@@ -1,0 +1,7 @@
+node_modules/
+config/sftp.config.json
+keys/
+*.pem
+ctrl-counter.json
+.env
+bible/SupplierBible_template.xlsx
