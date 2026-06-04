@@ -41,6 +41,11 @@ async function parse(buffer) {
     if (missing.length > 0) {
       validationErrors.push(`Row ${rowNum}: missing required fields: ${missing.join(', ')}`);
     }
+    // Collection_Time mandatory when Collection_Type = 'Collection'
+    if (String(obj.Collection_Type || '').trim() === 'Collection' &&
+        (!obj.Collection_Time || String(obj.Collection_Time).trim() === '')) {
+      validationErrors.push(`Row ${rowNum}: Collection_Time is required when Collection_Type is "Collection"`);
+    }
 
     rows.push(obj);
   });

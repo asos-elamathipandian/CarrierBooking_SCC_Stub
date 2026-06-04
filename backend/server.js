@@ -87,6 +87,8 @@ app.post('/api/fetch-feeds', async (req, res) => {
       success: true,
       poFeedCount: feedData.poFeeds.length,
       asnFeedCount: feedData.asnFeeds.length,
+      localMode: feedData.localMode || false,
+      errors: feedData.errors || [],
       summary: {
         posFound: feedData.poFeeds.map(p => p.orderId),
         asnsFound: feedData.asnFeeds.map(a => a.documentId)
@@ -133,11 +135,11 @@ app.post('/api/generate-vbkreq', async (req, res) => {
   try {
     if (!sessionState.masterData) return res.status(400).json({ error: 'No master data. Run build-bible first.' });
 
-    const { xml, filename, ctrlNumber } = await vbkreqBuilder.build(sessionState.masterData);
+    const { xml, filename, ctrlNumber, version } = await vbkreqBuilder.build(sessionState.masterData, req.body.purposeCd || '13');
     sessionState.lastXml = xml;
     sessionState.lastFilename = filename;
 
-    res.json({ success: true, xml, filename, ctrlNumber });
+    res.json({ success: true, xml, filename, ctrlNumber, version });
   } catch (err) {
     console.error('generate-vbkreq error:', err);
     res.status(500).json({ error: err.message });

@@ -143,7 +143,12 @@ async function build(supplierData, feedData) {
       ASN_Delivery_Date:                   sRow.ASN_Delivery_Date                  || '',
       Var_Unit: sRow.Var_Unit ?? 0,
       Var_Pct:  sRow.Var_Pct  ?? 0,
-      Remarks:  sRow.Remarks  || ''
+      Remarks:  sRow.Remarks  || '',
+      // New fields for spec compliance
+      ASOS_Intake_Week:    sRow.ASOS_Intake_Week    || '',
+      Collection_Time:     sRow.Collection_Time      || '',
+      Incoterms:           po?.incoterms             || '',
+      Transport_Mode_Code: poLine?.line?.mode || (po?.lineItems?.[0]?.mode) || '30'
     });
   }
 
@@ -181,8 +186,8 @@ async function writeExcel(masterRows, supplierRows, poFeeds, asnFeeds) {
       'Traffic_Mode','EAN_Barcode','Colour_Code','Size_Code','Carton_Type',
       'Carton_Length_cm','Carton_Width_cm','Carton_Height_cm','Carton_Weight_KG',
       'Gross_Weight_KG','Net_Weight_KG','Volume_M3','Booking_Qty','Pack_Type',
-      'Collection_Type','Hazardous','Expected_Delivery_Date','ASN_Delivery_Date',
-      'Var_Unit','Var_Pct','Remarks'
+      'Collection_Type','Collection_Time','Hazardous','Expected_Delivery_Date',
+      'ASN_Delivery_Date','ASOS_Intake_Week','Var_Unit','Var_Pct','Remarks'
     ];
     addSheet('SUPPLIER_INPUT', hdrs, supplierRows);
   }

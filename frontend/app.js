@@ -124,7 +124,8 @@ btnFetchFeeds.addEventListener('click', async () => {
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
     state.feedsFetched = true;
-    let html = `✅ Fetched <strong>${data.poFeedCount}</strong> PO feed(s) and <strong>${data.asnFeedCount}</strong> ASN feed(s).`;
+    const modeTag = data.localMode ? ' <em style="color:#e67e22">[LOCAL MODE — reading from samples/feeds/]</em>' : '';
+    let html = `✅ Fetched <strong>${data.poFeedCount}</strong> PO feed(s) and <strong>${data.asnFeedCount}</strong> ASN feed(s).${modeTag}`;
     if (data.summary) {
       if (data.summary.posFound.length) html += `<br/>POs found: ${data.summary.posFound.join(', ')}`;
       if (data.summary.asnsFound.length) html += `<br/>ASNs found: ${data.summary.asnsFound.join(', ')}`;
@@ -171,18 +172,24 @@ btnBuildBible.addEventListener('click', async () => {
 // ── Step 4: Generate VBKREQ ───────────────────────────────────────────────────
 btnGenerateVbkreq.addEventListener('click', async () => {
   setLoading(btnGenerateVbkreq, true);
-  setStatus(4, 'loading', '⏳ Generating VBKREQ XML…');
+  const purposeCd = document.querySelector('input[name="purposeCd"]:checked')?.value || '13';
+  const purposeLabel = { '13': 'Request', '15': 'Re-Submission', '01': 'Cancellation' }[purposeCd] || purposeCd;
+  setStatus(4, 'loading', `⏳ Generating VBKREQ XML — PurposeCd <strong>${purposeCd}</strong> (${purposeLabel})…`);
   xmlPreviewWrap.classList.remove('visible');
 
   try {
-    const res  = await fetch(`${API}/generate-vbkreq`, { method: 'POST' });
+    const res  = await fetch(`${API}/generate-vbkreq`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ purposeCd })
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
     state.lastXml      = data.xml;
     state.lastFilename = data.filename;
 
-    setStatus(4, 'success', `✅ VBKREQ generated — <strong>${data.filename}</strong> (CtrlNumber: ${data.ctrlNumber})`);
+    setStatus(4, 'success', `✅ VBKREQ generated — <strong>${data.filename}</strong> (PurposeCd: ${purposeCd} | Version: ${data.version || ''} | CtrlNumber: ${data.ctrlNumber})`);
     setBadge(4, 'done');
 
     // Show XML preview

@@ -35,15 +35,63 @@ const FC_LOCODE = {
   'POROP': 'POROP'
 };
 
+// Transport mode string → code mapping
+const MODE_MAP = {
+  '10': '10', '30': '30', '40': '40', '50': '50', '60': '60', '70': '70',
+  'SEA': '10', 'OCEAN': '10', 'FCL': '10', 'LCL': '10',
+  'ROAD': '30', 'TRUCK': '30',
+  'AIR': '40', 'AIR-ASOS': '40', 'AIR ASOS': '40',
+  'RAIL': '50',
+  'AIR-SUPPLIER': '60', 'AIR SUPPLIER': '60',
+  'ECO': '70', 'ECO SEA': '70', 'ECO AIR': '70', 'ECO SEA/AIR': '70'
+};
+
+function resolveMode(modeVal) {
+  if (!modeVal) return '30';
+  const key = String(modeVal).toUpperCase().trim();
+  return MODE_MAP[key] || String(modeVal).trim() || '30';
+}
+
 function getCtrlNumber() {
-  let data = { counter: 91800256 };
+  let data = { counter: 91800256, bookingVersions: {} };
   if (fs.existsSync(COUNTER_FILE)) {
     try { data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')); } catch (_) {}
   }
+  if (!data.bookingVersions) data.bookingVersions = {};
   const current = data.counter;
   data.counter = current + 1;
   fs.writeFileSync(COUNTER_FILE, JSON.stringify(data, null, 2));
   return String(current);
+}
+
+/**
+ * Get/manage version for a booking ref.
+ * purposeCd 13 (new)  → version 1.0, stores 1
+ * purposeCd 15 (resub) → increments stored version
+ * purposeCd 01 (cancel) → returns existing version unchanged
+ */
+function getBookingVersion(bookingRef, purposeCd) {
+  let data = { counter: 91800256, bookingVersions: {} };
+  if (fs.existsSync(COUNTER_FILE)) {
+    try { data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')); } catch (_) {}
+  }
+  if (!data.bookingVersions) data.bookingVersions = {};
+
+  let version;
+  if (purposeCd === '15') {
+    const current = data.bookingVersions[bookingRef] || 1;
+    version = current + 1;
+    data.bookingVersions[bookingRef] = version;
+  } else if (purposeCd === '01') {
+    version = data.bookingVersions[bookingRef] || 1;
+  } else {
+    // 13 — new request
+    version = 1;
+    data.bookingVersions[bookingRef] = version;
+  }
+
+  fs.writeFileSync(COUNTER_FILE, JSON.stringify(data, null, 2));
+  return `${version}.0`;
 }
 
 function formatDateYMD(dateVal) {
@@ -79,12 +127,12 @@ function hazardousCode(val) {
 
 /**
  * Build VBKREQ XML from masterRows array.
- * Each row represents one PO line item.
- * Rows from the same booking are grouped by Booking_Ref.
+ * purposeCd: '13' = Request (default), '15' = Re-Submission, '01' = Cancellation
  */
-async function build(masterRows) {
+async function build(masterRows, purposeCd) {
   if (!masterRows || masterRows.length === 0) throw new Error('No master rows to generate VBKREQ');
 
+  const pcd = purposeCd || '13';
   const ctrlNumber = getCtrlNumber();
   const now = nowDateTimeStr();
   const filenameTs = nowFilenameStr();
@@ -93,10 +141,14 @@ async function build(masterRows) {
   // Use first row for booking-level fields
   const first = masterRows[0];
   const bookingRef = first.Booking_Ref || `VB-STUB-${ctrlNumber}`;
+  const version = getBookingVersion(bookingRef, pcd);
   const trafficMode = first.Traffic_Mode || 'CFS';
   const originCountry = first.Factory_CountryCd || 'XX';
   const hazCode = hazardousCode(first.Hazardous);
   const collectionType = first.Collection_Type || 'Delivery';
+  const collectionTime = first.Collection_Time || '';
+  const intakeWeek = first.ASOS_Intake_Week || '';
+  const remarks = first.Remarks || '';
   const cargoReadyDate = formatDateYMD(first.Cargo_Ready_Planned_Collection_Date);
   const bookingReqDate = formatDateYMD(first.Carrier_Booking_Request_Date);
   const asnDeliveryDate = formatDateYMD(first.ASN_Delivery_Date);
@@ -104,6 +156,8 @@ async function build(masterRows) {
   const loadingPortLocode = first.Loading_Port_LOCODE || first.Loading_Port_ID || 'XXXX';
   const fcId = first.FC_ID || 'FC01';
   const destLocode = FC_LOCODE[fcId] || 'GBBSY';
+  // Transport mode: from PO feed line, fallback to 30 (Road)
+  const transportModeCode = resolveMode(first.Transport_Mode_Code || masterRows[0]._poMode || '30');
 
   // Totals
   let totalNet = 0, totalGross = 0, totalVol = 0, totalCartons = 0, totalBkq = 0;
@@ -162,17 +216,29 @@ async function build(masterRows) {
 
   const bpMsg = transaction.ele('BpMessage', {
     MessageType: 'VBKREQ',
-    PurposeCd: '15'
+    PurposeCd: pcd
   });
 
   // Header
-  bpMsg.ele('Mode').txt('30');
-  bpMsg.ele('Reference', { RefTypeCd: 'QY', SourceRefTypeCd: '128' }).txt(trafficMode);
-  bpMsg.ele('Reference', { RefTypeCd: '4B', SourceRefTypeCd: '128' }).txt(originCountry);
-  bpMsg.ele('Reference', { RefTypeCd: 'BH', SourceRefTypeCd: '128' }).txt(hazCode);
+  bpMsg.ele('Mode').txt(transportModeCode);
+  bpMsg.ele('Reference', { RefTypeCd: 'QY',  SourceRefTypeCd: '128' }).txt(trafficMode);
+  bpMsg.ele('Reference', { RefTypeCd: '4B',  SourceRefTypeCd: '128' }).txt(originCountry);
+  bpMsg.ele('Reference', { RefTypeCd: 'BH',  SourceRefTypeCd: '128' }).txt(hazCode);
   bpMsg.ele('Reference', { RefTypeCd: 'SFZ', SourceRefTypeCd: '128' }).txt('13');
-  bpMsg.ele('Reference', { RefTypeCd: 'CC', SourceRefTypeCd: '128' }).txt('Green');
-  bpMsg.ele('Reference', { RefTypeCd: 'CD', SourceRefTypeCd: '128' }).txt(collectionType);
+  bpMsg.ele('Reference', { RefTypeCd: 'CC',  SourceRefTypeCd: '128' }).txt('Green');
+  bpMsg.ele('Reference', { RefTypeCd: 'CD',  SourceRefTypeCd: '128' }).txt(collectionType);
+  // CT (Collection Time) — mandatory when collection type is Collection
+  if (collectionType === 'Collection' || collectionTime) {
+    bpMsg.ele('Reference', { RefTypeCd: 'CT', SourceRefTypeCd: '128' }).txt(collectionTime || '09:00');
+  }
+  // WK (ASOS Intake Week) — include if provided
+  if (intakeWeek) {
+    bpMsg.ele('Reference', { RefTypeCd: 'WK', SourceRefTypeCd: '128' }).txt(intakeWeek);
+  }
+  // Booking Request Comments remark
+  if (remarks) {
+    bpMsg.ele('Remark', { Qualifier: 'BRC' }).txt(remarks);
+  }
 
   // TradePartner: SU
   const tpSU = bpMsg.ele('TradePartner', { RoleCd: 'SU' });
@@ -240,7 +306,7 @@ async function build(masterRows) {
   // Document
   const doc = bpMsg.ele('Document', { DocType: 'BOOK', Key: bookingRef });
   doc.ele('Reference', { RefTypeCd: 'ACE', SourceRefTypeCd: '128' }).txt(bookingRef);
-  doc.ele('Reference', { RefTypeCd: 'V0',  SourceRefTypeCd: '128' }).txt('2.0');
+  doc.ele('Reference', { RefTypeCd: 'V0',  SourceRefTypeCd: '128' }).txt(version);
   doc.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(totalNet.toFixed(4));
   doc.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(totalGross.toFixed(4));
   doc.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(totalVol.toFixed(4));
@@ -269,11 +335,13 @@ async function build(masterRows) {
 
       const li = order.ele('LineItem', { Key: lineKey });
       li.ele('LineItemDescription').txt(description);
-      li.ele('Attribute', { AttributeTypeCd: 'SI' }).txt(ean);
+      // Attributes — SK and SI mandatory; UA (EAN/UPC) per spec
+      li.ele('Attribute', { AttributeTypeCd: 'SI' }).txt(row.ASN_Ref  || ean || '');
       li.ele('Attribute', { AttributeTypeCd: 'SK' }).txt(sku);
-      li.ele('Attribute', { AttributeTypeCd: 'CL' }).txt(row.Colour_Code || '');
+      if (ean)                    li.ele('Attribute', { AttributeTypeCd: 'UA' }).txt(ean);
+      if (row.Colour_Code)        li.ele('Attribute', { AttributeTypeCd: 'CL' }).txt(row.Colour_Code);
       li.ele('Attribute', { AttributeTypeCd: 'CM' }).txt('2003');
-      li.ele('Attribute', { AttributeTypeCd: 'IZ' }).txt(row.Size_Code || '');
+      if (row.Size_Code)          li.ele('Attribute', { AttributeTypeCd: 'IZ' }).txt(row.Size_Code);
       li.ele('Reference', { RefTypeCd: 'PAC', SourceRefTypeCd: '128' }).txt(packType);
       li.ele('Reference', { RefTypeCd: 'PT',  SourceRefTypeCd: '128' }).txt(productStyle);
       li.ele('Reference', { RefTypeCd: 'HZ',  SourceRefTypeCd: '128' }).txt(hazRef);
@@ -282,6 +350,11 @@ async function build(masterRows) {
       li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt(cL.toFixed(4));
       li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt(cW.toFixed(4));
       li.ele('Reference', { RefTypeCd: 'HT',  SourceRefTypeCd: '128' }).txt(cH.toFixed(4));
+      // FOBInstructions — incoterms from PO feed
+      if (row.Incoterms) {
+        li.ele('FOBInstructions')
+          .ele('TransTermsCd', { Qualifier: '01' }).txt(row.Incoterms);
+      }
       li.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(row._bkq.toFixed(6));
       li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(row._gross.toFixed(4));
       li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(row._net.toFixed(4));
@@ -292,7 +365,7 @@ async function build(masterRows) {
   }
 
   const xml = root.end({ prettyPrint: true });
-  return { xml, filename, ctrlNumber };
+  return { xml, filename, ctrlNumber, version };
 }
 
 module.exports = { build, CARTON_TYPES };

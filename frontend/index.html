@@ -127,6 +127,19 @@
     .status-box.error   { background: #FDEDEC; border-left: 4px solid #E74C3C; color: #922B21; display: block; }
     .status-box.loading { background: #FEF9E7; border-left: 4px solid #F39C12; color: #784212; display: block; }
 
+    /* ── Purpose code selector ── */
+    .purpose-selector { margin-bottom: 14px; }
+    .purpose-options { display: flex; gap: 12px; flex-wrap: wrap; }
+    .purpose-option {
+      display: flex; align-items: center; gap: 8px;
+      background: #F4F6F7; border: 1px solid #D5D8DC;
+      border-radius: 8px; padding: 8px 14px; cursor: pointer;
+      font-size: 13px; transition: border-color .2s;
+    }
+    .purpose-option:hover { border-color: #1F4E79; }
+    .purpose-option input[type=radio] { accent-color: #1F4E79; }
+    .purpose-option input[type=radio]:checked ~ span { color: #1F4E79; font-weight: 700; }
+
     /* ── XML preview ── */
     .xml-preview-wrap {
       margin-top: 12px;
@@ -279,6 +292,23 @@
       </div>
     </div>
     <div class="step-body">
+      <div class="purpose-selector">
+        <label style="font-size:13px;font-weight:600;color:#444;margin-bottom:6px;display:block">Purpose Code</label>
+        <div class="purpose-options">
+          <label class="purpose-option">
+            <input type="radio" name="purposeCd" value="13" checked>
+            <span><strong>13 — Request</strong> <em>(new booking)</em></span>
+          </label>
+          <label class="purpose-option">
+            <input type="radio" name="purposeCd" value="15">
+            <span><strong>15 — Re-Submission</strong> <em>(increments version)</em></span>
+          </label>
+          <label class="purpose-option">
+            <input type="radio" name="purposeCd" value="01">
+            <span><strong>01 — Cancellation</strong> <em>(mandatory fields only)</em></span>
+          </label>
+        </div>
+      </div>
       <button class="btn btn-success" id="btnGenerateVbkreq" disabled>
         ⚙ Generate VBKREQ
       </button>
