@@ -108,8 +108,29 @@
       cursor: pointer;
       transition: background .2s;
     }
-    .file-label:hover { background: #EBF5FB; }
-    .file-label.has-file { border-color: #27AE60; color: #27AE60; background: #EAFAF1; }
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 2px dashed #AED6F1;
+      border-radius: 10px;
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      background: #F8FBFF;
+      color: #555;
+      font-size: 14px;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: #1F4E79;
+      background: #EBF5FB;
+    }
+    .drop-zone.has-file {
+      border-color: #27AE60;
+      background: #EAFAF1;
+      color: #1E8449;
+    }
+    .drop-zone-icon { font-size: 32px; margin-bottom: 8px; }
+    .drop-zone-hint { font-size: 12px; color: #888; margin-top: 4px; }
     #supplierFileInput { display: none; }
     .file-name { font-size: 12px; color: #555; font-style: italic; }
 
@@ -233,14 +254,15 @@
       </div>
     </div>
     <div class="step-body">
-      <div class="file-row">
-        <label class="file-label" id="fileLabel" for="supplierFileInput">
-          📂 Choose Excel File (.xlsx)
-        </label>
-        <input type="file" id="supplierFileInput" accept=".xlsx,.xls" />
-        <span class="file-name" id="fileName">No file selected</span>
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-zone-icon">📂</div>
+        <div id="dropZoneText">Drag &amp; drop your Excel file here</div>
+        <div class="drop-zone-hint">or <u style="cursor:pointer" onclick="document.getElementById('supplierFileInput').click()">browse to choose a file</u> (.xlsx / .xls)</div>
+      </div>
+      <input type="file" id="supplierFileInput" accept=".xlsx,.xls" />
+      <div style="margin-top:10px;text-align:right">
         <button class="btn btn-primary" id="btnParseSupplier" disabled>
-          📂 Upload &amp; Parse
+          ⬆ Upload &amp; Parse
         </button>
       </div>
       <div class="status-box" id="status1"></div>

@@ -18,20 +18,36 @@ async function parse(buffer) {
   const sheet = workbook.worksheets[0];
   if (!sheet) throw new Error('Supplier Excel has no worksheets');
 
+  // Auto-detect the header row — find the first row that contains 'PO_Number'
+  let headerRowNum = 1;
+  sheet.eachRow((row, rowNum) => {
+    if (headerRowNum !== 1) return; // already found
+    row.eachCell(cell => {
+      if (String(cell.value || '').trim() === 'PO_Number') headerRowNum = rowNum;
+    });
+  });
+
   const headers = [];
-  sheet.getRow(1).eachCell((cell, colNum) => {
-    headers[colNum] = String(cell.value || '').trim();
+  sheet.getRow(headerRowNum).eachCell((cell, colNum) => {
+    // Strip the "(HH:MM)" annotation added to Collection_Time label
+    headers[colNum] = String(cell.value || '').replace(/\s*\(.*?\)/, '').trim();
   });
 
   const rows = [];
   const validationErrors = [];
 
   sheet.eachRow((row, rowNum) => {
-    if (rowNum === 1) return; // skip header
+    if (rowNum <= headerRowNum) return; // skip banner/legend/header rows
     const obj = {};
-    row.eachCell((cell, colNum) => {
+    row.eachCell({ includeEmpty: true }, (cell, colNum) => {
       const key = headers[colNum];
-      if (key) obj[key] = cell.value !== null && cell.value !== undefined ? cell.value : '';
+      if (!key) return;
+      // Formula cells → use result; date objects → keep as-is; else string
+      let val = cell.value;
+      if (val !== null && val !== undefined && typeof val === 'object' && 'result' in val) {
+        val = val.result; // unwrap formula result
+      }
+      obj[key] = (val !== null && val !== undefined) ? val : '';
     });
     // Skip entirely empty rows
     if (!Object.values(obj).some(v => v !== '')) return;

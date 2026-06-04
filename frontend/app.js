@@ -14,8 +14,8 @@ const state = {
 
 // ── Element refs ───────────────────────────────────────────────────────────────
 const supplierFileInput  = document.getElementById('supplierFileInput');
-const fileLabel          = document.getElementById('fileLabel');
-const fileName           = document.getElementById('fileName');
+const dropZone           = document.getElementById('dropZone');
+const dropZoneText       = document.getElementById('dropZoneText');
 const btnParseSupplier   = document.getElementById('btnParseSupplier');
 const btnFetchFeeds      = document.getElementById('btnFetchFeeds');
 const btnBuildBible      = document.getElementById('btnBuildBible');
@@ -52,16 +52,37 @@ function setLoading(btn, loading) {
   }
 }
 
-// ── File input ─────────────────────────────────────────────────────────────────
-supplierFileInput.addEventListener('change', () => {
-  const file = supplierFileInput.files[0];
-  if (file) {
-    fileName.textContent = file.name;
-    fileLabel.classList.add('has-file');
-    fileLabel.textContent = '✓ ' + file.name;
-    btnParseSupplier.disabled = false;
+// ── Drop zone & file input ────────────────────────────────────────────────────
+function applyFileToZone(file) {
+  if (!file) return;
+  dropZone.classList.add('has-file');
+  dropZone.classList.remove('drag-over');
+  dropZoneText.textContent = '✓ ' + file.name;
+  btnParseSupplier.disabled = false;
+}
+
+// Click on zone triggers file browser
+dropZone.addEventListener('click', () => supplierFileInput.click());
+
+// Drag events
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && /\.xlsx?$/i.test(file.name)) {
+    // Assign to the hidden input via DataTransfer so FormData works
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    supplierFileInput.files = dt.files;
+    applyFileToZone(file);
+  } else if (file) {
+    dropZone.classList.remove('drag-over');
+    setStatus(1, 'error', '❌ Please drop an Excel file (.xlsx or .xls)');
   }
 });
+
+supplierFileInput.addEventListener('change', () => applyFileToZone(supplierFileInput.files[0]));
 
 // ── Step 1: Parse Supplier ─────────────────────────────────────────────────────
 btnParseSupplier.addEventListener('click', async () => {
