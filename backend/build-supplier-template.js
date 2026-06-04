@@ -64,7 +64,23 @@ async function build() {
   banner.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' };
   ws.getRow(1).height = 32;
 
-  // ── Row 2: Column headers ────────────────────────────────────────────────────
+  // ── Row 2: Colour-key legend (one cell each, no merging) ─────────────────────
+  const legendItems = [
+    { col: 1, label: ' RED = Mandatory ',           argb: 'FFC0392B' },
+    { col: 2, label: ' GREEN = Has default ',        argb: 'FF27AE60' },
+    { col: 3, label: ' BLUE = Auto-calculated ',     argb: 'FF2E75B6' },
+    { col: 4, label: ' GREY = Optional ',            argb: 'FF555555' },
+  ];
+  legendItems.forEach(({ col, label, argb }) => {
+    const cell = ws.getCell(2, col);
+    cell.value = label;
+    cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+    cell.font  = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+    cell.alignment = { horizontal: 'left', vertical: 'middle' };
+  });
+  ws.getRow(2).height = 22;
+
+  // ── Row 3: Column headers ────────────────────────────────────────────────────
   const columns = [
     // mandatory (red)
     { key: 'PO_Number',                           label: 'PO_Number',                           width: 22, type: 'mandatory' },
@@ -106,7 +122,7 @@ async function build() {
     { key: 'Remarks',  label: 'Remarks',  width: 30, type: 'optional' }
   ];
 
-  const headerRow = ws.getRow(2);
+  const headerRow = ws.getRow(3);
   columns.forEach((col, i) => {
     const cell = headerRow.getCell(i + 1);
     cell.value = col.label;
@@ -125,16 +141,6 @@ async function build() {
     }
   });
   headerRow.height = 36;
-
-  // ── Row 3: Legend ─────────────────────────────────────────────────────────────
-  ws.mergeCells('A3:AA3');
-  const legend = ws.getCell('A3');
-  legend.value =
-    '  🔴 RED = Mandatory   🟢 GREEN = Has default (change if needed)   🔵 BLUE = Auto-calculated (do not edit)   ⚫ GREY = Optional';
-  legend.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
-  legend.font  = { italic: true, size: 10, color: { argb: 'FF444444' } };
-  legend.alignment = { horizontal: 'left', vertical: 'middle' };
-  ws.getRow(3).height = 20;
 
   // ── Column widths ─────────────────────────────────────────────────────────────
   columns.forEach((col, i) => { ws.getColumn(i + 1).width = col.width; });

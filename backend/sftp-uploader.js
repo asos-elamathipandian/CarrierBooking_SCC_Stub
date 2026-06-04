@@ -4,13 +4,11 @@ const SftpClient = require('ssh2-sftp-client');
 const fs   = require('fs');
 const path = require('path');
 
+const OUTPUT_DIR = path.join(__dirname, '..', 'output');
+
 function loadConfig() {
   const configPath = path.join(__dirname, '..', 'config', 'sftp.config.json');
-  if (!fs.existsSync(configPath)) {
-    throw new Error(
-      'SFTP config not found. Copy config/sftp.config.example.json to config/sftp.config.json and fill in your credentials.'
-    );
-  }
+  if (!fs.existsSync(configPath)) return null; // local mode
   const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const required = ['host', 'port', 'username', 'privateKeyPath', 'uploadPath'];
   const missing = required.filter(k => !cfg[k]);
@@ -19,10 +17,28 @@ function loadConfig() {
 }
 
 /**
+ * LOCAL FALLBACK: save XML to output/ folder when SFTP config is absent.
+ */
+function saveLocally(filename, xmlContent) {
+  if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  const outPath = path.join(OUTPUT_DIR, filename);
+  fs.writeFileSync(outPath, xmlContent, 'utf8');
+  return {
+    remotePath: outPath,
+    filename,
+    bytesSent: Buffer.byteLength(xmlContent, 'utf8'),
+    uploadedAt: new Date().toISOString(),
+    localMode: true,
+    note: 'Saved locally to output/ (SFTP not configured)'
+  };
+}
+
+/**
  * Upload xmlContent as filename to E2open SFTP.
  */
 async function upload(filename, xmlContent) {
   const cfg = loadConfig();
+  if (!cfg) return saveLocally(filename, xmlContent);
 
   const keyPath = path.isAbsolute(cfg.privateKeyPath)
     ? cfg.privateKeyPath
