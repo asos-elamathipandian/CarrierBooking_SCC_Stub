@@ -53,6 +53,13 @@ app.post('/api/parse-supplier', upload.single('supplierFile'), async (req, res) 
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const parsed = await supplierReader.parse(req.file.buffer);
+    // Debug: log header keys and first row
+    if (parsed.rows.length > 0) {
+      console.log('[parse-supplier] headers found:', Object.keys(parsed.rows[0]));
+      console.log('[parse-supplier] first row sample:', JSON.stringify(parsed.rows[0]).slice(0, 300));
+    } else {
+      console.log('[parse-supplier] no rows parsed — headerRow:', parsed.headerRowNum);
+    }
     sessionState.supplierData = parsed;
     sessionState.feedData = null;
     sessionState.masterData = null;

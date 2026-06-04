@@ -15,7 +15,12 @@ async function parse(buffer) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
 
-  const sheet = workbook.worksheets[0];
+  // Find SUPPLIER_INPUT sheet by name; fall back to first visible sheet
+  let sheet = workbook.getWorksheet('SUPPLIER_INPUT');
+  if (!sheet) {
+    sheet = workbook.worksheets.find(ws => ws.state !== 'veryHidden' && ws.state !== 'hidden');
+  }
+  if (!sheet) sheet = workbook.worksheets[0];
   if (!sheet) throw new Error('Supplier Excel has no worksheets');
 
   // Auto-detect the header row — find the first row that contains 'PO_Number'
@@ -66,7 +71,7 @@ async function parse(buffer) {
     rows.push(obj);
   });
 
-  return { rows, validationErrors, sheetName: sheet.name };
+  return { rows, validationErrors, sheetName: sheet.name, headerRowNum };
 }
 
 module.exports = { parse };
