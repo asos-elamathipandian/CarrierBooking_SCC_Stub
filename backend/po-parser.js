@@ -109,6 +109,7 @@ async function parse(xmlString) {
     carrierId:        getPartnerId(partners['CA']),
     carrierName:      getPartnerName(partners['CA']),
     loadingPortId:    getPartnerId(partners['SL']),
+    f1Id:             getPartnerId(partners['F1']),
     incoterms,
     poType:           refs['8X'] || '',
     lineItems
