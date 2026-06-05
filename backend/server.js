@@ -11,6 +11,8 @@ const blobClient = require('./blob-client');
 const bibleBuilder = require('./bible-builder');
 const vbkreqBuilder = require('./vbkreq-builder');
 const sftpUploader = require('./sftp-uploader');
+const poParser  = require('./po-parser');
+const asnParser = require('./asn-parser');
 
 const app = express();
 const PORT = 3000;
@@ -24,7 +26,7 @@ const bibleDir = path.join(__dirname, '..', 'bible');
 if (!fs.existsSync(bibleDir)) fs.mkdirSync(bibleDir, { recursive: true });
 app.use('/bible', express.static(bibleDir));
 
-// Multer: store uploads in memory (max 10MB)
+// Multer: store uploads in memory (max 10MB) — Excel files
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -33,6 +35,17 @@ const upload = multer({
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) cb(null, true);
     else cb(new Error('Only Excel files (.xlsx, .xls) are accepted'));
+  }
+});
+
+// Multer: XML feed files (max 50MB)
+const uploadXml = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.xml') cb(null, true);
+    else cb(new Error('Only XML files are accepted'));
   }
 });
 
@@ -103,6 +116,84 @@ app.post('/api/fetch-feeds', async (req, res) => {
     });
   } catch (err) {
     console.error('fetch-feeds error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
+// POST /api/upload-feeds
+// Accept uploaded PO and/or ASN XML files and parse them
+// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// POST /api/upload-feeds
+// Accept uploaded PO and/or ASN XML files and parse them
+// ─────────────────────────────────────────────
+app.post('/api/upload-feeds', (req, res, next) => {
+  uploadXml.fields([
+    { name: 'poFeedFile',  maxCount: 1 },
+    { name: 'asnFeedFile', maxCount: 1 }
+  ])(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const poFeeds  = [];
+    const asnFeeds = [];
+    const errors   = [];
+
+    if (req.files?.poFeedFile?.[0]) {
+      const xmlStr = req.files.poFeedFile[0].buffer.toString('utf8');
+      try {
+        poFeeds.push(await poParser.parse(xmlStr));
+      } catch (e) {
+        errors.push(`PO parse error: ${e.message}`);
+      }
+    }
+
+    if (req.files?.asnFeedFile?.[0]) {
+      const xmlStr = req.files.asnFeedFile[0].buffer.toString('utf8');
+      try {
+        asnFeeds.push(await asnParser.parse(xmlStr));
+      } catch (e) {
+        errors.push(`ASN parse error: ${e.message}`);
+      }
+    }
+
+    if (poFeeds.length === 0 && asnFeeds.length === 0 && errors.length === 0) {
+      return res.status(400).json({ error: 'No PO or ASN XML file uploaded.' });
+    }
+
+    const feedData = { poFeeds, asnFeeds, errors, localMode: false };
+    sessionState.feedData = feedData;
+
+    res.json({
+      success: true,
+      poFeedCount:  poFeeds.length,
+      asnFeedCount: asnFeeds.length,
+      errors,
+      summary: {
+        posFound:  poFeeds.map(p => p.orderId),
+        asnsFound: asnFeeds.map(a => a.documentId)
+      }
+    });
+  } catch (err) {
+    console.error('upload-feeds error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
+// GET /api/search-blob?query=
+// List/search blobs by name prefix in Azure Blob Storage
+// ─────────────────────────────────────────────
+app.get('/api/search-blob', async (req, res) => {
+  try {
+    const query = (req.query.query || '').trim();
+    const results = await blobClient.searchBlobs(query);
+    res.json({ success: true, results });
+  } catch (err) {
+    console.error('search-blob error:', err);
     res.status(500).json({ error: err.message });
   }
 });

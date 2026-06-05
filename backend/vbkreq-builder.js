@@ -53,15 +53,28 @@ function resolveMode(modeVal) {
 }
 
 function getCtrlNumber() {
-  let data = { counter: 91800256, bookingVersions: {} };
+  let data = { counter: 91800256, bookingCounter: 1000000001, bookingVersions: {} };
   if (fs.existsSync(COUNTER_FILE)) {
     try { data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')); } catch (_) {}
   }
   if (!data.bookingVersions) data.bookingVersions = {};
+  if (!data.bookingCounter)  data.bookingCounter  = 1000000001;
   const current = data.counter;
   data.counter = current + 1;
   fs.writeFileSync(COUNTER_FILE, JSON.stringify(data, null, 2));
   return String(current);
+}
+
+function getBookingRef() {
+  let data = { counter: 91800256, bookingCounter: 1000000001, bookingVersions: {} };
+  if (fs.existsSync(COUNTER_FILE)) {
+    try { data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')); } catch (_) {}
+  }
+  if (!data.bookingCounter) data.bookingCounter = 1000000001;
+  const ref = `VB-${data.bookingCounter}`;
+  data.bookingCounter += 1;
+  fs.writeFileSync(COUNTER_FILE, JSON.stringify(data, null, 2));
+  return ref;
 }
 
 /**
@@ -71,11 +84,12 @@ function getCtrlNumber() {
  * purposeCd 01 (cancel) → returns existing version unchanged
  */
 function getBookingVersion(bookingRef, purposeCd) {
-  let data = { counter: 91800256, bookingVersions: {} };
+  let data = { counter: 91800256, bookingCounter: 1000000001, bookingVersions: {} };
   if (fs.existsSync(COUNTER_FILE)) {
     try { data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')); } catch (_) {}
   }
   if (!data.bookingVersions) data.bookingVersions = {};
+  if (!data.bookingCounter)  data.bookingCounter  = 1000000001;
 
   let version;
   if (purposeCd === '15') {
@@ -140,7 +154,7 @@ async function build(masterRows, purposeCd) {
 
   // Use first row for booking-level fields
   const first = masterRows[0];
-  const bookingRef = first.Booking_Ref || `VB-STUB-${ctrlNumber}`;
+  const bookingRef = first.Booking_Ref || getBookingRef();
   const version = getBookingVersion(bookingRef, pcd);
   const trafficMode = first.Traffic_Mode || 'CFS';
   const originCountry = first.Factory_CountryCd || 'XX';
@@ -159,8 +173,7 @@ async function build(masterRows, purposeCd) {
   // Transport mode: from PO feed line, fallback to 30 (Road)
   const transportModeCode = resolveMode(first.Transport_Mode_Code || masterRows[0]._poMode || '30');
 
-  // Totals
-  let totalNet = 0, totalGross = 0, totalVol = 0, totalCartons = 0, totalBkq = 0;
+  // Totals — pre-compute per-row values used in Document sections
   for (const row of masterRows) {
     const ct = CARTON_TYPES[row.Carton_Type] || {};
     const noCartons = parseFloat(row.No_of_Cartons) || 0;
@@ -171,28 +184,13 @@ async function build(masterRows, purposeCd) {
     const cH = parseFloat(row.Carton_Height_cm) || ct.H || 0;
     const cWt = parseFloat(row.Carton_Weight_KG) || ct.weight || 0;
 
-    row._gross = parseFloat((cWt * noCartons).toFixed(4));
-    row._net   = parseFloat((unitWt * bkq).toFixed(4));
-    row._vol   = parseFloat(((cL * cW * cH / 1000000) * noCartons).toFixed(4));
+    row._gross   = parseFloat((cWt * noCartons).toFixed(4));
+    row._net     = parseFloat(unitWt.toFixed(4));   // N = Unit_Weight_KG per line
+    row._vol     = parseFloat(((cL * cW * cH / 1000000) * noCartons).toFixed(4));
     row._cartons = noCartons;
-    row._bkq   = bkq;
-
-    totalGross   += row._gross;
-    totalNet     += row._net;
-    totalVol     += row._vol;
-    totalCartons += row._cartons;
-    totalBkq     += row._bkq;
+    row._bkq     = bkq;
   }
 
-  // Group lines by PO
-  const poGroups = {};
-  for (const row of masterRows) {
-    const po = row.PO_Number;
-    if (!poGroups[po]) poGroups[po] = [];
-    poGroups[po].push(row);
-  }
-
-  // Build XML
   const root = create({ version: '1.0', encoding: 'UTF-8' })
     .ele('XMLBundle');
 
@@ -276,10 +274,6 @@ async function build(masterRows, purposeCd) {
   const tpSL = bpMsg.ele('TradePartner', { RoleCd: 'SL' });
   tpSL.ele('TradePartnerID', { Qualifier: '93' }).txt(loadingPortLocode);
 
-  // TradePartner: FD without address (second occurrence)
-  const tpFD2 = bpMsg.ele('TradePartner', { RoleCd: 'FD' });
-  tpFD2.ele('TradePartnerID', { Qualifier: '93' }).txt(`${fcId} ${first.FC_Name || ''}`.trim());
-
   // Status elements
   bpMsg.ele('Status').ele('Date', { DateTypeCd: '018', TimeZone: 'LT' }).txt(cargoReadyDate);
   bpMsg.ele('Status').ele('Date', { DateTypeCd: '081', TimeZone: 'LT' }).txt(cargoReadyDate);
@@ -303,64 +297,83 @@ async function build(masterRows, purposeCd) {
   bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBK' }).txt(now);
   bpMsg.ele('Status').ele('Date', { DateTypeCd: 'SBK' }).txt(now);
 
-  // Document
-  const doc = bpMsg.ele('Document', { DocType: 'BOOK', Key: bookingRef });
-  doc.ele('Reference', { RefTypeCd: 'ACE', SourceRefTypeCd: '128' }).txt(bookingRef);
-  doc.ele('Reference', { RefTypeCd: 'V0',  SourceRefTypeCd: '128' }).txt(version);
-  doc.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(totalNet.toFixed(4));
-  doc.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(totalGross.toFixed(4));
-  doc.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(totalVol.toFixed(4));
-  doc.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt(totalCartons.toFixed(4));
-  doc.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(totalBkq.toFixed(6));
+  // Group rows by ASN first, then by PO within each ASN
+  const asnGroups = {};
+  for (const row of masterRows) {
+    const asnKey = String(row.ASN_Ref || '');
+    if (!asnGroups[asnKey]) asnGroups[asnKey] = {};
+    const poKey = String(row.PO_Number || '');
+    if (!asnGroups[asnKey][poKey]) asnGroups[asnKey][poKey] = [];
+    asnGroups[asnKey][poKey].push(row);
+  }
 
-  // Orders
-  for (const [poNum, lines] of Object.entries(poGroups)) {
-    const order = doc.ele('Order', { Key: poNum, OrderType: 'PO' });
-    order.ele('OrderID').txt(poNum);
+  // One Document per ASN
+  for (const [asnRef, poMap] of Object.entries(asnGroups)) {
+    const asnLines = Object.values(poMap).flat();
 
-    for (const row of lines) {
-      const ct = CARTON_TYPES[row.Carton_Type] || {};
-      const cL = parseFloat(row.Carton_Length_cm) || ct.L || 0;
-      const cW = parseFloat(row.Carton_Width_cm)  || ct.W || 0;
-      const cH = parseFloat(row.Carton_Height_cm) || ct.H || 0;
-      const sku  = row.SKU || '';
-      const ean  = row.EAN_Barcode || '';
-      const lineKey = `${poNum}_${sku}_${ean}`;
-      const description = row.Description || row.Product_Style || `SKU ${sku}`;
-      const cartonType = row.Carton_Type || 'BDCM1';
-      const packType = row.Pack_Type || 'Bulk Flat';
-      const productStyle = row.Product_Style || '';
-      const hazRef = row.Hazardous || 'N/A';
-      const lineFC = row.FC_ID || fcId;
+    // Totals for this ASN only
+    const asnNet      = parseFloat(asnLines.reduce((s, r) => s + r._net,      0).toFixed(4));
+    const asnGross    = parseFloat(asnLines.reduce((s, r) => s + r._gross,    0).toFixed(4));
+    const asnVol      = parseFloat(asnLines.reduce((s, r) => s + r._vol,      0).toFixed(4));
+    const asnCartons  = parseFloat(asnLines.reduce((s, r) => s + r._cartons,  0).toFixed(4));
+    const asnBkq      = parseFloat(asnLines.reduce((s, r) => s + r._bkq,      0).toFixed(6));
 
-      const li = order.ele('LineItem', { Key: lineKey });
-      li.ele('LineItemDescription').txt(description);
-      // Attributes — SK and SI mandatory; UA (EAN/UPC) per spec
-      li.ele('Attribute', { AttributeTypeCd: 'SI' }).txt(row.ASN_Ref  || ean || '');
-      li.ele('Attribute', { AttributeTypeCd: 'SK' }).txt(sku);
-      if (ean)                    li.ele('Attribute', { AttributeTypeCd: 'UA' }).txt(ean);
-      if (row.Colour_Code)        li.ele('Attribute', { AttributeTypeCd: 'CL' }).txt(row.Colour_Code);
-      li.ele('Attribute', { AttributeTypeCd: 'CM' }).txt('2003');
-      if (row.Size_Code)          li.ele('Attribute', { AttributeTypeCd: 'IZ' }).txt(row.Size_Code);
-      li.ele('Reference', { RefTypeCd: 'PAC', SourceRefTypeCd: '128' }).txt(packType);
-      li.ele('Reference', { RefTypeCd: 'PT',  SourceRefTypeCd: '128' }).txt(productStyle);
-      li.ele('Reference', { RefTypeCd: 'HZ',  SourceRefTypeCd: '128' }).txt(hazRef);
-      li.ele('Reference', { RefTypeCd: 'DSC', SourceRefTypeCd: '128' }).txt(description);
-      li.ele('Reference', { RefTypeCd: '98',  SourceRefTypeCd: '128' }).txt(cartonType);
-      li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt(cL.toFixed(4));
-      li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt(cW.toFixed(4));
-      li.ele('Reference', { RefTypeCd: 'HT',  SourceRefTypeCd: '128' }).txt(cH.toFixed(4));
-      // FOBInstructions — incoterms from PO feed
-      if (row.Incoterms) {
-        li.ele('FOBInstructions')
-          .ele('TransTermsCd', { Qualifier: '01' }).txt(row.Incoterms);
+    const doc = bpMsg.ele('Document', { DocType: 'BOOK', Key: bookingRef });
+    doc.ele('Reference', { RefTypeCd: 'ACE', SourceRefTypeCd: '128' }).txt(bookingRef);
+    doc.ele('Reference', { RefTypeCd: 'ASN', SourceRefTypeCd: '128' }).txt(asnRef);
+    doc.ele('Reference', { RefTypeCd: 'V0',  SourceRefTypeCd: '128' }).txt(version);
+    doc.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(asnNet.toFixed(4));
+    doc.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(asnGross.toFixed(4));
+    doc.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(asnVol.toFixed(4));
+    doc.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt(asnCartons.toFixed(4));
+    doc.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(asnBkq.toFixed(6));
+
+    // Orders within this ASN
+    for (const [poNum, lines] of Object.entries(poMap)) {
+      const order = doc.ele('Order', { Key: poNum, OrderType: 'PO' });
+      order.ele('OrderID').txt(poNum);
+
+      for (const row of lines) {
+        const ct = CARTON_TYPES[row.Carton_Type] || {};
+        const cL = parseFloat(row.Carton_Length_cm) || ct.L || 0;
+        const cW = parseFloat(row.Carton_Width_cm)  || ct.W || 0;
+        const cH = parseFloat(row.Carton_Height_cm) || ct.H || 0;
+        const sku       = row.SKU || '';
+        const ean       = row.EAN_Barcode || '';
+        const lineKey   = `${poNum}_${sku}_${asnRef}`;
+        const description  = row.Description || row.Product_Style || `SKU ${sku}`;
+        const cartonType   = row.Carton_Type || 'BDCM1';
+        const packType     = row.Pack_Type || 'Bulk Flat';
+        const productStyle = row.Product_Style || '';
+        const hazRef2      = row.Hazardous || 'N/A';
+        const lineFC       = row.FC_ID || fcId;
+
+        const li = order.ele('LineItem', { Key: lineKey });
+        li.ele('LineItemDescription').txt(description);
+        li.ele('Attribute', { AttributeTypeCd: 'SI' }).txt(asnRef);
+        li.ele('Attribute', { AttributeTypeCd: 'SK' }).txt(sku);
+        if (ean)               li.ele('Attribute', { AttributeTypeCd: 'UA' }).txt(ean);
+        if (row.Colour_Code)   li.ele('Attribute', { AttributeTypeCd: 'CL' }).txt(row.Colour_Code);
+        li.ele('Attribute', { AttributeTypeCd: 'CM' }).txt('2003');
+        if (row.Size_Code)     li.ele('Attribute', { AttributeTypeCd: 'IZ' }).txt(row.Size_Code);
+        li.ele('Reference', { RefTypeCd: 'PAC', SourceRefTypeCd: '128' }).txt(packType);
+        li.ele('Reference', { RefTypeCd: 'PT',  SourceRefTypeCd: '128' }).txt(productStyle);
+        li.ele('Reference', { RefTypeCd: 'HZ',  SourceRefTypeCd: '128' }).txt(hazRef2);
+        li.ele('Reference', { RefTypeCd: 'DSC', SourceRefTypeCd: '128' }).txt(description);
+        li.ele('Reference', { RefTypeCd: '98',  SourceRefTypeCd: '128' }).txt(cartonType);
+        li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt(cL.toFixed(4));
+        li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt(cW.toFixed(4));
+        li.ele('Reference', { RefTypeCd: 'HT',  SourceRefTypeCd: '128' }).txt(cH.toFixed(4));
+        if (row.Incoterms) {
+          li.ele('FOBInstructions').ele('TransTermsCd', { Qualifier: '01' }).txt(row.Incoterms);
+        }
+        li.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(row._bkq.toFixed(6));
+        li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(row._gross.toFixed(4));
+        li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(row._net.toFixed(4));
+        li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(row._vol.toFixed(4));
+        li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt(row._cartons.toFixed(4));
+        li.ele('TradePartner', { RoleCd: 'FS' }).ele('TradePartnerID', { Qualifier: '93' }).txt(lineFC);
       }
-      li.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(row._bkq.toFixed(6));
-      li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(row._gross.toFixed(4));
-      li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(row._net.toFixed(4));
-      li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(row._vol.toFixed(4));
-      li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt(row._cartons.toFixed(4));
-      li.ele('TradePartner', { RoleCd: 'FS' }).ele('TradePartnerID', { Qualifier: '93' }).txt(lineFC);
     }
   }
 

@@ -230,6 +230,65 @@
       color: #999;
       padding: 20px;
     }
+
+    /* ── Feed source tabs ── */
+    .tab-strip { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #D6EAF8; }
+    .tab-btn {
+      padding: 8px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+      color: #5d6d7e;
+      transition: color .2s, border-color .2s;
+    }
+    .tab-btn.active { color: #1F4E79; border-bottom-color: #1F4E79; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Feed XML drop zones ── */
+    .feeds-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    @media (max-width: 600px) { .feeds-grid { grid-template-columns: 1fr; } }
+    .feed-drop-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
+    .feed-drop-zone {
+      border: 2px dashed #AED6F1;
+      border-radius: 8px;
+      padding: 18px 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      background: #F8FBFF;
+      color: #555;
+      font-size: 13px;
+    }
+    .feed-drop-zone:hover, .feed-drop-zone.drag-over { border-color: #1F4E79; background: #EBF5FB; }
+    .feed-drop-zone.has-file { border-color: #27AE60; background: #EAFAF1; color: #1E8449; }
+
+    /* ── Blob search ── */
+    .blob-search-row { display: flex; gap: 8px; margin-top: 14px; }
+    .blob-search-row input {
+      flex: 1;
+      padding: 9px 12px;
+      border: 1px solid #BDC3C7;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .blob-search-row input:focus { outline: none; border-color: #2E75B6; box-shadow: 0 0 0 2px #D6EAF8; }
+    .blob-results { margin-top: 10px; max-height: 200px; overflow-y: auto; border: 1px solid #EBF5FB; border-radius: 6px; }
+    .blob-result-item {
+      padding: 6px 10px;
+      border-bottom: 1px solid #EBF5FB;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .blob-result-item:last-child { border-bottom: none; }
+    .blob-result-item:hover { background: #F4F6F7; }
+    .blob-result-name { font-family: monospace; color: #1a5276; font-size: 12px; word-break: break-all; }
+    .blob-result-meta { color: #888; font-size: 11px; white-space: nowrap; margin-left: 8px; }
   </style>
 </head>
 <body>
@@ -269,19 +328,67 @@
     </div>
   </div>
 
-  <!-- ── Step 2: Fetch Feeds from Blob ── -->
+  <!-- ── Step 2: Provide PO & ASN Feeds ── -->
   <div class="step-card" id="card2">
     <div class="step-header">
       <div class="step-badge" id="badge2">2</div>
       <div>
-        <div class="step-title">Fetch PO &amp; ASN Feeds from Azure Blob</div>
-        <div class="step-desc">Retrieves matching ASOS PO and ASN XML files from Azure Blob Storage using the extracted refs</div>
+        <div class="step-title">Provide PO &amp; ASN Feeds</div>
+        <div class="step-desc">Upload XML files directly or fetch from Azure Blob Storage</div>
       </div>
     </div>
     <div class="step-body">
-      <button class="btn btn-primary" id="btnFetchFeeds" disabled>
-        🔗 Fetch PO &amp; ASN Feeds
-      </button>
+
+      <!-- Tab strip -->
+      <div class="tab-strip">
+        <button class="tab-btn active" id="tabBtnUpload" onclick="switchFeedTab('upload')">📂 Upload XML Files</button>
+        <button class="tab-btn" id="tabBtnBlob" onclick="switchFeedTab('blob')">☁ Fetch from Azure Blob</button>
+      </div>
+
+      <!-- Panel: Upload XML Files -->
+      <div class="tab-panel active" id="panelUploadFeeds">
+        <div class="feeds-grid">
+          <div>
+            <div class="feed-drop-label">PO Feed XML</div>
+            <div class="feed-drop-zone" id="poDropZone">
+              <div style="font-size:24px;margin-bottom:6px">📄</div>
+              <div id="poDropZoneText">Drop PO XML here</div>
+              <div style="font-size:11px;color:#888;margin-top:4px">or <u style="cursor:pointer" onclick="event.stopPropagation();document.getElementById('poFeedInput').click()">browse</u></div>
+            </div>
+            <input type="file" id="poFeedInput" accept=".xml" style="display:none" />
+          </div>
+          <div>
+            <div class="feed-drop-label">ASN Feed XML</div>
+            <div class="feed-drop-zone" id="asnDropZone">
+              <div style="font-size:24px;margin-bottom:6px">📄</div>
+              <div id="asnDropZoneText">Drop ASN XML here</div>
+              <div style="font-size:11px;color:#888;margin-top:4px">or <u style="cursor:pointer" onclick="event.stopPropagation();document.getElementById('asnFeedInput').click()">browse</u></div>
+            </div>
+            <input type="file" id="asnFeedInput" accept=".xml" style="display:none" />
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btnUploadFeeds" disabled>
+          ⬆ Upload &amp; Parse Feeds
+        </button>
+      </div>
+
+      <!-- Panel: Fetch from Azure Blob -->
+      <div class="tab-panel" id="panelFetchBlob">
+        <button class="btn btn-primary" id="btnFetchFeeds" disabled>
+          🔗 Fetch PO &amp; ASN Feeds
+        </button>
+
+        <!-- Blob search -->
+        <div style="margin-top:18px">
+          <div style="font-size:13px;font-weight:600;color:#444;margin-bottom:6px">🔍 Search Azure Blob</div>
+          <div class="blob-search-row">
+            <input type="text" id="blobSearchInput" placeholder="Enter PO/ASN ref or blob name prefix…" />
+            <button class="btn btn-secondary" id="btnBlobSearch">Search</button>
+          </div>
+          <div class="blob-results" id="blobResults"></div>
+        </div>
+      </div>
+
       <div class="status-box" id="status2"></div>
     </div>
   </div>

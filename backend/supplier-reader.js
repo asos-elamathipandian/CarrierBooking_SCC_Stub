@@ -3,7 +3,7 @@
 const ExcelJS = require('exceljs');
 
 const REQUIRED_COLS = [
-  'PO_Number', 'ASN_Ref', 'No_of_Cartons', 'Unit_Weight_KG',
+  'PO_Number', 'ASN_Ref', 'SKU', 'No_of_Cartons', 'Unit_Weight_KG', 'Booking_Qty',
   'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date', 'Traffic_Mode'
 ];
 
@@ -56,6 +56,10 @@ async function parse(buffer) {
     });
     // Skip entirely empty rows
     if (!Object.values(obj).some(v => v !== '')) return;
+    // Skip pre-filled template rows that have defaults but no booking identity
+    if ((!obj.PO_Number || String(obj.PO_Number).trim() === '') &&
+        (!obj.ASN_Ref   || String(obj.ASN_Ref).trim()   === '') &&
+        (!obj.SKU       || String(obj.SKU).trim()        === '')) return;
 
     // Validate required fields
     const missing = REQUIRED_COLS.filter(c => !obj[c] || String(obj[c]).trim() === '');

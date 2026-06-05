@@ -96,4 +96,32 @@ async function fetchFeeds(poRefs, asnRefs) {
   return { poFeeds, asnFeeds, errors, localMode: local };
 }
 
-module.exports = { fetchFeeds };
+/**
+ * Search blobs by name prefix (or substring in local mode).
+ * Returns up to 50 results with name, size, lastModified.
+ */
+async function searchBlobs(query) {
+  if (isLocalMode()) {
+    if (!fs.existsSync(LOCAL_FEEDS_DIR)) return [];
+    return fs.readdirSync(LOCAL_FEEDS_DIR)
+      .filter(f => !query || f.toLowerCase().includes(query.toLowerCase()))
+      .map(f => {
+        const stat = fs.statSync(path.join(LOCAL_FEEDS_DIR, f));
+        return { name: f, size: stat.size, lastModified: stat.mtime };
+      });
+  }
+
+  const containerClient = getContainerClient();
+  const results = [];
+  for await (const blob of containerClient.listBlobsFlat({ prefix: query })) {
+    results.push({
+      name: blob.name,
+      size: blob.properties.contentLength,
+      lastModified: blob.properties.lastModified
+    });
+    if (results.length >= 50) break;
+  }
+  return results;
+}
+
+module.exports = { fetchFeeds, searchBlobs };

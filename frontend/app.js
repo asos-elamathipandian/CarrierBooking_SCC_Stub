@@ -28,6 +28,16 @@ const xmlDownloadLink    = document.getElementById('xmlDownloadLink');
 const refsPreview        = document.getElementById('refsPreview');
 const logBody            = document.getElementById('logBody');
 
+// Step 2 — feed tab elements
+const poFeedInput      = document.getElementById('poFeedInput');
+const asnFeedInput     = document.getElementById('asnFeedInput');
+const poDropZone       = document.getElementById('poDropZone');
+const asnDropZone      = document.getElementById('asnDropZone');
+const btnUploadFeeds   = document.getElementById('btnUploadFeeds');
+const blobSearchInput  = document.getElementById('blobSearchInput');
+const btnBlobSearch    = document.getElementById('btnBlobSearch');
+const blobResults      = document.getElementById('blobResults');
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function setStatus(step, type, html) {
   const el = document.getElementById(`status${step}`);
@@ -129,6 +139,113 @@ btnParseSupplier.addEventListener('click', async () => {
     btnParseSupplier.disabled = true;
   }
 });
+
+// ── Step 2: Feed source tab switch ────────────────────────────────────────────
+function switchFeedTab(tab) {
+  document.getElementById('tabBtnUpload').classList.toggle('active', tab === 'upload');
+  document.getElementById('tabBtnBlob').classList.toggle('active', tab === 'blob');
+  document.getElementById('panelUploadFeeds').classList.toggle('active', tab === 'upload');
+  document.getElementById('panelFetchBlob').classList.toggle('active', tab === 'blob');
+  setStatus(2, 'info', '');
+  document.getElementById('status2').style.display = 'none';
+}
+// expose globally so onclick= in HTML works
+window.switchFeedTab = switchFeedTab;
+
+// ── Step 2: PO / ASN XML file drop zones ─────────────────────────────────────
+function applyFeedFile(zone, textElId, input, file) {
+  if (!file) return;
+  if (!/\.xml$/i.test(file.name)) {
+    alert('Please select an XML file.');
+    return;
+  }
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+  zone.classList.add('has-file');
+  document.getElementById(textElId).textContent = '✓ ' + file.name;
+  updateUploadFeedsBtn();
+}
+
+function updateUploadFeedsBtn() {
+  btnUploadFeeds.disabled = !(poFeedInput.files[0] || asnFeedInput.files[0]);
+}
+
+// PO drop zone
+poDropZone.addEventListener('click', () => poFeedInput.click());
+poDropZone.addEventListener('dragover', e => { e.preventDefault(); poDropZone.classList.add('drag-over'); });
+poDropZone.addEventListener('dragleave', () => poDropZone.classList.remove('drag-over'));
+poDropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  applyFeedFile(poDropZone, 'poDropZoneText', poFeedInput, e.dataTransfer.files[0]);
+});
+poFeedInput.addEventListener('change', () => applyFeedFile(poDropZone, 'poDropZoneText', poFeedInput, poFeedInput.files[0]));
+
+// ASN drop zone
+asnDropZone.addEventListener('click', () => asnFeedInput.click());
+asnDropZone.addEventListener('dragover', e => { e.preventDefault(); asnDropZone.classList.add('drag-over'); });
+asnDropZone.addEventListener('dragleave', () => asnDropZone.classList.remove('drag-over'));
+asnDropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  applyFeedFile(asnDropZone, 'asnDropZoneText', asnFeedInput, e.dataTransfer.files[0]);
+});
+asnFeedInput.addEventListener('change', () => applyFeedFile(asnDropZone, 'asnDropZoneText', asnFeedInput, asnFeedInput.files[0]));
+
+// ── Step 2: Upload XML Feeds ──────────────────────────────────────────────────
+btnUploadFeeds.addEventListener('click', async () => {
+  setLoading(btnUploadFeeds, true);
+  setStatus(2, 'loading', '⏳ Uploading and parsing PO & ASN XML feeds…');
+
+  try {
+    const fd = new FormData();
+    if (poFeedInput.files[0])  fd.append('poFeedFile',  poFeedInput.files[0]);
+    if (asnFeedInput.files[0]) fd.append('asnFeedFile', asnFeedInput.files[0]);
+
+    const res  = await fetch(`${API}/upload-feeds`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unknown error');
+
+    state.feedsFetched = true;
+    let html = `✅ Uploaded — <strong>${data.poFeedCount}</strong> PO feed(s) and <strong>${data.asnFeedCount}</strong> ASN feed(s) parsed.`;
+    if (data.summary?.posFound?.length)  html += `<br/>POs: ${data.summary.posFound.join(', ')}`;
+    if (data.summary?.asnsFound?.length) html += `<br/>ASNs: ${data.summary.asnsFound.join(', ')}`;
+    if (data.errors?.length) html += `<br/>⚠️ ${data.errors.join('<br/>')}`;
+    setStatus(2, 'success', html);
+    setBadge(2, 'done');
+    btnBuildBible.disabled = false;
+    setBadge(3, 'active');
+  } catch (err) {
+    setStatus(2, 'error', `❌ ${err.message}`);
+  } finally {
+    setLoading(btnUploadFeeds, false);
+  }
+});
+
+// ── Step 2: Blob Search ───────────────────────────────────────────────────────
+async function runBlobSearch() {
+  const query = blobSearchInput.value.trim();
+  blobResults.innerHTML = '<div style="padding:8px;color:#888;font-size:12px">Searching…</div>';
+  try {
+    const res  = await fetch(`${API}/search-blob?query=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unknown error');
+
+    if (!data.results || data.results.length === 0) {
+      blobResults.innerHTML = '<div style="padding:8px;color:#888;font-size:12px">No blobs found.</div>';
+      return;
+    }
+    blobResults.innerHTML = data.results.map(b => `
+      <div class="blob-result-item">
+        <span class="blob-result-name">${b.name}</span>
+        <span class="blob-result-meta">${b.size != null ? (b.size / 1024).toFixed(1) + ' KB' : ''}${b.lastModified ? ' · ' + new Date(b.lastModified).toLocaleDateString() : ''}</span>
+      </div>`).join('');
+  } catch (err) {
+    blobResults.innerHTML = `<div style="padding:8px;color:#C0392B;font-size:12px">❌ ${err.message}</div>`;
+  }
+}
+
+btnBlobSearch.addEventListener('click', runBlobSearch);
+blobSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') runBlobSearch(); });
 
 // ── Step 2: Fetch Feeds ────────────────────────────────────────────────────────
 btnFetchFeeds.addEventListener('click', async () => {

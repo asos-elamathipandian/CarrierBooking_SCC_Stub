@@ -53,12 +53,13 @@ async function build() {
   const ws = wb.addWorksheet('SUPPLIER_INPUT');
 
   // ── Row 1: Instructions banner ───────────────────────────────────────────────
-  ws.mergeCells('A1:AA1');
+  ws.mergeCells('A1:AB1');
   const banner = ws.getCell('A1');
   banner.value =
-    '⚠  INSTRUCTIONS: Fill in all RED columns (mandatory). Other columns have defaults — change if needed. ' +
-    'Carton dimensions & weights auto-fill from Carton_Type selection. ' +
-    'Dates must be in DD/MM/YYYY format.  Do NOT modify column headers.';
+    '⚠  INSTRUCTIONS: One row per SKU — fill in all RED columns for every SKU line. ' +
+    'Multiple rows can share the same PO_Number/ASN_Ref. ' +
+    'No_of_Cartons and Unit_Weight_KG must be filled per SKU row. ' +
+    'Carton dimensions auto-fill from Carton_Type. Dates in DD/MM/YYYY format. Do NOT modify column headers.';
   banner.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
   banner.font   = { bold: true, color: { argb: 'FF7B3F00' }, size: 11 };
   banner.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' };
@@ -85,6 +86,7 @@ async function build() {
     // mandatory (red)
     { key: 'PO_Number',                           label: 'PO_Number',                           width: 22, type: 'mandatory' },
     { key: 'ASN_Ref',                             label: 'ASN_Ref',                             width: 22, type: 'mandatory' },
+    { key: 'SKU',                                 label: 'SKU',                                 width: 22, type: 'mandatory' },
     { key: 'No_of_Cartons',                       label: 'No_of_Cartons',                       width: 16, type: 'mandatory' },
     { key: 'Unit_Weight_KG',                      label: 'Unit_Weight_KG',                      width: 16, type: 'mandatory' },
     { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo_Ready_Planned_Collection_Date', width: 34, type: 'mandatory' },
@@ -94,7 +96,7 @@ async function build() {
     { key: 'EAN_Barcode',    label: 'EAN_Barcode',    width: 18, type: 'optional' },
     { key: 'Colour_Code',    label: 'Colour_Code',    width: 14, type: 'optional' },
     { key: 'Size_Code',      label: 'Size_Code',      width: 12, type: 'optional' },
-    { key: 'Booking_Qty',    label: 'Booking_Qty',    width: 14, type: 'optional' },
+    { key: 'Booking_Qty',    label: 'Booking_Qty',    width: 14, type: 'mandatory' },
     // carton (default + dropdown)
     { key: 'Carton_Type',    label: 'Carton_Type',    width: 22, type: 'default', default: 'BDCM1' },
     // auto dims (VLOOKUP)
