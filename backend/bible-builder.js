@@ -117,7 +117,7 @@ async function build(supplierData, feedData) {
         Carrier_ID:        po?.carrierId      || '',
         Carrier_Name:      po?.carrierName    || '',
         Loading_Port_LOCODE: po?.loadingPortId || '',
-        F1_ID:             po?.f1Id           || '',,
+        F1_ID:             po?.f1Id           || '',
 
         // SKU — from supplier row; enrich description/style from PO feed
         SKU:           sku,

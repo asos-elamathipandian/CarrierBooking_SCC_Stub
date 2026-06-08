@@ -4,4 +4,4 @@ keys/
 *.pem
 ctrl-counter.json
 .env
-bible/SupplierBible_template.xlsx
+bible/
