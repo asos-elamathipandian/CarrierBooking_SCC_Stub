@@ -353,7 +353,6 @@ async function build(masterRows, purposeCd) {
         li.ele('Attribute', { AttributeTypeCd: 'SK' }).txt(sku);
         if (ean)               li.ele('Attribute', { AttributeTypeCd: 'UA' }).txt(ean);
         if (row.Colour_Code)   li.ele('Attribute', { AttributeTypeCd: 'CL' }).txt(row.Colour_Code);
-        li.ele('Attribute', { AttributeTypeCd: 'CM' }).txt('2003');
         if (row.Size_Code)     li.ele('Attribute', { AttributeTypeCd: 'IZ' }).txt(row.Size_Code);
         li.ele('Reference', { RefTypeCd: 'PAC', SourceRefTypeCd: '128' }).txt(packType);
         li.ele('Reference', { RefTypeCd: 'PT',  SourceRefTypeCd: '128' }).txt(productStyle);
