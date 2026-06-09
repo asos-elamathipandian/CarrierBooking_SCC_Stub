@@ -34,9 +34,6 @@ const asnFeedInput     = document.getElementById('asnFeedInput');
 const poDropZone       = document.getElementById('poDropZone');
 const asnDropZone      = document.getElementById('asnDropZone');
 const btnUploadFeeds   = document.getElementById('btnUploadFeeds');
-const blobSearchInput  = document.getElementById('blobSearchInput');
-const btnBlobSearch    = document.getElementById('btnBlobSearch');
-const blobResults      = document.getElementById('blobResults');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function setStatus(step, type, html) {
@@ -112,9 +109,17 @@ btnParseSupplier.addEventListener('click', async () => {
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
     state.poRefs  = data.poRefs  || [];
-    state.asnRefs = data.asnRefs || [];
+    state.asnRefs = [];
 
-    let html = `✅ Parsed <strong>${data.rowCount}</strong> rows — found <strong>${state.poRefs.length}</strong> PO ref(s) and <strong>${state.asnRefs.length}</strong> ASN ref(s).`;
+    // Auto-populate PO refs in the blob fetch panel
+    const blobPoRefTags = document.getElementById('blobPoRefTags');
+    if (blobPoRefTags) {
+      blobPoRefTags.innerHTML = state.poRefs.length
+        ? state.poRefs.map(r => `<span class="tag">PO: ${r}</span>`).join('')
+        : '<span style="color:#aaa;font-size:12px">No PO refs found in template.</span>';
+    }
+
+    let html = `✅ Parsed <strong>${data.rowCount}</strong> rows — found <strong>${state.poRefs.length}</strong> PO ref(s).`;
     if (data.validationErrors && data.validationErrors.length) {
       html += `<br/>⚠️ Validation warnings:<br/>${data.validationErrors.join('<br/>')}`;
     }
@@ -126,8 +131,6 @@ btnParseSupplier.addEventListener('click', async () => {
       <div style="margin-top:10px">
         <strong style="font-size:12px;color:#555">PO Refs extracted:</strong>
         <div class="ref-tags">${state.poRefs.map(r => `<span class="tag">PO: ${r}</span>`).join('')}</div>
-        <strong style="font-size:12px;color:#555;display:block;margin-top:8px">ASN Refs extracted:</strong>
-        <div class="ref-tags">${state.asnRefs.map(r => `<span class="tag">ASN: ${r}</span>`).join('')}</div>
       </div>`;
 
     btnFetchFeeds.disabled = false;
@@ -220,32 +223,6 @@ btnUploadFeeds.addEventListener('click', async () => {
     setLoading(btnUploadFeeds, false);
   }
 });
-
-// ── Step 2: Blob Search ───────────────────────────────────────────────────────
-async function runBlobSearch() {
-  const query = blobSearchInput.value.trim();
-  blobResults.innerHTML = '<div style="padding:8px;color:#888;font-size:12px">Searching…</div>';
-  try {
-    const res  = await fetch(`${API}/search-blob?query=${encodeURIComponent(query)}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Unknown error');
-
-    if (!data.results || data.results.length === 0) {
-      blobResults.innerHTML = '<div style="padding:8px;color:#888;font-size:12px">No blobs found.</div>';
-      return;
-    }
-    blobResults.innerHTML = data.results.map(b => `
-      <div class="blob-result-item">
-        <span class="blob-result-name">${b.name}</span>
-        <span class="blob-result-meta">${b.size != null ? (b.size / 1024).toFixed(1) + ' KB' : ''}${b.lastModified ? ' · ' + new Date(b.lastModified).toLocaleDateString() : ''}</span>
-      </div>`).join('');
-  } catch (err) {
-    blobResults.innerHTML = `<div style="padding:8px;color:#C0392B;font-size:12px">❌ ${err.message}</div>`;
-  }
-}
-
-btnBlobSearch.addEventListener('click', runBlobSearch);
-blobSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') runBlobSearch(); });
 
 // ── Step 2: Fetch Feeds ────────────────────────────────────────────────────────
 btnFetchFeeds.addEventListener('click', async () => {

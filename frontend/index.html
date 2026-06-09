@@ -341,12 +341,23 @@
 
       <!-- Tab strip -->
       <div class="tab-strip">
-        <button class="tab-btn active" id="tabBtnUpload" onclick="switchFeedTab('upload')">📂 Upload XML Files</button>
-        <button class="tab-btn" id="tabBtnBlob" onclick="switchFeedTab('blob')">☁ Fetch from Azure Blob</button>
+        <button class="tab-btn active" id="tabBtnBlob" onclick="switchFeedTab('blob')">&#9729; Fetch from Azure Blob</button>
+        <button class="tab-btn" id="tabBtnUpload" onclick="switchFeedTab('upload')">&#128194; Upload XML Files</button>
+      </div>
+
+      <!-- Panel: Fetch from Azure Blob -->
+      <div class="tab-panel active" id="panelFetchBlob">
+        <div style="margin-bottom:14px">
+          <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px">PO Refs to fetch (auto-picked from supplier template):</div>
+          <div class="ref-tags" id="blobPoRefTags"><span style="color:#aaa;font-size:12px">Upload supplier template first to auto-populate&hellip;</span></div>
+        </div>
+        <button class="btn btn-primary" id="btnFetchFeeds" disabled>
+          &#128279; Fetch PO Feeds from Blob
+        </button>
       </div>
 
       <!-- Panel: Upload XML Files -->
-      <div class="tab-panel active" id="panelUploadFeeds">
+      <div class="tab-panel" id="panelUploadFeeds">
         <div class="feeds-grid">
           <div>
             <div class="feed-drop-label">PO Feed XML</div>
@@ -368,26 +379,11 @@
           </div>
         </div>
         <button class="btn btn-primary" id="btnUploadFeeds" disabled>
-          ⬆ Upload &amp; Parse Feeds
+          &#11014; Upload &amp; Parse Feeds
         </button>
       </div>
 
-      <!-- Panel: Fetch from Azure Blob -->
-      <div class="tab-panel" id="panelFetchBlob">
-        <button class="btn btn-primary" id="btnFetchFeeds" disabled>
-          🔗 Fetch PO &amp; ASN Feeds
-        </button>
-
-        <!-- Blob search -->
-        <div style="margin-top:18px">
-          <div style="font-size:13px;font-weight:600;color:#444;margin-bottom:6px">🔍 Search Azure Blob</div>
-          <div class="blob-search-row">
-            <input type="text" id="blobSearchInput" placeholder="Enter PO/ASN ref or blob name prefix…" />
-            <button class="btn btn-secondary" id="btnBlobSearch">Search</button>
-          </div>
-          <div class="blob-results" id="blobResults"></div>
-        </div>
-      </div>
+      <!-- Panel: Fetch from Azure Blob (moved to first tab above) -->
 
       <div class="status-box" id="status2"></div>
     </div>

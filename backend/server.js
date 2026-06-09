@@ -81,8 +81,7 @@ app.post('/api/parse-supplier', upload.single('supplierFile'), async (req, res) 
     res.json({
       success: true,
       rowCount: parsed.rows.length,
-      poRefs: [...new Set(parsed.rows.map(r => r.PO_Number).filter(Boolean))],
-      asnRefs: [...new Set(parsed.rows.map(r => r.ASN_Ref).filter(Boolean))],
+      poRefs: [...new Set(parsed.rows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))],
       preview: parsed.rows.slice(0, 5)
     });
   } catch (err) {
@@ -98,9 +97,9 @@ app.post('/api/parse-supplier', upload.single('supplierFile'), async (req, res) 
 app.post('/api/fetch-feeds', async (req, res) => {
   try {
     const { poRefs, asnRefs } = req.body;
-    if (!poRefs || !asnRefs) return res.status(400).json({ error: 'poRefs and asnRefs required' });
+    if (!poRefs) return res.status(400).json({ error: 'poRefs required' });
 
-    const feedData = await blobClient.fetchFeeds(poRefs, asnRefs);
+    const feedData = await blobClient.fetchFeeds(poRefs, asnRefs || []);
     sessionState.feedData = feedData;
 
     res.json({
