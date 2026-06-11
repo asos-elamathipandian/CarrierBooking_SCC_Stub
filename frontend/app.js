@@ -240,16 +240,13 @@ btnFetchFeeds.addEventListener('click', async () => {
 
     state.feedsFetched = true;
     const modeTag = data.localMode ? ' <em style="color:#e67e22">[LOCAL MODE — reading from samples/feeds/]</em>' : '';
-    let html = `✅ Fetched <strong>${data.poFeedCount}</strong> PO feed(s) and <strong>${data.asnFeedCount}</strong> ASN feed(s).${modeTag}`;
-    if (data.summary) {
-      if (data.summary.posFound.length) html += `<br/>POs found: ${data.summary.posFound.join(', ')}`;
-      if (data.summary.asnsFound.length) html += `<br/>ASNs found: ${data.summary.asnsFound.join(', ')}`;
-    }
+    let html = `✅ Fetched <strong>${data.poFeedCount}</strong> PO feed(s) and <strong>${data.carrierAsnCount || 0}</strong> carrier ASN file(s).${modeTag}`;
     if (data.errors && data.errors.length) {
       html += `<br/>⚠️ ${data.errors.join('<br/>')}`;
     }
     setStatus(2, 'success', html);
     setBadge(2, 'done');
+    renderFeedPreview(data.feedsSummary || [], data.carrierAsnFiles || []);
     btnBuildBible.disabled = false;
     setBadge(3, 'active');
   } catch (err) {
@@ -258,6 +255,110 @@ btnFetchFeeds.addEventListener('click', async () => {
     setLoading(btnFetchFeeds, false);
   }
 });
+
+// ── Feed preview rendering ─────────────────────────────────────────────────────
+function renderFeedPreview(feedsSummary, carrierAsnFiles) {
+  const panel        = document.getElementById('feedPreviewPanel');
+  const poSection    = document.getElementById('poFeedsSection');
+  const poTbody      = document.getElementById('poFeedsTableBody');
+  const asnSection   = document.getElementById('carrierAsnSection');
+  const asnList      = document.getElementById('carrierAsnList');
+
+  panel.style.display = 'block';
+
+  // ── PO feeds table ──
+  poTbody.innerHTML = '';
+  if (feedsSummary.length) {
+    poSection.style.display = 'block';
+    feedsSummary.forEach((po, i) => {
+      const rowId  = `po-xml-row-${i}`;
+      const preId  = `po-xml-pre-${i}`;
+      const dlUrl  = `${API}/feed-raw?type=po&ref=${encodeURIComponent(po.orderId)}&download=1`;
+      const dataRow = document.createElement('tr');
+      dataRow.innerHTML = `
+        <td><strong>${po.orderId}</strong></td>
+        <td>${po.supplierName || '—'}</td>
+        <td>${po.factoryName  || '—'}</td>
+        <td>${po.shipDate     || '—'}</td>
+        <td>${po.incoterms    || '—'}</td>
+        <td>${po.lineCount}</td>
+        <td style="white-space:nowrap">
+          <button class="btn-view-xml" onclick="togglePoXml('${po.orderId}','${rowId}','${preId}',this)">View XML</button>
+          <a class="btn-view-xml" href="${dlUrl}" download style="margin-left:4px;text-decoration:none">&#11015; Download</a>
+        </td>`;
+      poTbody.appendChild(dataRow);
+
+      const xmlRow = document.createElement('tr');
+      xmlRow.id = rowId;
+      xmlRow.className = 'feed-xml-row';
+      xmlRow.innerHTML = `<td colspan="7"><pre class="feed-xml-pre" id="${preId}">Loading…</pre></td>`;
+      poTbody.appendChild(xmlRow);
+    });
+  } else {
+    poSection.style.display = 'none';
+  }
+
+  // ── Carrier ASN list ──
+  asnList.innerHTML = '';
+  if (carrierAsnFiles.length) {
+    asnSection.style.display = 'block';
+    carrierAsnFiles.forEach((f, i) => {
+      const xmlId = `carrier-xml-${i}`;
+      const dlUrl  = `${API}/feed-raw?type=carrier&ref=${encodeURIComponent(f.filename)}&download=1`;
+      const item = document.createElement('div');
+      item.className = 'carrier-asn-item';
+      item.innerHTML = `
+        <div class="carrier-asn-header">
+          <div>
+            <div class="carrier-asn-info">&#128196; ${f.filename}</div>
+            <div class="carrier-asn-ref">PO: ${f.poRef}${f.blobPath ? ` &nbsp;·&nbsp; <span style="color:#aaa">${f.blobPath}</span>` : ''}</div>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center">
+            <button class="btn-view-xml" onclick="toggleCarrierXml('${f.filename}','${xmlId}',this)">View XML</button>
+            <a class="btn-view-xml" href="${dlUrl}" download style="text-decoration:none">&#11015; Download</a>
+          </div>
+        </div>
+        <div class="carrier-asn-xml" id="${xmlId}"><pre class="feed-xml-pre">Loading…</pre></div>`;
+      asnList.appendChild(item);
+    });
+  } else {
+    asnSection.style.display = 'none';
+  }
+}
+
+async function togglePoXml(orderId, rowId, preId, btn) {
+  const row = document.getElementById(rowId);
+  const pre = document.getElementById(preId);
+  if (row.classList.toggle('open')) {
+    btn.textContent = 'Hide XML';
+    if (pre.textContent === 'Loading…') {
+      try {
+        const r = await fetch(`${API}/feed-raw?type=po&ref=${encodeURIComponent(orderId)}`);
+        pre.textContent = r.ok ? await r.text() : `Error: ${(await r.json()).error}`;
+      } catch (e) { pre.textContent = `Error: ${e.message}`; }
+    }
+  } else {
+    btn.textContent = 'View XML';
+  }
+}
+window.togglePoXml = togglePoXml;
+
+async function toggleCarrierXml(filename, xmlId, btn) {
+  const wrap = document.getElementById(xmlId);
+  const pre  = wrap.querySelector('pre');
+  if (wrap.classList.toggle('open')) {
+    btn.textContent = 'Hide XML';
+    if (pre.textContent === 'Loading…') {
+      try {
+        const r = await fetch(`${API}/feed-raw?type=carrier&ref=${encodeURIComponent(filename)}`);
+        pre.textContent = r.ok ? await r.text() : `Error: ${(await r.json()).error}`;
+      } catch (e) { pre.textContent = `Error: ${e.message}`; }
+    }
+  } else {
+    btn.textContent = 'View XML';
+  }
+}
+window.toggleCarrierXml = toggleCarrierXml;
 
 // ── Step 3: Build Bible ────────────────────────────────────────────────────────
 btnBuildBible.addEventListener('click', async () => {

@@ -1,5 +1,7 @@
 'use strict';
 
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -106,16 +108,61 @@ app.post('/api/fetch-feeds', async (req, res) => {
       success: true,
       poFeedCount: feedData.poFeeds.length,
       asnFeedCount: feedData.asnFeeds.length,
+      carrierAsnCount: (feedData.carrierAsnFiles || []).length,
       localMode: feedData.localMode || false,
       errors: feedData.errors || [],
       summary: {
         posFound: feedData.poFeeds.map(p => p.orderId),
-        asnsFound: feedData.asnFeeds.map(a => a.documentId)
-      }
+        asnsFound: feedData.asnFeeds.map(a => a.documentId),
+        carrierAsnsFound: (feedData.carrierAsnFiles || []).map(f => f.filename)
+      },
+      feedsSummary: feedData.poFeeds.map(p => ({
+        orderId:      p.orderId,
+        supplierName: p.supplierName,
+        factoryName:  p.factoryName,
+        shipDate:     p.shipDate,
+        cancelDate:   p.cancelDate,
+        incoterms:    p.incoterms,
+        lineCount:    p.lineItems.length
+      })),
+      carrierAsnFiles: (feedData.carrierAsnFiles || []).map(f => ({
+        filename: f.filename,
+        poRef:    f.poRef,
+        blobPath: f.blobPath || null
+      }))
     });
   } catch (err) {
     console.error('fetch-feeds error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
+// GET /api/feed-raw?type=po&ref={orderId}
+//            OR  ?type=carrier&ref={filename}
+// Return raw XML for preview from session
+// ─────────────────────────────────────────────
+app.get('/api/feed-raw', (req, res) => {
+  if (!sessionState.feedData) {
+    return res.status(404).json({ error: 'No feed data in session. Fetch feeds first.' });
+  }
+  const { type, ref } = req.query;
+  if (!ref) return res.status(400).json({ error: 'ref parameter required' });
+
+  const download = req.query.download === '1';
+
+  if (type === 'po') {
+    const xml = sessionState.feedData.poFeedXmls?.[ref];
+    if (!xml) return res.status(404).json({ error: `PO feed not found for orderId: ${ref}` });
+    if (download) res.set('Content-Disposition', `attachment; filename="PO_${ref}.xml"`);
+    res.set('Content-Type', 'application/xml; charset=utf-8').send(xml);
+  } else if (type === 'carrier') {
+    const file = (sessionState.feedData.carrierAsnFiles || []).find(f => f.filename === ref);
+    if (!file) return res.status(404).json({ error: `Carrier ASN not found: ${ref}` });
+    if (download) res.set('Content-Disposition', `attachment; filename="${ref}"`);
+    res.set('Content-Type', 'application/xml; charset=utf-8').send(file.xml);
+  } else {
+    res.status(400).json({ error: 'type must be "po" or "carrier"' });
   }
 });
 

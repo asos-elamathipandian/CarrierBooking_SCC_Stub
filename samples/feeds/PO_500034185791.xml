@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XMLBundle>
+  <XMLTransmission>
+    <XMLGroup>
+      <XMLTransaction>
+        <BpMessage>
+          <TradePartner RoleCd="SU">
+            <TradePartnerName>SAMPLE SUPPLIER LTD</TradePartnerName>
+            <TradePartnerID>SUP001</TradePartnerID>
+          </TradePartner>
+          <TradePartner RoleCd="FA">
+            <TradePartnerName>SAMPLE FACTORY CO</TradePartnerName>
+            <TradePartnerID>FAC001</TradePartnerID>
+            <TradePartnerAddress>
+              <Street>123 Factory Road</Street>
+              <Street>Industrial Zone</Street>
+              <City>Shanghai</City>
+              <StateProvinceCd></StateProvinceCd>
+              <PostalCd>200000</PostalCd>
+              <CountryCd>CN</CountryCd>
+            </TradePartnerAddress>
+          </TradePartner>
+          <TradePartner RoleCd="FD">
+            <TradePartnerName>ASOS RETURNS LTD</TradePartnerName>
+            <TradePartnerID>FC001</TradePartnerID>
+            <TradePartnerAddress>
+              <Street>Greater London House</Street>
+              <Street>Hampstead Road</Street>
+              <City>London</City>
+              <StateProvinceCd>ENG</StateProvinceCd>
+              <PostalCd>NW1 7FB</PostalCd>
+              <CountryCd>GB</CountryCd>
+            </TradePartnerAddress>
+          </TradePartner>
+          <TradePartner RoleCd="CA">
+            <TradePartnerName>SAMPLE CARRIER</TradePartnerName>
+            <TradePartnerID>CAR001</TradePartnerID>
+          </TradePartner>
+          <TradePartner RoleCd="SL">
+            <TradePartnerName>PORT OF SHANGHAI</TradePartnerName>
+            <TradePartnerID>CNSHA</TradePartnerID>
+          </TradePartner>
+          <TradePartner RoleCd="F1">
+            <TradePartnerName>SAMPLE FORWARDER</TradePartnerName>
+            <TradePartnerID>FWD001</TradePartnerID>
+          </TradePartner>
+          <Order Key="500034185791">
+            <OrderID>500034185791</OrderID>
+            <Reference RefTypeCd="8X">ZSTO</Reference>
+            <Date DateTypeCd="017">2026-08-01</Date>
+            <Date DateTypeCd="037">2026-07-15</Date>
+            <FOBInstructions>
+              <TransTermsCd>FOB</TransTermsCd>
+            </FOBInstructions>
+            <LineItem Key="001">
+              <Reference RefTypeCd="PT">STYLE-001</Reference>
+              <Reference RefTypeCd="VP">SAMPLE PRODUCT DESCRIPTION</Reference>
+              <Attribute AttributeTypeCd="SK">SKU-12345</Attribute>
+              <Measure Qualifier="PO102">100</Measure>
+              <Mode>30</Mode>
+            </LineItem>
+            <LineItem Key="002">
+              <Reference RefTypeCd="PT">STYLE-002</Reference>
+              <Reference RefTypeCd="VP">ANOTHER PRODUCT DESCRIPTION</Reference>
+              <Attribute AttributeTypeCd="SK">SKU-67890</Attribute>
+              <Measure Qualifier="PO102">50</Measure>
+              <Mode>30</Mode>
+            </LineItem>
+          </Order>
+        </BpMessage>
+      </XMLTransaction>
+    </XMLGroup>
+  </XMLTransmission>
+</XMLBundle>

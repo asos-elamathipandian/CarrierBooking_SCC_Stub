@@ -289,6 +289,54 @@
     .blob-result-item:hover { background: #F4F6F7; }
     .blob-result-name { font-family: monospace; color: #1a5276; font-size: 12px; word-break: break-all; }
     .blob-result-meta { color: #888; font-size: 11px; white-space: nowrap; margin-left: 8px; }
+
+    /* ── Feed preview panel ── */
+    #feedPreviewPanel { margin-top: 14px; display: none; }
+    .feed-preview-section { margin-bottom: 14px; }
+    .feed-preview-title {
+      font-size: 12px; font-weight: 700; color: #1F4E79;
+      text-transform: uppercase; letter-spacing: .5px;
+      margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+    }
+    .feed-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .feed-preview-table th {
+      background: #EBF5FB; color: #1a5276; padding: 6px 10px;
+      text-align: left; font-weight: 600; border-bottom: 2px solid #AED6F1;
+    }
+    .feed-preview-table td { padding: 6px 10px; border-bottom: 1px solid #EBF5FB; vertical-align: top; }
+    .feed-preview-table tr:last-child td { border-bottom: none; }
+    .feed-preview-table tr:hover td { background: #F4F6F7; }
+    .btn-view-xml {
+      padding: 3px 10px; font-size: 11px; font-weight: 600;
+      border: 1px solid #AED6F1; border-radius: 4px;
+      background: #EBF5FB; color: #1a5276; cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-view-xml:hover { background: #D6EAF8; }
+    .feed-xml-row { display: none; }
+    .feed-xml-row.open { display: table-row; }
+    .feed-xml-row td { padding: 0; }
+    pre.feed-xml-pre {
+      background: #1e2533; color: #a8d8a8;
+      padding: 12px 14px; margin: 0;
+      font-size: 11px; line-height: 1.55;
+      max-height: 300px; overflow: auto;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    .carrier-asn-list { display: flex; flex-direction: column; gap: 6px; }
+    .carrier-asn-item {
+      border-radius: 6px;
+      background: #F8FBFF; border: 1px solid #D6EAF8;
+      overflow: hidden;
+    }
+    .carrier-asn-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 7px 12px;
+    }
+    .carrier-asn-info { font-family: monospace; font-size: 12px; color: #1a5276; }
+    .carrier-asn-ref  { font-size: 11px; color: #888; margin-top: 2px; }
+    .carrier-asn-xml  { display: none; }
+    .carrier-asn-xml.open { display: block; }
   </style>
 </head>
 <body>
@@ -386,6 +434,34 @@
       <!-- Panel: Fetch from Azure Blob (moved to first tab above) -->
 
       <div class="status-box" id="status2"></div>
+
+      <!-- Feed preview panel — shown after successful fetch/upload -->
+      <div id="feedPreviewPanel">
+        <!-- PO Feeds section -->
+        <div class="feed-preview-section" id="poFeedsSection" style="display:none">
+          <div class="feed-preview-title">&#128230; PO Feeds fetched</div>
+          <table class="feed-preview-table">
+            <thead>
+              <tr>
+                <th>PO #</th>
+                <th>Supplier</th>
+                <th>Factory</th>
+                <th>Ship Date</th>
+                <th>Incoterms</th>
+                <th>Lines</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="poFeedsTableBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Carrier ASN feeds section -->
+        <div class="feed-preview-section" id="carrierAsnSection" style="display:none">
+          <div class="feed-preview-title">&#128666; Carrier ASN feeds matched</div>
+          <div class="carrier-asn-list" id="carrierAsnList"></div>
+        </div>
+      </div>
     </div>
   </div>
 

@@ -112,6 +112,8 @@ async function parse(xmlString) {
     f1Id:             getPartnerId(partners['F1']),
     incoterms,
     poType:           refs['8X'] || '',
+    shipDate:         dates['017'] || '',
+    cancelDate:       dates['037'] || '',
     lineItems
   };
 }

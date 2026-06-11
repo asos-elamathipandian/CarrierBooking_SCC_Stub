@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ShipmentAdvice>
+  <MessageHeader>
+    <MessageID>ASOS_20260801_0924_DavisTurner_0001</MessageID>
+    <Carrier>DavisTurner</Carrier>
+    <CreatedDate>2026-08-01</CreatedDate>
+    <CreatedTime>0924</CreatedTime>
+  </MessageHeader>
+  <Shipment>
+    <ShipmentID>DT-SHIP-0001</ShipmentID>
+    <PurchaseOrder>
+      <PurchaseOrder_ID>500034185791</PurchaseOrder_ID>
+      <ShipDate>2026-08-01</ShipDate>
+      <EstimatedDelivery>2026-08-05</EstimatedDelivery>
+      <OriginPort>CNSHA</OriginPort>
+      <DestinationPort>GBFXT</DestinationPort>
+      <ContainerNumber>CSNU1234567</ContainerNumber>
+      <SealNumber>SEAL-9876</SealNumber>
+      <Lines>
+        <Line>
+          <SKU>SKU-12345</SKU>
+          <Style>STYLE-001</Style>
+          <ShippedQty>100</ShippedQty>
+        </Line>
+        <Line>
+          <SKU>SKU-67890</SKU>
+          <Style>STYLE-002</Style>
+          <ShippedQty>50</ShippedQty>
+        </Line>
+      </Lines>
+    </PurchaseOrder>
+  </Shipment>
+</ShipmentAdvice>
