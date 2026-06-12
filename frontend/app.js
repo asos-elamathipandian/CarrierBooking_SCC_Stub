@@ -126,12 +126,9 @@ btnParseSupplier.addEventListener('click', async () => {
     setStatus(1, 'success', html);
     setBadge(1, 'done');
 
-    // Show extracted refs
-    refsPreview.innerHTML = `
-      <div style="margin-top:10px">
-        <strong style="font-size:12px;color:#555">PO Refs extracted:</strong>
-        <div class="ref-tags">${state.poRefs.map(r => `<span class="tag">PO: ${r}</span>`).join('')}</div>
-      </div>`;
+    // Show supplier rows table
+    refsPreview.innerHTML = '';
+    renderSupplierTable(data.rows || data.preview || []);
 
     btnFetchFeeds.disabled = false;
     setBadge(2, 'active');
@@ -258,6 +255,129 @@ btnFetchFeeds.addEventListener('click', async () => {
   }
 });
 
+// ── PO ↔ Carrier ASN Mapping table ────────────────────────────────────────────
+function renderFeedMapping(feedsSummary, carrierAsnFiles) {
+  const section = document.getElementById('feedMappingSection');
+  const body    = document.getElementById('feedMappingBody');
+  if (!section || !body) return;
+
+  if (!feedsSummary.length && !carrierAsnFiles.length) {
+    section.style.display = 'none';
+    return;
+  }
+
+  // Build carrier ASN index: poId -> sku -> { asnId, fcId, shipDate, ean, size, colour, qty, pack }
+  const asnIndex = {}; // poId -> sku -> line
+  const asnSkusByPo = {}; // poId -> Set of skus that appear in carrier
+  for (const f of carrierAsnFiles) {
+    for (const g of (f.asnGroups || [])) {
+      const poId = g.poId || f.poRef;
+      if (!asnIndex[poId]) { asnIndex[poId] = {}; asnSkusByPo[poId] = new Set(); }
+      for (const l of (g.lines || [])) {
+        asnIndex[poId][l.sku] = { asnId: g.asnId, fcId: g.fcId, shipDate: g.shipDate, ean: l.ean, size: l.size, colour: l.colour, qty: l.quantity, pack: l.packFormat };
+        asnSkusByPo[poId].add(l.sku);
+      }
+    }
+  }
+
+  let totalMatched = 0, totalPoOnly = 0, totalAsnOnly = 0;
+  let allRowsHtml = '';
+
+  for (const po of feedsSummary) {
+    const poLines    = po.lineItems || [];
+    const poSkus     = new Set(poLines.map(l => l.sku));
+    const carrierMap = asnIndex[po.orderId] || {};
+    const carrierSkus= asnSkusByPo[po.orderId] || new Set();
+
+    // All unique SKUs across both sources
+    const allSkus = new Set([...poSkus, ...carrierSkus]);
+
+    for (const sku of allSkus) {
+      const poLine  = poLines.find(l => l.sku === sku);
+      const asnLine = carrierMap[sku];
+      const inPO    = !!poLine;
+      const inASN   = !!asnLine;
+
+      let rowClass = '', badge = '';
+      if (inPO && inASN) {
+        rowClass = 'row-matched';
+        badge = '<span class="badge-matched">✓ Matched</span>';
+        totalMatched++;
+      } else if (inPO) {
+        rowClass = 'row-unmatched-po';
+        badge = '<span class="badge-po-only">PO only</span>';
+        totalPoOnly++;
+      } else {
+        rowClass = 'row-unmatched-asn';
+        badge = '<span class="badge-asn-only">ASN only</span>';
+        totalAsnOnly++;
+      }
+
+      allRowsHtml += `<tr class="${rowClass}">
+        <td>${badge}</td>
+        <td><strong>${po.orderId}</strong></td>
+        <td><strong>${sku}</strong></td>
+        <td>${inPO ? (poLine.description || '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td style="text-align:right">${inPO ? (poLine.poQty ?? '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td>${inPO ? (poLine.productStyle || '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td>${inASN ? (asnLine.asnId   || '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td>${inASN ? (asnLine.fcId    || '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td>${inASN ? (asnLine.shipDate|| '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td style="font-family:monospace;font-size:11px">${inASN ? (asnLine.ean || '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td>${inASN ? (asnLine.size    || '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td>${inASN ? (asnLine.colour  || '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td style="text-align:right">${inASN ? (asnLine.qty ?? '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td>${inASN ? (asnLine.pack === 'H' ? 'Hanging' : 'Flat') : '<em style="color:#aaa">—</em>'}</td>
+      </tr>`;
+    }
+  }
+
+  body.innerHTML = `
+    <div class="mapping-summary">
+      <span class="parse-stat-badge">Total SKUs: ${totalMatched + totalPoOnly + totalAsnOnly}</span>
+      <span class="parse-stat-badge" style="background:#EAFAF1;border-color:#A9DFBF;color:#1E8449">✓ Matched: ${totalMatched}</span>
+      ${totalPoOnly  > 0 ? `<span class="parse-stat-badge" style="background:#FEF9E7;border-color:#F9E79F;color:#784212">⚠ PO only (not in carrier): ${totalPoOnly}</span>` : ''}
+      ${totalAsnOnly > 0 ? `<span class="parse-stat-badge" style="background:#FDEDEC;border-color:#F5B7B1;color:#922B21">✗ ASN only (not in PO): ${totalAsnOnly}</span>` : ''}
+    </div>
+    <div class="mapping-legend">
+      <span style="color:#555">Row colours:</span>
+      <span style="background:#EAFAF1;padding:2px 8px;border-radius:4px;font-size:11px">Green = matched both</span>
+      <span style="background:#FEF9E7;padding:2px 8px;border-radius:4px;font-size:11px">Amber = PO only</span>
+      <span style="background:#FDEDEC;padding:2px 8px;border-radius:4px;font-size:11px">Red = ASN only</span>
+    </div>
+    <div class="mapping-table-wrap">
+      <div class="mapping-table-scroll">
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th colspan="6" class="col-group-po">📦 E2open PO Feed</th>
+              <th colspan="8" class="col-group-asn">🚛 Carrier ASN Feed</th>
+            </tr>
+            <tr>
+              <th>Status</th>
+              <th>PO #</th>
+              <th>SKU</th>
+              <th>Description</th>
+              <th>PO Qty</th>
+              <th>Style</th>
+              <th class="col-asn">ASN ID</th>
+              <th class="col-asn">FC</th>
+              <th class="col-asn">Ship Date</th>
+              <th class="col-asn">EAN</th>
+              <th class="col-asn">Size</th>
+              <th class="col-asn">Colour</th>
+              <th class="col-asn">ASN Qty</th>
+              <th class="col-asn">Pack</th>
+            </tr>
+          </thead>
+          <tbody>${allRowsHtml}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  section.style.display = 'block';
+}
+
 // ── Feed preview rendering ─────────────────────────────────────────────────────
 function renderFeedPreview(feedsSummary, carrierAsnFiles) {
   const panel        = document.getElementById('feedPreviewPanel');
@@ -273,52 +393,108 @@ function renderFeedPreview(feedsSummary, carrierAsnFiles) {
   if (feedsSummary.length) {
     poSection.style.display = 'block';
     feedsSummary.forEach((po, i) => {
-      const rowId  = `po-xml-row-${i}`;
-      const preId  = `po-xml-pre-${i}`;
-      const dlUrl  = `${API}/feed-raw?type=po&ref=${encodeURIComponent(po.orderId)}&download=1`;
+      const rowId   = `po-xml-row-${i}`;
+      const preId   = `po-xml-pre-${i}`;
+      const linesId = `po-lines-row-${i}`;
+      const dlUrl   = `${API}/feed-raw?type=po&ref=${encodeURIComponent(po.orderId)}&download=1`;
+      const lineItems = po.lineItems || [];
       const dataRow = document.createElement('tr');
       dataRow.innerHTML = `
         <td><strong>${po.orderId}</strong></td>
-        <td>${po.supplierName || '—'}</td>
-        <td>${po.factoryName  || '—'}</td>
-        <td>${po.shipDate     || '—'}</td>
-        <td>${po.incoterms    || '—'}</td>
+        <td>${po.supplierName || '\u2014'}</td>
+        <td>${po.factoryName  || '\u2014'}</td>
+        <td>${po.shipDate     || '\u2014'}</td>
+        <td>${po.incoterms    || '\u2014'}</td>
         <td>${po.lineCount}</td>
         <td style="white-space:nowrap">
+          ${lineItems.length > 0 ? `<button class="btn-view-xml" onclick="togglePoLines('${linesId}',this)" style="margin-right:4px">\ud83d\udccb Lines</button>` : ''}
           <button class="btn-view-xml" onclick="togglePoXml('${po.orderId}','${rowId}','${preId}',this)">View XML</button>
           <a class="btn-view-xml" href="${dlUrl}" download style="margin-left:4px;text-decoration:none">&#11015; Download</a>
         </td>`;
       poTbody.appendChild(dataRow);
 
+      // Line items expand row
+      const linesRow = document.createElement('tr');
+      linesRow.id = linesId;
+      linesRow.className = 'feed-xml-row';
+      const lineItemsHtml = lineItems.length
+        ? `<table class="lines-sub-table">
+            <thead><tr><th>SKU</th><th>Product Style</th><th>Description</th><th>PO Qty</th><th>Mode</th></tr></thead>
+            <tbody>${lineItems.map(l => `<tr>
+              <td><strong>${l.sku}</strong></td>
+              <td>${l.productStyle || '\u2014'}</td>
+              <td>${l.description  || '\u2014'}</td>
+              <td style="text-align:right">${l.poQty ?? '\u2014'}</td>
+              <td>${l.mode || '\u2014'}</td>
+            </tr>`).join('')}</tbody>
+           </table>`
+        : '<em style="color:#999;font-size:12px">No line items</em>';
+      linesRow.innerHTML = `<td colspan="7" style="padding:0"><div class="lines-expand-wrap">${lineItemsHtml}</div></td>`;
+      poTbody.appendChild(linesRow);
+
+      // XML expand row
       const xmlRow = document.createElement('tr');
       xmlRow.id = rowId;
       xmlRow.className = 'feed-xml-row';
-      xmlRow.innerHTML = `<td colspan="7"><pre class="feed-xml-pre" id="${preId}">Loading…</pre></td>`;
+      xmlRow.innerHTML = `<td colspan="7"><pre class="feed-xml-pre" id="${preId}">Loading\u2026</pre></td>`;
       poTbody.appendChild(xmlRow);
     });
   } else {
     poSection.style.display = 'none';
   }
 
+  renderFeedMapping(feedsSummary, carrierAsnFiles);
+
   // ── Carrier ASN list ──
   asnList.innerHTML = '';
   if (carrierAsnFiles.length) {
     asnSection.style.display = 'block';
     carrierAsnFiles.forEach((f, i) => {
-      const xmlId = `carrier-xml-${i}`;
-      const dlUrl  = `${API}/feed-raw?type=carrier&ref=${encodeURIComponent(f.filename)}&download=1`;
+      const xmlId   = `carrier-xml-${i}`;
+      const linesId = `carrier-lines-${i}`;
+      const dlUrl   = `${API}/feed-raw?type=carrier&ref=${encodeURIComponent(f.filename)}&download=1`;
+      const groups  = f.asnGroups || [];
+      const totalLines = groups.reduce((s, g) => s + (g.lines || []).length, 0);
+
+      // Build per-group line tables
+      let linesHtml = '';
+      for (const g of groups) {
+        const lineRows = (g.lines || []).map(l => `<tr>
+          <td><strong>${l.sku}</strong></td>
+          <td style="font-family:monospace;font-size:11px">${l.ean || '—'}</td>
+          <td>${l.description || '—'}</td>
+          <td>${l.size   || '—'}</td>
+          <td>${l.colour || '—'}</td>
+          <td style="text-align:right">${l.quantity ?? '—'}</td>
+          <td>${l.packFormat === 'H' ? 'Hanging' : 'Flat'}</td>
+        </tr>`).join('');
+        linesHtml += `<div style="margin-bottom:${groups.length > 1 ? '10px' : '0'}">
+          <div style="font-size:11px;color:#1a5276;font-weight:600;margin-bottom:4px">
+            ASN: <strong>${g.asnId}</strong> &nbsp;·&nbsp; FC: ${g.fcId} &nbsp;·&nbsp; Ship: ${g.shipDate}${g.supplier ? ` &nbsp;·&nbsp; ${g.supplier}` : ''}
+          </div>
+          <table class="lines-sub-table">
+            <thead><tr><th>SKU</th><th>EAN</th><th>Description</th><th>Size</th><th>Colour</th><th>Qty</th><th>Pack</th></tr></thead>
+            <tbody>${lineRows}</tbody>
+          </table>
+        </div>`;
+      }
+
       const item = document.createElement('div');
       item.className = 'carrier-asn-item';
       item.innerHTML = `
         <div class="carrier-asn-header">
           <div>
             <div class="carrier-asn-info">&#128196; ${f.filename}</div>
-            <div class="carrier-asn-ref">PO: ${f.poRef}${f.blobPath ? ` &nbsp;·&nbsp; <span style="color:#aaa">${f.blobPath}</span>` : ''}</div>
+            <div class="carrier-asn-ref">PO: ${f.poRef}${f.blobPath ? ` &nbsp;&middot;&nbsp; <span style="color:#aaa">${f.blobPath}</span>` : ''}</div>
           </div>
-          <div style="display:flex;gap:4px;align-items:center">
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+            ${totalLines > 0 ? `<button class="btn-view-xml" onclick="toggleCarrierLines('${linesId}',this)">📋 ${totalLines} Lines</button>` : ''}
             <button class="btn-view-xml" onclick="toggleCarrierXml('${f.filename}','${xmlId}',this)">View XML</button>
             <a class="btn-view-xml" href="${dlUrl}" download style="text-decoration:none">&#11015; Download</a>
           </div>
+        </div>
+        <div class="carrier-asn-lines" id="${linesId}" style="display:none">
+          <div class="lines-expand-wrap">${linesHtml || '<em style="color:#999;font-size:12px">No line items parsed</em>'}</div>
         </div>
         <div class="carrier-asn-xml" id="${xmlId}"><pre class="feed-xml-pre">Loading…</pre></div>`;
       asnList.appendChild(item);
@@ -361,6 +537,92 @@ async function toggleCarrierXml(filename, xmlId, btn) {
   }
 }
 window.toggleCarrierXml = toggleCarrierXml;
+
+function togglePoLines(linesId, btn) {
+  const row = document.getElementById(linesId);
+  if (row.classList.toggle('open')) {
+    btn._origText = btn.textContent;
+    btn.textContent = '✕ Hide Lines';
+  } else {
+    btn.textContent = btn._origText || '📋 Lines';
+  }
+}
+window.togglePoLines = togglePoLines;
+
+function toggleCarrierLines(linesId, btn) {
+  const wrap = document.getElementById(linesId);
+  const open = wrap.style.display !== 'block';
+  wrap.style.display = open ? 'block' : 'none';
+  if (open) { btn._origText = btn.textContent; btn.textContent = '✕ Hide Lines'; }
+  else { btn.textContent = btn._origText || btn.textContent; }
+}
+window.toggleCarrierLines = toggleCarrierLines;
+
+// ── Supplier parse table ──────────────────────────────────────────────────────────────────────────────
+function renderSupplierTable(rows) {
+  const panel = document.getElementById('supplierParsePanel');
+  if (!panel || !rows || rows.length === 0) { if (panel) panel.style.display = 'none'; return; }
+
+  const poGroups = {};
+  for (const r of rows) {
+    const po = String(r.PO_Number || '').trim() || '(no PO)';
+    if (!poGroups[po]) poGroups[po] = [];
+    poGroups[po].push(r);
+  }
+
+  const poCount      = Object.keys(poGroups).length;
+  const totalQty     = rows.reduce((s, r) => s + (parseFloat(r.Booking_Qty)   || 0), 0);
+  const totalCartons = rows.reduce((s, r) => s + (parseFloat(r.No_of_Cartons) || 0), 0);
+
+  const fmtDate = v => {
+    if (!v) return '\u2014';
+    if (v instanceof Date || (typeof v === 'string' && v.includes('T'))) return new Date(v).toLocaleDateString('en-GB');
+    return v;
+  };
+
+  let rowsHtml = '';
+  for (const [po, poRows] of Object.entries(poGroups)) {
+    poRows.forEach((r, i) => {
+      rowsHtml += `<tr>
+        <td>${i === 0 ? `<span class="tag" style="font-size:11px">${po}</span>` : ''}</td>
+        <td><strong>${r.SKU || ''}</strong></td>
+        <td style="font-family:monospace;font-size:11px">${r.EAN_Barcode || '\u2014'}</td>
+        <td>${r.Colour_Code || '\u2014'}</td>
+        <td>${r.Size_Code   || '\u2014'}</td>
+        <td style="text-align:right">${r.Booking_Qty   ?? '\u2014'}</td>
+        <td style="text-align:right">${r.No_of_Cartons ?? '\u2014'}</td>
+        <td>${r.Carton_Type || '\u2014'}</td>
+        <td>${r.Pack_Type   || '\u2014'}</td>
+        <td style="font-size:11px">${fmtDate(r.Cargo_Ready_Planned_Collection_Date)}</td>
+      </tr>`;
+    });
+  }
+
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <span style="font-size:12px;font-weight:700;color:#1F4E79">\ud83d\udccb Supplier rows parsed</span>
+      <div class="parse-summary-stats">
+        <span class="parse-stat-badge">\ud83d\udce6 ${poCount} PO ref${poCount !== 1 ? 's' : ''}</span>
+        <span class="parse-stat-badge">\ud83c\udff7 ${rows.length} SKU row${rows.length !== 1 ? 's' : ''}</span>
+        <span class="parse-stat-badge">\ud83d\udd22 ${totalQty.toLocaleString()} units</span>
+        <span class="parse-stat-badge">\ud83d\udceb ${totalCartons.toLocaleString()} cartons</span>
+      </div>
+    </div>
+    <div class="parse-table-wrap">
+      <div class="parse-table-scroll">
+        <table class="supplier-table">
+          <thead><tr>
+            <th>PO #</th><th>SKU</th><th>EAN Barcode</th>
+            <th>Colour</th><th>Size</th><th>Booking Qty</th>
+            <th>No. Cartons</th><th>Carton Type</th>
+            <th>Pack Type</th><th>Cargo Ready Date</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    </div>`;
+  panel.style.display = 'block';
+}
 
 // ── Step 3: Build Bible ────────────────────────────────────────────────────────
 btnBuildBible.addEventListener('click', async () => {

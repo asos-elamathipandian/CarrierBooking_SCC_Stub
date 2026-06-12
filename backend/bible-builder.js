@@ -296,12 +296,12 @@ async function build(supplierData, feedData) {
   }
 
   // Write Excel
-  await writeExcel(masterRows, supplierRows, poFeeds, asnFeeds);
+  await writeExcel(masterRows, supplierRows, poFeeds, carrierAsnFiles);
 
   return { masterRows, filePath: BIBLE_FILE, warnings: skuWarnings };
 }
 
-async function writeExcel(masterRows, supplierRows, poFeeds, asnFeeds) {
+async function writeExcel(masterRows, supplierRows, poFeeds, carrierAsnFiles) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'CarrierBookingStub';
   wb.created = new Date();
@@ -362,15 +362,35 @@ async function writeExcel(masterRows, supplierRows, poFeeds, asnFeeds) {
     addSheet('PO_FEED_EXTRACT', hdrs, poFeeds);
   }
 
-  // Sheet 3: ASN_FEED_EXTRACT
+  // Sheet 3: ASN_FEED_EXTRACT — flattened from carrier ASN files
   {
     const asnFlat = [];
-    for (const asn of asnFeeds) {
-      for (const li of (asn.lines || [])) {
-        asnFlat.push({ documentId: asn.documentId, fcId: asn.fcId, receivedDate: asn.receivedDate, ...li });
+    for (const file of (carrierAsnFiles || [])) {
+      for (const asnGroup of (file.parsed || [])) {
+        for (const line of (asnGroup.lines || [])) {
+          asnFlat.push({
+            filename:    file.filename,
+            blobPath:    file.blobPath || '',
+            asnId:       asnGroup.asnId,
+            poId:        asnGroup.poId,
+            fcId:        asnGroup.fcId,
+            shipDate:    asnGroup.shipDate,
+            supplier:    asnGroup.supplier,
+            sku:         line.sku,
+            ean:         line.ean,
+            description: line.description,
+            size:        line.size,
+            colour:      line.colour,
+            style:       line.style,
+            packFormat:  line.packFormat,
+            country:     line.country,
+            quantity:    line.quantity
+          });
+        }
       }
     }
-    const hdrs = ['documentId','fcId','receivedDate','orderId','sku','receivedQty','shipmentRef'];
+    const hdrs = ['filename','blobPath','asnId','poId','fcId','shipDate','supplier',
+                  'sku','ean','description','size','colour','style','packFormat','country','quantity'];
     addSheet('ASN_FEED_EXTRACT', hdrs, asnFlat);
   }
 

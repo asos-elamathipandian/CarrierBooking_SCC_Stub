@@ -80,11 +80,28 @@ app.post('/api/parse-supplier', upload.single('supplierFile'), async (req, res) 
     sessionState.masterData = null;
     sessionState.lastXml = null;
     sessionState.lastFilename = null;
+
+    // Sanitize rows for JSON: convert ExcelJS Date/RichText/formula objects to primitives
+    const sanitizeVal = v => {
+      if (v === null || v === undefined) return '';
+      if (v instanceof Date) return v.toLocaleDateString('en-GB');
+      if (typeof v === 'object' && 'result' in v) return String(v.result ?? '');
+      if (typeof v === 'object' && 'richText' in v) return (v.richText || []).map(r => r.text || '').join('');
+      if (typeof v === 'object' && 'formula' in v) return '';
+      if (typeof v === 'object') return String(v);
+      return v;
+    };
+    const safeRows = parsed.rows.map(r =>
+      Object.fromEntries(Object.entries(r).map(([k, v]) => [k, sanitizeVal(v)]))
+    );
+
     res.json({
       success: true,
-      rowCount: parsed.rows.length,
-      poRefs: [...new Set(parsed.rows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))],
-      preview: parsed.rows.slice(0, 5)
+      rowCount: safeRows.length,
+      poRefs: [...new Set(safeRows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))],
+      rows: safeRows,
+      preview: safeRows.slice(0, 5),
+      validationErrors: parsed.validationErrors || []
     });
   } catch (err) {
     console.error('parse-supplier error:', err);
@@ -123,12 +140,34 @@ app.post('/api/fetch-feeds', async (req, res) => {
         shipDate:     p.shipDate,
         cancelDate:   p.cancelDate,
         incoterms:    p.incoterms,
-        lineCount:    p.lineItems.length
+        lineCount:    p.lineItems.length,
+        lineItems:    p.lineItems.map(li => ({
+          sku:          li.sku,
+          productStyle: li.productStyle,
+          description:  li.description,
+          poQty:        li.poQty,
+          mode:         li.mode
+        }))
       })),
       carrierAsnFiles: (feedData.carrierAsnFiles || []).map(f => ({
-        filename: f.filename,
-        poRef:    f.poRef,
-        blobPath: f.blobPath || null
+        filename:  f.filename,
+        poRef:     f.poRef,
+        blobPath:  f.blobPath || null,
+        asnGroups: (f.parsed || []).map(g => ({
+          asnId:    g.asnId,
+          fcId:     g.fcId,
+          shipDate: g.shipDate,
+          supplier: g.supplier,
+          lines:    (g.lines || []).map(l => ({
+            sku:         l.sku,
+            ean:         l.ean,
+            description: l.description,
+            size:        l.size,
+            colour:      l.colour,
+            quantity:    l.quantity,
+            packFormat:  l.packFormat
+          }))
+        }))
       }))
     });
   } catch (err) {

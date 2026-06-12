@@ -337,6 +337,56 @@
     .carrier-asn-ref  { font-size: 11px; color: #888; margin-top: 2px; }
     .carrier-asn-xml  { display: none; }
     .carrier-asn-xml.open { display: block; }
+
+    /* ── Supplier parse table ── */
+    .parse-summary-stats { display: flex; gap: 6px; flex-wrap: wrap; }
+    .parse-stat-badge {
+      background: #EBF5FB; border: 1px solid #AED6F1; border-radius: 6px;
+      padding: 3px 10px; font-size: 11px; font-weight: 600; color: #1a5276;
+    }
+    .parse-table-wrap { border: 1px solid #D6EAF8; border-radius: 8px; overflow: hidden; margin-top: 8px; }
+    .parse-table-scroll { overflow-x: auto; max-height: 280px; overflow-y: auto; }
+    .supplier-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 780px; }
+    .supplier-table th {
+      background: #1F4E79; color: #fff; padding: 6px 10px;
+      text-align: left; font-size: 11px; font-weight: 600;
+      white-space: nowrap; position: sticky; top: 0; z-index: 1;
+    }
+    .supplier-table td { padding: 5px 9px; border-bottom: 1px solid #EBF5FB; white-space: nowrap; }
+    .supplier-table tbody tr:last-child td { border-bottom: none; }
+    .supplier-table tbody tr:hover td { background: #F4F6F7; }
+    /* ── Lines sub-table (PO feed line items + carrier ASN lines) ── */
+    .lines-expand-wrap { padding: 10px 14px; background: #F8FBFF; border-top: 1px solid #D6EAF8; }
+    .lines-sub-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .lines-sub-table th { background: #EBF5FB; color: #1a5276; padding: 4px 8px; text-align: left; border-bottom: 1px solid #AED6F1; font-weight: 600; }
+    .lines-sub-table td { padding: 4px 8px; border-bottom: 1px solid #EBF5FB; }
+    .lines-sub-table tbody tr:last-child td { border-bottom: none; }
+    .lines-sub-table tbody tr:hover td { background: #F4F6F7; }
+
+    /* ── PO ↔ ASN mapping table ── */
+    #feedMappingSection { margin-top: 16px; }
+    .mapping-table-wrap { border: 1px solid #D6EAF8; border-radius: 8px; overflow: hidden; }
+    .mapping-table-scroll { overflow-x: auto; max-height: 380px; overflow-y: auto; }
+    .mapping-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 900px; }
+    .mapping-table thead th {
+      background: #1F4E79; color: #fff; padding: 7px 10px;
+      text-align: left; font-size: 11px; font-weight: 600;
+      white-space: nowrap; position: sticky; top: 0; z-index: 1;
+    }
+    .mapping-table thead th.col-asn { background: #145A32; }
+    .mapping-table thead .col-group-po  { background: #1a3c5e; text-align:center; padding: 4px 10px; font-size:10px; letter-spacing:.5px; text-transform:uppercase; }
+    .mapping-table thead .col-group-asn { background: #0e3d22; text-align:center; padding: 4px 10px; font-size:10px; letter-spacing:.5px; text-transform:uppercase; }
+    .mapping-table tbody td { padding: 5px 9px; border-bottom: 1px solid #EBF5FB; vertical-align: middle; }
+    .mapping-table tbody tr:last-child td { border-bottom: none; }
+    .mapping-table tbody tr:hover td { background: #F4F6F7; }
+    .mapping-table tbody tr.row-unmatched-po  td { background: #FEF9E7; }
+    .mapping-table tbody tr.row-unmatched-asn td { background: #FDEDEC; }
+    .mapping-table tbody tr.row-matched       td { background: #EAFAF1; }
+    .badge-matched   { background: #27AE60; color:#fff; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:700; }
+    .badge-po-only   { background: #F39C12; color:#fff; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:700; }
+    .badge-asn-only  { background: #E74C3C; color:#fff; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:700; }
+    .mapping-legend  { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px; font-size:11px; align-items:center; }
+    .mapping-summary { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
   </style>
 </head>
 <body>
@@ -373,6 +423,7 @@
       </div>
       <div class="status-box" id="status1"></div>
       <div id="refsPreview"></div>
+      <div id="supplierParsePanel" style="display:none;margin-top:12px"></div>
     </div>
   </div>
 
@@ -460,6 +511,12 @@
         <div class="feed-preview-section" id="carrierAsnSection" style="display:none">
           <div class="feed-preview-title">&#128666; Carrier ASN feeds matched</div>
           <div class="carrier-asn-list" id="carrierAsnList"></div>
+        </div>
+
+        <!-- PO ↔ Carrier ASN Mapping -->
+        <div class="feed-preview-section" id="feedMappingSection" style="display:none">
+          <div class="feed-preview-title">&#128257; PO Feed &harr; Carrier ASN Mapping</div>
+          <div id="feedMappingBody"></div>
         </div>
       </div>
     </div>
