@@ -135,6 +135,7 @@ app.post('/api/fetch-feeds', async (req, res) => {
       },
       feedsSummary: feedData.poFeeds.map(p => ({
         orderId:      p.orderId,
+        filename:     (feedData.poFilenames || {})[p.orderId] || `PO_${p.orderId}.xml`,
         supplierName: p.supplierName,
         factoryName:  p.factoryName,
         shipDate:     p.shipDate,

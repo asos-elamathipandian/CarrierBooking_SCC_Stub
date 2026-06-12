@@ -387,6 +387,28 @@
     .badge-asn-only  { background: #E74C3C; color:#fff; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:700; }
     .mapping-legend  { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px; font-size:11px; align-items:center; }
     .mapping-summary { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+
+    /* ── Blob result table ── */
+    .blob-result-wrap { border: 1px solid #D6EAF8; border-radius: 8px; overflow: hidden; margin-top: 12px; }
+    .blob-result-scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+    .blob-result-tbl { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 780px; }
+    .blob-result-tbl thead th {
+      background: #1F4E79; color: #fff; padding: 7px 10px;
+      text-align: left; font-size: 11px; font-weight: 600;
+      white-space: nowrap; position: sticky; top: 0; z-index: 1;
+    }
+    .blob-result-tbl tbody td { padding: 5px 9px; border-bottom: 1px solid #EBF5FB; vertical-align: middle; white-space: nowrap; }
+    .blob-result-tbl tbody tr:last-child td { border-bottom: none; }
+    .blob-result-tbl tbody tr:hover td { background: #F4F6F7; }
+    .blob-result-tbl tbody tr.row-missing-po  td { background: #FEF9E7; }
+    .blob-result-tbl tbody tr.row-missing-asn td { background: #FDEDEC; }
+    .file-link { color: #1F4E79; text-decoration: none; font-size: 11px; font-weight: 600; }
+    .file-link:hover { text-decoration: underline; }
+    .file-link-dl { color: #27AE60; margin-left: 6px; text-decoration: none; font-size: 11px; font-weight: 600; }
+    .file-link-dl:hover { text-decoration: underline; }
+    .blob-missing-msg { margin-top: 8px; padding: 8px 12px; border-radius: 6px; font-size: 12px; line-height: 1.6; }
+    .blob-missing-po  { background: #FEF9E7; border-left: 4px solid #F39C12; color: #784212; }
+    .blob-missing-asn { background: #FDEDEC; border-left: 4px solid #E74C3C; color: #922B21; }
   </style>
 </head>
 <body>
@@ -488,36 +510,7 @@
 
       <!-- Feed preview panel — shown after successful fetch/upload -->
       <div id="feedPreviewPanel">
-        <!-- PO Feeds section -->
-        <div class="feed-preview-section" id="poFeedsSection" style="display:none">
-          <div class="feed-preview-title">&#128230; PO Feeds fetched</div>
-          <table class="feed-preview-table">
-            <thead>
-              <tr>
-                <th>PO #</th>
-                <th>Supplier</th>
-                <th>Factory</th>
-                <th>Ship Date</th>
-                <th>Incoterms</th>
-                <th>Lines</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="poFeedsTableBody"></tbody>
-          </table>
-        </div>
-
-        <!-- Carrier ASN feeds section -->
-        <div class="feed-preview-section" id="carrierAsnSection" style="display:none">
-          <div class="feed-preview-title">&#128666; Carrier ASN feeds matched</div>
-          <div class="carrier-asn-list" id="carrierAsnList"></div>
-        </div>
-
-        <!-- PO ↔ Carrier ASN Mapping -->
-        <div class="feed-preview-section" id="feedMappingSection" style="display:none">
-          <div class="feed-preview-title">&#128257; PO Feed &harr; Carrier ASN Mapping</div>
-          <div id="feedMappingBody"></div>
-        </div>
+        <div id="blobResultTable" style="display:none"></div>
       </div>
     </div>
   </div>

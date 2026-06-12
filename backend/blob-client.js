@@ -151,7 +151,7 @@ async function findPOBlob(containerClient, poRef) {
       for await (const chunk of download.readableStreamBody) {
         chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
       }
-      return { xml: Buffer.concat(chunks).toString('utf8'), blobDate };
+      return { xml: Buffer.concat(chunks).toString('utf8'), blobDate, filename: bestBlob.name.split('/').pop() };
     }
   }
   console.log(`[PO feed] Not found after 48-month scan: ${poRef}`);
@@ -257,12 +257,14 @@ async function fetchFeeds(poRefs, asnRefs) {
   const poFeedClient = hasPOFeedBlob() ? getPOFeedContainerClient() : null;
 
   // orderId -> blobDate (YYYY-MM-DD) from the matched PO blob path
-  const poBlobDates = {};
+  const poBlobDates    = {};
+  const poFilenames    = {}; // orderId -> original blob/local filename
 
   for (const poRef of poRefs) {
     try {
       let xmlStr;
       let blobDate = null;
+      let blobFilename = `PO_${poRef}.xml`;
       if (poFeedClient) {
         // Fetch from asbamintstgeunendtoend01 / bam033v-aimpurchaseorder-endtoend
         const result = await findPOBlob(poFeedClient, poRef);
@@ -273,6 +275,7 @@ async function fetchFeeds(poRefs, asnRefs) {
         } else {
           xmlStr = result.xml;
           blobDate = result.blobDate;
+          if (result.filename) blobFilename = result.filename;
         }
       } else if (local) {
         xmlStr = readLocalFeed('PO', poRef);
@@ -285,6 +288,7 @@ async function fetchFeeds(poRefs, asnRefs) {
       poFeeds.push(parsed);
       poFeedXmls[parsed.orderId] = xmlStr;
       if (blobDate) poBlobDates[parsed.orderId] = blobDate;
+      poFilenames[parsed.orderId] = blobFilename;
     } catch (err) {
       errors.push(`Error fetching PO ${poRef}: ${err.message}`);
     }
@@ -336,7 +340,7 @@ async function fetchFeeds(poRefs, asnRefs) {
     }
   }
 
-  return { poFeeds, poFeedXmls, asnFeeds, carrierAsnFiles, errors, localMode: local };
+  return { poFeeds, poFeedXmls, poFilenames, asnFeeds, carrierAsnFiles, errors, localMode: local };
 }
 
 /**

@@ -6,6 +6,7 @@ const API = 'http://localhost:3000/api';
 const state = {
   poRefs: [],
   asnRefs: [],
+  supplierRows: [],   // raw rows from supplier Excel (keyed by PO_Number + SKU)
   feedsFetched: false,
   biblBuilt: false,
   lastXml: null,
@@ -110,6 +111,7 @@ btnParseSupplier.addEventListener('click', async () => {
 
     state.poRefs  = data.poRefs  || [];
     state.asnRefs = [];
+    state.supplierRows = data.rows || data.preview || [];
 
     // Auto-populate PO refs in the blob fetch panel
     const blobPoRefTags = document.getElementById('blobPoRefTags');
@@ -255,308 +257,183 @@ btnFetchFeeds.addEventListener('click', async () => {
   }
 });
 
-// ── PO ↔ Carrier ASN Mapping table ────────────────────────────────────────────
-function renderFeedMapping(feedsSummary, carrierAsnFiles) {
-  const section = document.getElementById('feedMappingSection');
-  const body    = document.getElementById('feedMappingBody');
-  if (!section || !body) return;
+// ── Blob Result: single unified table ────────────────────────────────────────────
+function renderFeedPreview(feedsSummary, carrierAsnFiles) {
+  const panel = document.getElementById('feedPreviewPanel');
+  const wrap  = document.getElementById('blobResultTable');
+  if (!panel || !wrap) return;
+  panel.style.display = 'block';
 
   if (!feedsSummary.length && !carrierAsnFiles.length) {
-    section.style.display = 'none';
+    wrap.style.display = 'none';
     return;
   }
 
-  // Build carrier ASN index: poId -> sku -> { asnId, fcId, shipDate, ean, size, colour, qty, pack }
-  const asnIndex = {}; // poId -> sku -> line
-  const asnSkusByPo = {}; // poId -> Set of skus that appear in carrier
+  // Index carrier files: poRef -> file; poRef+sku -> { asnId, qty, filename }
+  const carrierByPo  = {}; // poRef -> filename
+  const asnIndex     = {}; // poRef -> sku -> { asnId, qty }
   for (const f of carrierAsnFiles) {
+    const poRef = f.poRef;
+    carrierByPo[poRef] = f.filename;
+    if (!asnIndex[poRef]) asnIndex[poRef] = {};
     for (const g of (f.asnGroups || [])) {
-      const poId = g.poId || f.poRef;
-      if (!asnIndex[poId]) { asnIndex[poId] = {}; asnSkusByPo[poId] = new Set(); }
       for (const l of (g.lines || [])) {
-        asnIndex[poId][l.sku] = { asnId: g.asnId, fcId: g.fcId, shipDate: g.shipDate, ean: l.ean, size: l.size, colour: l.colour, qty: l.quantity, pack: l.packFormat };
-        asnSkusByPo[poId].add(l.sku);
+        asnIndex[poRef][l.sku] = { asnId: g.asnId, qty: l.quantity };
       }
     }
   }
 
-  let totalMatched = 0, totalPoOnly = 0, totalAsnOnly = 0;
-  let allRowsHtml = '';
-
+  // Index PO files: orderId -> filename
+  const poFileByOrder = {};
   for (const po of feedsSummary) {
-    const poLines    = po.lineItems || [];
-    const poSkus     = new Set(poLines.map(l => l.sku));
-    const carrierMap = asnIndex[po.orderId] || {};
-    const carrierSkus= asnSkusByPo[po.orderId] || new Set();
+    // filename heuristic: server returns po.filename if available, else build from orderId
+    poFileByOrder[po.orderId] = po.filename || `PO_${po.orderId}.xml`;
+  }
 
-    // All unique SKUs across both sources
-    const allSkus = new Set([...poSkus, ...carrierSkus]);
+  let rowsHtml = '';
+  const missingFromCarrier = [];
+  const missingFromPO      = [];
 
-    for (const sku of allSkus) {
-      const poLine  = poLines.find(l => l.sku === sku);
-      const asnLine = carrierMap[sku];
-      const inPO    = !!poLine;
-      const inASN   = !!asnLine;
+  // Rows from PO feed (each PO SKU line)
+  for (const po of feedsSummary) {
+    const poFile     = poFileByOrder[po.orderId];
+    const poViewUrl  = `${API}/feed-raw?type=po&ref=${encodeURIComponent(po.orderId)}`;
+    const poDlUrl    = `${API}/feed-raw?type=po&ref=${encodeURIComponent(po.orderId)}&download=1`;
+    const carrierFile = carrierByPo[po.orderId];
+    const carrierViewUrl = carrierFile ? `${API}/feed-raw?type=carrier&ref=${encodeURIComponent(carrierFile)}` : null;
+    const carrierDlUrl   = carrierFile ? `${API}/feed-raw?type=carrier&ref=${encodeURIComponent(carrierFile)}&download=1` : null;
+    const skuMap = asnIndex[po.orderId] || {};
 
-      let rowClass = '', badge = '';
-      if (inPO && inASN) {
-        rowClass = 'row-matched';
-        badge = '<span class="badge-matched">✓ Matched</span>';
-        totalMatched++;
-      } else if (inPO) {
-        rowClass = 'row-unmatched-po';
-        badge = '<span class="badge-po-only">PO only</span>';
-        totalPoOnly++;
-      } else {
-        rowClass = 'row-unmatched-asn';
-        badge = '<span class="badge-asn-only">ASN only</span>';
-        totalAsnOnly++;
-      }
-
-      allRowsHtml += `<tr class="${rowClass}">
-        <td>${badge}</td>
+    const lines = po.lineItems || [];
+    if (!lines.length) {
+      // PO with no lines — still show a row
+      rowsHtml += `<tr>
         <td><strong>${po.orderId}</strong></td>
-        <td><strong>${sku}</strong></td>
-        <td>${inPO ? (poLine.description || '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td style="text-align:right">${inPO ? (poLine.poQty ?? '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td>${inPO ? (poLine.productStyle || '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td>${inASN ? (asnLine.asnId   || '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td>${inASN ? (asnLine.fcId    || '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td>${inASN ? (asnLine.shipDate|| '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td style="font-family:monospace;font-size:11px">${inASN ? (asnLine.ean || '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td>${inASN ? (asnLine.size    || '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td>${inASN ? (asnLine.colour  || '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td style="text-align:right">${inASN ? (asnLine.qty ?? '—') : '<em style="color:#aaa">—</em>'}</td>
-        <td>${inASN ? (asnLine.pack === 'H' ? 'Hanging' : 'Flat') : '<em style="color:#aaa">—</em>'}</td>
+        <td>—</td>
+        <td>—</td>
+        <td>${po.supplierName || '—'}</td>
+        <td style="text-align:right">—</td>
+        <td><a class="file-link" href="${poViewUrl}" target="_blank">${poFile}</a> <a class="file-link-dl" href="${poDlUrl}" download>&#11015;</a></td>
+        <td>${carrierFile ? `<a class="file-link" href="${carrierViewUrl}" target="_blank">${carrierFile}</a> <a class="file-link-dl" href="${carrierDlUrl}" download>&#11015;</a>` : '<em style="color:#aaa">None matched</em>'}</td>
+      </tr>`;
+    }
+
+    for (const l of lines) {
+      const asnData = skuMap[l.sku];
+      const hasPO   = true;
+      const hasASN  = !!asnData;
+      if (!hasASN) missingFromCarrier.push({ po: po.orderId, sku: l.sku });
+
+      const rowClass = hasASN ? '' : 'row-missing-po';
+      rowsHtml += `<tr class="${rowClass}">
+        <td><strong>${po.orderId}</strong></td>
+        <td><strong>${l.sku}</strong></td>
+        <td>${hasASN ? `<span style="font-family:monospace">${asnData.asnId}</span>` : '<em style="color:#aaa">—</em>'}</td>
+        <td>${po.supplierName || '—'}</td>
+        <td style="text-align:right">${hasASN ? (asnData.qty ?? '—') : '<em style="color:#aaa">—</em>'}</td>
+        <td><a class="file-link" href="${poViewUrl}" target="_blank">${poFile}</a> <a class="file-link-dl" href="${poDlUrl}" download>&#11015;</a></td>
+        <td>${carrierFile ? `<a class="file-link" href="${carrierViewUrl}" target="_blank">${carrierFile}</a> <a class="file-link-dl" href="${carrierDlUrl}" download>&#11015;</a>` : '<em style="color:#aaa">None matched</em>'}</td>
       </tr>`;
     }
   }
 
-  body.innerHTML = `
-    <div class="mapping-summary">
-      <span class="parse-stat-badge">Total SKUs: ${totalMatched + totalPoOnly + totalAsnOnly}</span>
-      <span class="parse-stat-badge" style="background:#EAFAF1;border-color:#A9DFBF;color:#1E8449">✓ Matched: ${totalMatched}</span>
-      ${totalPoOnly  > 0 ? `<span class="parse-stat-badge" style="background:#FEF9E7;border-color:#F9E79F;color:#784212">⚠ PO only (not in carrier): ${totalPoOnly}</span>` : ''}
-      ${totalAsnOnly > 0 ? `<span class="parse-stat-badge" style="background:#FDEDEC;border-color:#F5B7B1;color:#922B21">✗ ASN only (not in PO): ${totalAsnOnly}</span>` : ''}
-    </div>
-    <div class="mapping-legend">
-      <span style="color:#555">Row colours:</span>
-      <span style="background:#EAFAF1;padding:2px 8px;border-radius:4px;font-size:11px">Green = matched both</span>
-      <span style="background:#FEF9E7;padding:2px 8px;border-radius:4px;font-size:11px">Amber = PO only</span>
-      <span style="background:#FDEDEC;padding:2px 8px;border-radius:4px;font-size:11px">Red = ASN only</span>
-    </div>
-    <div class="mapping-table-wrap">
-      <div class="mapping-table-scroll">
-        <table class="mapping-table">
-          <thead>
-            <tr>
-              <th colspan="6" class="col-group-po">📦 E2open PO Feed</th>
-              <th colspan="8" class="col-group-asn">🚛 Carrier ASN Feed</th>
-            </tr>
-            <tr>
-              <th>Status</th>
-              <th>PO #</th>
-              <th>SKU</th>
-              <th>Description</th>
-              <th>PO Qty</th>
-              <th>Style</th>
-              <th class="col-asn">ASN ID</th>
-              <th class="col-asn">FC</th>
-              <th class="col-asn">Ship Date</th>
-              <th class="col-asn">EAN</th>
-              <th class="col-asn">Size</th>
-              <th class="col-asn">Colour</th>
-              <th class="col-asn">ASN Qty</th>
-              <th class="col-asn">Pack</th>
-            </tr>
-          </thead>
-          <tbody>${allRowsHtml}</tbody>
+  // Extra rows: carrier SKUs not in any PO feed
+  for (const f of carrierAsnFiles) {
+    const poRef = f.poRef;
+    const poFeed = feedsSummary.find(p => p.orderId === poRef);
+    const poSkus = new Set((poFeed?.lineItems || []).map(l => l.sku));
+    const carrierFile     = f.filename;
+    const carrierViewUrl  = `${API}/feed-raw?type=carrier&ref=${encodeURIComponent(carrierFile)}`;
+    const carrierDlUrl    = `${API}/feed-raw?type=carrier&ref=${encodeURIComponent(carrierFile)}&download=1`;
+
+    for (const g of (f.asnGroups || [])) {
+      for (const l of (g.lines || [])) {
+        if (!poSkus.has(l.sku)) {
+          missingFromPO.push({ po: poRef, sku: l.sku });
+          rowsHtml += `<tr class="row-missing-asn">
+            <td><strong>${poRef}</strong></td>
+            <td><strong>${l.sku}</strong></td>
+            <td><span style="font-family:monospace">${g.asnId}</span></td>
+            <td><em style="color:#aaa">—</em></td>
+            <td style="text-align:right">${l.quantity ?? '—'}</td>
+            <td><em style="color:#aaa">Not in PO feed</em></td>
+            <td><a class="file-link" href="${carrierViewUrl}" target="_blank">${carrierFile}</a> <a class="file-link-dl" href="${carrierDlUrl}" download>&#11015;</a></td>
+          </tr>`;
+        }
+      }
+    }
+  }
+
+  wrap.innerHTML = `
+    <div class="blob-result-wrap">
+      <div class="blob-result-scroll">
+        <table class="blob-result-tbl">
+          <thead><tr>
+            <th>PO #</th>
+            <th>SKU</th>
+            <th>ASN Ref</th>
+            <th>Supplier</th>
+            <th>Carrier Qty</th>
+            <th>PO File</th>
+            <th>Carrier ASN File</th>
+          </tr></thead>
+          <tbody>${rowsHtml || '<tr><td colspan="7" style="text-align:center;color:#999">No data</td></tr>'}</tbody>
         </table>
       </div>
     </div>`;
 
-  section.style.display = 'block';
-}
+  // Append notices AFTER the table wrapper so they are never clipped by the scroll container
+  const noticesDiv = document.createElement('div');
+  noticesDiv.id = 'blobResultNotices';
 
-// ── Feed preview rendering ─────────────────────────────────────────────────────
-function renderFeedPreview(feedsSummary, carrierAsnFiles) {
-  const panel        = document.getElementById('feedPreviewPanel');
-  const poSection    = document.getElementById('poFeedsSection');
-  const poTbody      = document.getElementById('poFeedsTableBody');
-  const asnSection   = document.getElementById('carrierAsnSection');
-  const asnList      = document.getElementById('carrierAsnList');
-
-  panel.style.display = 'block';
-
-  // ── PO feeds table ──
-  poTbody.innerHTML = '';
-  if (feedsSummary.length) {
-    poSection.style.display = 'block';
-    feedsSummary.forEach((po, i) => {
-      const rowId   = `po-xml-row-${i}`;
-      const preId   = `po-xml-pre-${i}`;
-      const linesId = `po-lines-row-${i}`;
-      const dlUrl   = `${API}/feed-raw?type=po&ref=${encodeURIComponent(po.orderId)}&download=1`;
-      const lineItems = po.lineItems || [];
-      const dataRow = document.createElement('tr');
-      dataRow.innerHTML = `
-        <td><strong>${po.orderId}</strong></td>
-        <td>${po.supplierName || '\u2014'}</td>
-        <td>${po.factoryName  || '\u2014'}</td>
-        <td>${po.shipDate     || '\u2014'}</td>
-        <td>${po.incoterms    || '\u2014'}</td>
-        <td>${po.lineCount}</td>
-        <td style="white-space:nowrap">
-          ${lineItems.length > 0 ? `<button class="btn-view-xml" onclick="togglePoLines('${linesId}',this)" style="margin-right:4px">\ud83d\udccb Lines</button>` : ''}
-          <button class="btn-view-xml" onclick="togglePoXml('${po.orderId}','${rowId}','${preId}',this)">View XML</button>
-          <a class="btn-view-xml" href="${dlUrl}" download style="margin-left:4px;text-decoration:none">&#11015; Download</a>
-        </td>`;
-      poTbody.appendChild(dataRow);
-
-      // Line items expand row
-      const linesRow = document.createElement('tr');
-      linesRow.id = linesId;
-      linesRow.className = 'feed-xml-row';
-      const lineItemsHtml = lineItems.length
-        ? `<table class="lines-sub-table">
-            <thead><tr><th>SKU</th><th>Product Style</th><th>Description</th><th>PO Qty</th><th>Mode</th></tr></thead>
-            <tbody>${lineItems.map(l => `<tr>
-              <td><strong>${l.sku}</strong></td>
-              <td>${l.productStyle || '\u2014'}</td>
-              <td>${l.description  || '\u2014'}</td>
-              <td style="text-align:right">${l.poQty ?? '\u2014'}</td>
-              <td>${l.mode || '\u2014'}</td>
-            </tr>`).join('')}</tbody>
-           </table>`
-        : '<em style="color:#999;font-size:12px">No line items</em>';
-      linesRow.innerHTML = `<td colspan="7" style="padding:0"><div class="lines-expand-wrap">${lineItemsHtml}</div></td>`;
-      poTbody.appendChild(linesRow);
-
-      // XML expand row
-      const xmlRow = document.createElement('tr');
-      xmlRow.id = rowId;
-      xmlRow.className = 'feed-xml-row';
-      xmlRow.innerHTML = `<td colspan="7"><pre class="feed-xml-pre" id="${preId}">Loading\u2026</pre></td>`;
-      poTbody.appendChild(xmlRow);
-    });
-  } else {
-    poSection.style.display = 'none';
-  }
-
-  renderFeedMapping(feedsSummary, carrierAsnFiles);
-
-  // ── Carrier ASN list ──
-  asnList.innerHTML = '';
-  if (carrierAsnFiles.length) {
-    asnSection.style.display = 'block';
-    carrierAsnFiles.forEach((f, i) => {
-      const xmlId   = `carrier-xml-${i}`;
-      const linesId = `carrier-lines-${i}`;
-      const dlUrl   = `${API}/feed-raw?type=carrier&ref=${encodeURIComponent(f.filename)}&download=1`;
-      const groups  = f.asnGroups || [];
-      const totalLines = groups.reduce((s, g) => s + (g.lines || []).length, 0);
-
-      // Build per-group line tables
-      let linesHtml = '';
-      for (const g of groups) {
-        const lineRows = (g.lines || []).map(l => `<tr>
-          <td><strong>${l.sku}</strong></td>
-          <td style="font-family:monospace;font-size:11px">${l.ean || '—'}</td>
-          <td>${l.description || '—'}</td>
-          <td>${l.size   || '—'}</td>
-          <td>${l.colour || '—'}</td>
-          <td style="text-align:right">${l.quantity ?? '—'}</td>
-          <td>${l.packFormat === 'H' ? 'Hanging' : 'Flat'}</td>
-        </tr>`).join('');
-        linesHtml += `<div style="margin-bottom:${groups.length > 1 ? '10px' : '0'}">
-          <div style="font-size:11px;color:#1a5276;font-weight:600;margin-bottom:4px">
-            ASN: <strong>${g.asnId}</strong> &nbsp;·&nbsp; FC: ${g.fcId} &nbsp;·&nbsp; Ship: ${g.shipDate}${g.supplier ? ` &nbsp;·&nbsp; ${g.supplier}` : ''}
-          </div>
-          <table class="lines-sub-table">
-            <thead><tr><th>SKU</th><th>EAN</th><th>Description</th><th>Size</th><th>Colour</th><th>Qty</th><th>Pack</th></tr></thead>
-            <tbody>${lineRows}</tbody>
-          </table>
-        </div>`;
-      }
-
-      const item = document.createElement('div');
-      item.className = 'carrier-asn-item';
-      item.innerHTML = `
-        <div class="carrier-asn-header">
-          <div>
-            <div class="carrier-asn-info">&#128196; ${f.filename}</div>
-            <div class="carrier-asn-ref">PO: ${f.poRef}${f.blobPath ? ` &nbsp;&middot;&nbsp; <span style="color:#aaa">${f.blobPath}</span>` : ''}</div>
-          </div>
-          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
-            ${totalLines > 0 ? `<button class="btn-view-xml" onclick="toggleCarrierLines('${linesId}',this)">📋 ${totalLines} Lines</button>` : ''}
-            <button class="btn-view-xml" onclick="toggleCarrierXml('${f.filename}','${xmlId}',this)">View XML</button>
-            <a class="btn-view-xml" href="${dlUrl}" download style="text-decoration:none">&#11015; Download</a>
-          </div>
-        </div>
-        <div class="carrier-asn-lines" id="${linesId}" style="display:none">
-          <div class="lines-expand-wrap">${linesHtml || '<em style="color:#999;font-size:12px">No line items parsed</em>'}</div>
-        </div>
-        <div class="carrier-asn-xml" id="${xmlId}"><pre class="feed-xml-pre">Loading…</pre></div>`;
-      asnList.appendChild(item);
-    });
-  } else {
-    asnSection.style.display = 'none';
-  }
-}
-
-async function togglePoXml(orderId, rowId, preId, btn) {
-  const row = document.getElementById(rowId);
-  const pre = document.getElementById(preId);
-  if (row.classList.toggle('open')) {
-    btn.textContent = 'Hide XML';
-    if (pre.textContent === 'Loading…') {
-      try {
-        const r = await fetch(`${API}/feed-raw?type=po&ref=${encodeURIComponent(orderId)}`);
-        pre.textContent = r.ok ? await r.text() : `Error: ${(await r.json()).error}`;
-      } catch (e) { pre.textContent = `Error: ${e.message}`; }
+  // 1. SKUs in supplier template but missing from E2open PO feed
+  if (state.supplierRows && state.supplierRows.length) {
+    // Build set of SKUs in PO feed per PO
+    const poFeedSkus = {}; // orderId -> Set
+    for (const po of feedsSummary) {
+      poFeedSkus[po.orderId] = new Set((po.lineItems || []).map(l => String(l.sku)));
     }
-  } else {
-    btn.textContent = 'View XML';
-  }
-}
-window.togglePoXml = togglePoXml;
-
-async function toggleCarrierXml(filename, xmlId, btn) {
-  const wrap = document.getElementById(xmlId);
-  const pre  = wrap.querySelector('pre');
-  if (wrap.classList.toggle('open')) {
-    btn.textContent = 'Hide XML';
-    if (pre.textContent === 'Loading…') {
-      try {
-        const r = await fetch(`${API}/feed-raw?type=carrier&ref=${encodeURIComponent(filename)}`);
-        pre.textContent = r.ok ? await r.text() : `Error: ${(await r.json()).error}`;
-      } catch (e) { pre.textContent = `Error: ${e.message}`; }
+    const notInPOFeed = [];
+    for (const r of state.supplierRows) {
+      const po  = String(r.PO_Number || '').trim();
+      const sku = String(r.SKU       || '').trim();
+      if (!po || !sku) continue;
+      const poSkus = poFeedSkus[po];
+      if (poSkus === undefined) continue; // PO not fetched
+      if (!poSkus.has(sku)) notInPOFeed.push({ po, sku });
     }
-  } else {
-    btn.textContent = 'View XML';
+    if (notInPOFeed.length) {
+      const list = notInPOFeed.map(x => `<strong>${x.sku}</strong> (PO ${x.po})`).join(', ');
+      const d = document.createElement('div');
+      d.className = 'blob-missing-msg blob-missing-po';
+      d.innerHTML = `⚠ ${notInPOFeed.length} SKU(s) from your supplier template were <strong>not found in the E2open PO feed</strong>: ${list}`;
+      noticesDiv.appendChild(d);
+    }
   }
-}
-window.toggleCarrierXml = toggleCarrierXml;
 
-function togglePoLines(linesId, btn) {
-  const row = document.getElementById(linesId);
-  if (row.classList.toggle('open')) {
-    btn._origText = btn.textContent;
-    btn.textContent = '✕ Hide Lines';
-  } else {
-    btn.textContent = btn._origText || '📋 Lines';
+  // 2. SKUs in PO feed but not in carrier ASN
+  if (missingFromCarrier.length) {
+    const list = missingFromCarrier.map(x => `<strong>${x.sku}</strong> (PO ${x.po})`).join(', ');
+    const d = document.createElement('div');
+    d.className = 'blob-missing-msg blob-missing-po';
+    d.innerHTML = `⚠ ${missingFromCarrier.length} SKU(s) from the PO feed were <strong>not found in the carrier ASN</strong>: ${list}`;
+    noticesDiv.appendChild(d);
   }
-}
-window.togglePoLines = togglePoLines;
 
-function toggleCarrierLines(linesId, btn) {
-  const wrap = document.getElementById(linesId);
-  const open = wrap.style.display !== 'block';
-  wrap.style.display = open ? 'block' : 'none';
-  if (open) { btn._origText = btn.textContent; btn.textContent = '✕ Hide Lines'; }
-  else { btn.textContent = btn._origText || btn.textContent; }
+  // 3. SKUs in carrier ASN but not in PO feed
+  if (missingFromPO.length) {
+    const list = missingFromPO.map(x => `<strong>${x.sku}</strong> (PO ${x.po})`).join(', ');
+    const d = document.createElement('div');
+    d.className = 'blob-missing-msg blob-missing-asn';
+    d.innerHTML = `❌ ${missingFromPO.length} SKU(s) in the carrier ASN were <strong>not found in the PO feed</strong>: ${list}`;
+    noticesDiv.appendChild(d);
+  }
+
+  wrap.appendChild(noticesDiv);
+  wrap.style.display = 'block';
 }
-window.toggleCarrierLines = toggleCarrierLines;
+
+
 
 // ── Supplier parse table ──────────────────────────────────────────────────────────────────────────────
 function renderSupplierTable(rows) {
