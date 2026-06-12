@@ -3,6 +3,7 @@
 const { BlobServiceClient } = require('@azure/storage-blob');
 const poParser  = require('./po-parser');
 const asnParser = require('./asn-parser');
+const carrierAsnParser = require('./carrier-asn-parser');
 const fs   = require('fs');
 const path = require('path');
 
@@ -170,7 +171,11 @@ function readLocalCarrierASNs(poRef) {
     .reduce((acc, f) => {
       try {
         const content = fs.readFileSync(path.join(LOCAL_FEEDS_DIR, f), 'utf8');
-        if (content.includes(needle)) acc.push({ filename: f, xml: content, poRef });
+        if (content.includes(needle)) {
+          let parsed = [];
+          try { parsed = carrierAsnParser.parse(content); } catch (_) {}
+          acc.push({ filename: f, xml: content, poRef, parsed });
+        }
       } catch (_) { /* skip unreadable files */ }
       return acc;
     }, []);
@@ -220,8 +225,13 @@ async function fetchCarrierASNsForPO(containerClient, poRef, shipDate, cancelDat
     const content = Buffer.concat(chunks).toString('utf8');
     if (content.includes(needle)) {
       const filename = blob.name.split('/').pop();
+      const lastModified = blob.properties.lastModified || new Date(0);
       console.log(`[Carrier ASN] MATCH: ${blob.name}`);
-      matched.push({ filename, blobPath: blob.name, xml: content, poRef });
+      let parsed = [];
+      try { parsed = await carrierAsnParser.parse(content); } catch (e) {
+        console.warn(`[Carrier ASN] Parse warning for ${filename}: ${e.message}`);
+      }
+      matched.push({ filename, blobPath: blob.name, xml: content, poRef, parsed, lastModified });
     }
   }
   console.log(`[Carrier ASN] Scanned ${scanned} blob(s) in ${prefix} — ${matched.length} match(es) for PO ${poRef}`);

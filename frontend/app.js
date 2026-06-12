@@ -374,7 +374,12 @@ btnBuildBible.addEventListener('click', async () => {
     const dlLink = data.downloadUrl
       ? `<br/><a class="download-link" href="${data.downloadUrl}" download>⬇ Download Bible Excel</a>`
       : '';
-    setStatus(3, 'success', `✅ Bible built with <strong>${data.masterRowCount}</strong> MASTER row(s).${dlLink}`);
+    let html = `✅ Bible built with <strong>${data.masterRowCount}</strong> MASTER row(s).${dlLink}`;
+    if (data.warnings && data.warnings.length) {
+      html += `<br/><br/>⚠️ <strong>${data.warnings.length} SKU(s) excluded</strong> — in supplier template but not on carrier feed:<br/>`
+            + data.warnings.map(w => `&nbsp;• ${w}`).join('<br/>');
+    }
+    setStatus(3, 'success', html);
     setBadge(3, 'done');
     btnGenerateVbkreq.disabled = false;
     setBadge(4, 'active');

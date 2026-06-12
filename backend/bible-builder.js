@@ -38,7 +38,7 @@ async function build(supplierData, feedData) {
   if (!fs.existsSync(BIBLE_DIR)) fs.mkdirSync(BIBLE_DIR, { recursive: true });
 
   const { rows: supplierRows } = supplierData;
-  const { poFeeds, asnFeeds } = feedData;
+  const { poFeeds, asnFeeds, carrierAsnFiles = [] } = feedData;
 
   // Index feeds by their key fields
   const poByOrderId = {};
@@ -55,11 +55,61 @@ async function build(supplierData, feedData) {
     asnByDocId[asn.documentId] = asn;
   }
 
+  // ── Carrier ASN index ──────────────────────────────────────────────────────
+  // carrierAsnIndex[poId][sku] = { asnId, qty, ean, description, size, colour, style, packFormat, country }
+  // A PO may appear in multiple carrier files (e.g. split shipments) — merge all.
+  const carrierAsnIndex = {}; // poId -> sku -> carrier line data
+  // Sort files oldest-first so later files overwrite earlier ones (latest wins)
+  const sortedCarrierFiles = [...carrierAsnFiles].sort((a, b) => {
+    const ta = a.lastModified ? new Date(a.lastModified).getTime() : 0;
+    const tb = b.lastModified ? new Date(b.lastModified).getTime() : 0;
+    return ta - tb;
+  });
+  for (const file of sortedCarrierFiles) {
+    for (const asnGroup of (file.parsed || [])) {
+      const poId = asnGroup.poId;
+      if (!carrierAsnIndex[poId]) carrierAsnIndex[poId] = {};
+      for (const line of asnGroup.lines) {
+        // Files sorted oldest→newest so every write overwrites with a later file's data
+        carrierAsnIndex[poId][line.sku] = {
+          asnId:       asnGroup.asnId,
+          fcId:        asnGroup.fcId,
+          shipDate:    asnGroup.shipDate,
+          ean:         line.ean,
+          description: line.description,
+          size:        line.size,
+          colour:      line.colour,
+          style:       line.style,
+          packFormat:  line.packFormat,
+          country:     line.country,
+          quantity:    line.quantity
+        };
+      }
+    }
+  }
+  const hasCarrierData = Object.keys(carrierAsnIndex).length > 0;
+
   // Build MASTER rows — one row per (PO, ASN, SKU)
+  // When carrier ASN data is available, only include SKUs present in the carrier feed.
+  // SKUs in supplier template but NOT in carrier feed are excluded and surfaced as warnings.
   const masterRows = [];
+  const skuWarnings = []; // { poNum, sku } excluded because not on carrier feed
+
   for (const sRow of supplierRows) {
     const poNum  = String(sRow.PO_Number || '').trim();
-    const asnRef = String(sRow.ASN_Ref   || '').trim();
+    const sku    = String(sRow.SKU       || '').trim();
+
+    // If carrier data exists for this PO, skip SKUs not in the carrier feed
+    if (hasCarrierData && carrierAsnIndex[poNum]) {
+      if (!carrierAsnIndex[poNum][sku]) {
+        skuWarnings.push(`PO ${poNum} — SKU ${sku}: found in supplier template but NOT in carrier feed — excluded from VBKREQ`);
+        continue;
+      }
+    }
+
+    const carrierLine = carrierAsnIndex[poNum]?.[sku];
+    // ASN ref: use carrier ASNID if available, otherwise fall back to supplier row
+    const asnRef = carrierLine?.asnId || String(sRow.ASN_Ref || '').trim();
 
     const po  = poByOrderId[poNum];
     const asn = asnByDocId[asnRef];
@@ -74,9 +124,6 @@ async function build(supplierData, feedData) {
     const cH = parseFloat(sRow.Carton_Height_cm) || ct.H || 0;
     const cWt= parseFloat(sRow.Carton_Weight_KG) || ct.weight || 0;
 
-    // ── One row per SKU: use SKU from supplier row directly ──────────────────
-    const sku = String(sRow.SKU || '').trim();
-
     // Look up this SKU in the PO and ASN feeds
     const poLine  = poByLinesku[`${poNum}_${sku}`];
     const asnLinesForPO = asn
@@ -84,18 +131,19 @@ async function build(supplierData, feedData) {
       : [];
     const asnLine = asnLinesForPO.find(l => l.sku === sku);
 
-      // Booking qty: mandatory from supplier row
-      const skuQty     = parseFloat(sRow.Booking_Qty) || 0;
-    const skuCartons = noCartons; // cartons are per-SKU row as filled by supplier
+    // Booking qty: use supplier row qty — carrier feed is outbound to carrier (planned),
+    // not a shipment confirmation, so its Quantity is not used for capping.
+    const skuQty     = parseFloat(sRow.Booking_Qty) || 0;
+    const skuCartons = noCartons;
 
     masterRows.push({
         // Booking identity
         Booking_Ref: sRow.Booking_Ref || '',
         PO_Number:   poNum,
-        ASN_Ref:     asnRef,
+        ASN_Ref:     asnRef,  // carrier ASNID when available
 
         // From PO feed
-        Supplier_Name:     po?.supplierName   || '',
+        Supplier_Name:     po?.supplierName   || carrierLine?.style && '' || '',
         Supplier_ID:       po?.supplierId     || '',
         Factory_Name:      po?.factoryName    || '',
         Factory_ID:        po?.factoryId      || '',
@@ -104,9 +152,9 @@ async function build(supplierData, feedData) {
         Factory_Street3:   po?.factoryStreet3 || '',
         Factory_City:      po?.factoryCity    || '',
         Factory_PostalCd:  po?.factoryPostal  || '',
-        Factory_CountryCd: po?.factoryCountry || '',
+        Factory_CountryCd: po?.factoryCountry || carrierLine?.country || '',
         FC_Name:           po?.fcName         || '',
-        FC_ID:             po?.fcId           || sRow.FC_ID || 'FC01',
+        FC_ID:             po?.fcId           || carrierLine?.fcId || sRow.FC_ID || 'FC01',
         FC_Street1:        po?.fcStreet1      || '',
         FC_Street2:        po?.fcStreet2      || '',
         FC_Street3:        po?.fcStreet3      || '',
@@ -119,15 +167,15 @@ async function build(supplierData, feedData) {
         Loading_Port_LOCODE: po?.loadingPortId || '',
         F1_ID:             po?.f1Id           || '',
 
-        // SKU — from supplier row; enrich description/style from PO feed
+        // SKU — carrier feed takes priority for enrichment, then PO feed
         SKU:           sku,
-        Product_Style: poLine?.line?.productStyle || '',
-        Description:   poLine?.line?.description  || '',
+        Product_Style: poLine?.line?.productStyle || carrierLine?.style       || '',
+        Description:   poLine?.line?.description  || carrierLine?.description || '',
 
-        // Supplier-provided per SKU row
-        EAN_Barcode:   sRow.EAN_Barcode || '',
-        Colour_Code:   sRow.Colour_Code || '',
-        Size_Code:     sRow.Size_Code   || '',
+        // Supplier-provided per SKU row — enrich from carrier feed if available
+        EAN_Barcode:   sRow.EAN_Barcode || carrierLine?.ean    || '',
+        Colour_Code:   sRow.Colour_Code || carrierLine?.colour || '',
+        Size_Code:     sRow.Size_Code   || carrierLine?.size   || '',
 
         // Carton data — filled per SKU row by supplier
         Carton_Type:     cartonType,
@@ -163,10 +211,94 @@ async function build(supplierData, feedData) {
       });
   }
 
+  // ── Second pass: carrier SKUs missing from supplier template ────────────────
+  // Track which (poNum, sku) combos were covered by supplier rows
+  const coveredKeys = new Set(masterRows.map(r => `${r.PO_Number}_${r.SKU}`));
+
+  if (hasCarrierData) {
+    for (const [poNum, skuMap] of Object.entries(carrierAsnIndex)) {
+      const po = poByOrderId[poNum];
+      for (const [sku, carrierLine] of Object.entries(skuMap)) {
+        if (coveredKeys.has(`${poNum}_${sku}`)) continue; // already in master rows
+        // SKU is on carrier feed but supplier didn't include it — add with Booking_Qty=0
+        const poLine = poByLinesku[`${poNum}_${sku}`];
+        const ct = CARTON_TYPES['BDCM1'];
+        masterRows.push({
+          Booking_Ref:  '',
+          PO_Number:    poNum,
+          ASN_Ref:      carrierLine.asnId,
+          _missingFromSupplier: true,   // flag for Excel highlighting
+
+          Supplier_Name:      po?.supplierName   || '',
+          Supplier_ID:        po?.supplierId     || '',
+          Factory_Name:       po?.factoryName    || '',
+          Factory_ID:         po?.factoryId      || '',
+          Factory_Street1:    po?.factoryStreet1 || '',
+          Factory_Street2:    po?.factoryStreet2 || '',
+          Factory_Street3:    po?.factoryStreet3 || '',
+          Factory_City:       po?.factoryCity    || '',
+          Factory_PostalCd:   po?.factoryPostal  || '',
+          Factory_CountryCd:  po?.factoryCountry || carrierLine.country || '',
+          FC_Name:            po?.fcName         || '',
+          FC_ID:              po?.fcId           || carrierLine.fcId || 'FC01',
+          FC_Street1:         po?.fcStreet1      || '',
+          FC_Street2:         po?.fcStreet2      || '',
+          FC_Street3:         po?.fcStreet3      || '',
+          FC_City:            po?.fcCity         || '',
+          FC_StateProvinceCd: po?.fcState        || '',
+          FC_PostalCd:        po?.fcPostal        || '',
+          FC_CountryCd:       po?.fcCountry       || 'GB',
+          Carrier_ID:         po?.carrierId       || '',
+          Carrier_Name:       po?.carrierName     || '',
+          Loading_Port_LOCODE: po?.loadingPortId  || '',
+          F1_ID:              po?.f1Id            || '',
+
+          SKU:           sku,
+          Product_Style: poLine?.line?.productStyle || carrierLine.style       || '',
+          Description:   poLine?.line?.description  || carrierLine.description || '',
+
+          EAN_Barcode:   carrierLine.ean    || '',
+          Colour_Code:   carrierLine.colour || '',
+          Size_Code:     carrierLine.size   || '',
+
+          // No carton/weight data — supplier hasn't provided it
+          Carton_Type:      'BDCM1',
+          Carton_Length_cm:  ct.L,
+          Carton_Width_cm:   ct.W,
+          Carton_Height_cm:  ct.H,
+          Carton_Weight_KG:  ct.weight,
+          No_of_Cartons:     0,
+          Unit_Weight_KG:    0,
+          Booking_Qty:       0,
+
+          Gross_Weight_KG:   0,
+          Net_Weight_KG:     0,
+          Volume_M3:         0,
+
+          Pack_Type:       carrierLine.packFormat === 'H' ? 'Hanging' : 'Flat',
+          Collection_Type: 'Delivery',
+          Hazardous:       'N/A',
+          Traffic_Mode:    po?.lineItems?.[0]?.mode || '',
+          Cargo_Ready_Planned_Collection_Date: '',
+          Carrier_Booking_Request_Date:        '',
+          Expected_Delivery_Date:              '',
+          ASN_Delivery_Date:                   '',
+          Var_Unit: 0,
+          Var_Pct:  0,
+          Remarks:  'SKU from carrier feed — not found in supplier template',
+          ASOS_Intake_Week:    '',
+          Collection_Time:     '',
+          Incoterms:           po?.incoterms || '',
+          Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || '30'
+        });
+      }
+    }
+  }
+
   // Write Excel
   await writeExcel(masterRows, supplierRows, poFeeds, asnFeeds);
 
-  return { masterRows, filePath: BIBLE_FILE };
+  return { masterRows, filePath: BIBLE_FILE, warnings: skuWarnings };
 }
 
 async function writeExcel(masterRows, supplierRows, poFeeds, asnFeeds) {
@@ -197,7 +329,13 @@ async function writeExcel(masterRows, supplierRows, poFeeds, asnFeeds) {
     ws.getRow(1).eachCell(cell => Object.assign(cell, headerStyle));
     ws.getRow(1).height = 20;
     for (const row of rows) {
-      ws.addRow(headers.map(h => sanitize(row[h])));
+      const excelRow = ws.addRow(headers.map(h => sanitize(row[h])));
+      // Highlight rows where carrier sent a SKU the supplier didn't include
+      if (row._missingFromSupplier) {
+        excelRow.eachCell(cell => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } }; // amber
+        });
+      }
     }
     ws.columns.forEach(col => { col.width = 22; });
     return ws;

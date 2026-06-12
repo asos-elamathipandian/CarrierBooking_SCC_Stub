@@ -253,7 +253,7 @@ app.post('/api/build-bible', async (req, res) => {
     if (!sessionState.supplierData) return res.status(400).json({ error: 'No supplier data. Run parse-supplier first.' });
     if (!sessionState.feedData) return res.status(400).json({ error: 'No feed data. Run fetch-feeds first.' });
 
-    const { masterRows, filePath } = await bibleBuilder.build(
+    const { masterRows, filePath, warnings } = await bibleBuilder.build(
       sessionState.supplierData,
       sessionState.feedData
     );
@@ -263,7 +263,8 @@ app.post('/api/build-bible', async (req, res) => {
     res.json({
       success: true,
       masterRowCount: masterRows.length,
-      downloadUrl: `/bible/${filename}`
+      downloadUrl: `/bible/${filename}`,
+      warnings: warnings || []
     });
   } catch (err) {
     console.error('build-bible error:', err);
