@@ -228,6 +228,7 @@ btnUploadFeeds.addEventListener('click', async () => {
 btnFetchFeeds.addEventListener('click', async () => {
   setLoading(btnFetchFeeds, true);
   setStatus(2, 'loading', '⏳ Fetching PO & ASN feeds from Azure Blob Storage…');
+  const fetchStart = performance.now();
 
   try {
     const res  = await fetch(`${API}/fetch-feeds`, {
@@ -238,9 +239,10 @@ btnFetchFeeds.addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
+    const elapsed = ((performance.now() - fetchStart) / 1000).toFixed(2);
     state.feedsFetched = true;
     const modeTag = data.localMode ? ' <em style="color:#e67e22">[LOCAL MODE — reading from samples/feeds/]</em>' : '';
-    let html = `✅ Fetched <strong>${data.poFeedCount}</strong> PO feed(s) and <strong>${data.carrierAsnCount || 0}</strong> carrier ASN file(s).${modeTag}`;
+    let html = `✅ Fetched <strong>${data.poFeedCount}</strong> PO feed(s) and <strong>${data.carrierAsnCount || 0}</strong> carrier ASN file(s) in <strong>${elapsed}s</strong>.${modeTag}`;
     if (data.errors && data.errors.length) {
       html += `<br/>⚠️ ${data.errors.join('<br/>')}`;
     }
