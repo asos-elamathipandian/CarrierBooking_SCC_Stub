@@ -1,0 +1,61 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ROOT>
+  <Data>
+    <PurchaseOrder>
+      <PurchaseOrder_ID>500034227292</PurchaseOrder_ID>
+      <SupplierCode>1100004812</SupplierCode>
+      <SupplierName>Tudorknight Limited (OB)</SupplierName>
+      <Division>Womenswear</Division>
+      <DivisionID>1</DivisionID>
+      <BrandedOB>ASOS Design WW</BrandedOB>
+      <BuyingGroup>Knitwear WO</BuyingGroup>
+      <BuyingGroupID>458</BuyingGroupID>
+      <PurchaseDrop_ID>1</PurchaseDrop_ID>
+      <DeliveryMethod>Road</DeliveryMethod>
+      <ShippingTerms>FOB</ShippingTerms>
+      <ShippingPoint>TURKEY ISTANBUL</ShippingPoint>
+      <FreightForwarder>European Nom Carrier</FreightForwarder>
+      <FinalDestination>FC01</FinalDestination>
+      <ShipDate>17062026</ShipDate>
+      <BWStart>18062026</BWStart>
+      <BWEnd>02072026</BWEnd>
+      <POCCY>USD</POCCY>
+      <POFC>FC01</POFC>
+      <ASNID>45870000002757</ASNID>
+      <ASNMessageType>Create</ASNMessageType>
+      <WholesaleInd>N</WholesaleInd>
+      <WholesaleRetailInd>N</WholesaleRetailInd>
+      <LineCollection>
+        <Line>
+          <SupplierSKUReference>HONEY REV</SupplierSKUReference>
+          <ProductGroup>Knitwear</ProductGroup>
+          <Category>Tops</Category>
+          <OptionID>123478454</OptionID>
+          <LegacyStyle>123478454</LegacyStyle>
+          <SKUItemID>123478460</SKUItemID>
+          <Brand>ASOS DESIGN</Brand>
+          <Description>Sku Publish1746626784</Description>
+          <Size>UK 10</Size>
+          <Colour>BLACK</Colour>
+          <OrderLineNo>1</OrderLineNo>
+          <PackingFormat>F</PackingFormat>
+          <CountryOfOrigin>BD</CountryOfOrigin>
+          <SupplierColour>Black </SupplierColour>
+          <RetailPricePerUnit>9.6000</RetailPricePerUnit>
+          <RetailPricePerUnitCurr>GBP</RetailPricePerUnitCurr>
+          <UnitCost>4.8900</UnitCost>
+          <FreightCost>0.1198</FreightCost>
+          <FreightCostCurr>GBP</FreightCostCurr>
+          <ASNID>45870000002757</ASNID>
+          <ASNCreatedDate>19052026</ASNCreatedDate>
+          <POExFactoryDate>18062026</POExFactoryDate>
+          <ExpectedDeliveryDate>03072026</ExpectedDeliveryDate>
+          <Quantity>10.0000</Quantity>
+          <QuantityReceived>0</QuantityReceived>
+          <ASNStatus>Open</ASNStatus>
+          <MerchSeason>SS23</MerchSeason>
+        </Line>
+      </LineCollection>
+    </PurchaseOrder>
+  </Data>
+</ROOT>

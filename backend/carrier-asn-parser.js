@@ -10,11 +10,14 @@ const xml2js = require('xml2js');
  *
  * Each entry:
  * {
- *   asnId:       string,          // <ASNID> from PO header
- *   poId:        string,          // <PurchaseOrder_ID>
- *   fcId:        string,          // <POFC>
- *   shipDate:    string,          // <ShipDate> DDMMYYYY -> YYYY-MM-DD normalised
- *   supplier:    string,          // <SupplierName>
+ *   asnId:         string,          // <ASNID> from PO header
+ *   poId:          string,          // <PurchaseOrder_ID>
+ *   fcId:          string,          // <POFC> — also used as F1_ID
+ *   shipDate:      string,          // <ShipDate> DDMMYYYY -> YYYY-MM-DD normalised
+ *   supplier:      string,          // <SupplierName>
+ *   supplierCode:  string,          // <SupplierCode> — used as Supplier_ID
+ *   shippingPoint: string,          // <ShippingPoint> — used as Loading Port
+ *   shippingTerms: string,          // <ShippingTerms> — e.g. FOB
  *   lines: [{
  *     sku:         string,        // <SKUItemID>
  *     ean:         string,        // <PrimaryEAN>
@@ -41,10 +44,13 @@ async function parse(xmlString) {
   const asnMap = {}; // asnId -> entry
 
   for (const po of poElements) {
-    const poId    = po.PurchaseOrder_ID?.[0] || '';
-    const fcId    = po.POFC?.[0] || '';
-    const supplier = po.SupplierName?.[0] || '';
-    const rawDate  = po.ShipDate?.[0] || '';
+    const poId          = po.PurchaseOrder_ID?.[0] || '';
+    const fcId          = po.POFC?.[0] || po.FinalDestination?.[0] || '';
+    const supplier      = po.SupplierName?.[0]  || '';
+    const supplierCode  = po.SupplierCode?.[0]  || '';
+    const shippingPoint = po.ShippingPoint?.[0] || '';
+    const shippingTerms = po.ShippingTerms?.[0] || '';
+    const rawDate       = po.ShipDate?.[0] || '';
 
     // Normalise DDMMYYYY -> YYYY-MM-DD
     const shipDate = normDate(rawDate);
@@ -64,7 +70,7 @@ async function parse(xmlString) {
       if (!sku) continue;
 
       if (!asnMap[asnId]) {
-        asnMap[asnId] = { asnId, poId, fcId, shipDate, supplier, lines: [] };
+        asnMap[asnId] = { asnId, poId, fcId, shipDate, supplier, supplierCode, shippingPoint, shippingTerms, lines: [] };
       }
       asnMap[asnId].lines.push({ sku, ean, description, size, colour, style, packFormat, country, quantity });
     }

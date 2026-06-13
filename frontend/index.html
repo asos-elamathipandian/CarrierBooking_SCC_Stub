@@ -250,7 +250,7 @@
     .tab-panel.active { display: block; }
 
     /* ── Feed XML drop zones ── */
-    .feeds-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .feeds-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 14px; }
     @media (max-width: 600px) { .feeds-grid { grid-template-columns: 1fr; } }
     .feed-drop-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
     .feed-drop-zone {
@@ -428,7 +428,7 @@
       <div class="step-badge active" id="badge1">1</div>
       <div>
         <div class="step-title">Upload Supplier Excel</div>
-        <div class="step-desc">Upload the supplier's Excel file containing PO numbers and ASN references</div>
+        <div class="step-desc">Upload the supplier's Excel file containing PO,SKU and other references</div>
       </div>
     </div>
     <div class="step-body">
@@ -454,8 +454,8 @@
     <div class="step-header">
       <div class="step-badge" id="badge2">2</div>
       <div>
-        <div class="step-title">Provide PO &amp; ASN Feeds</div>
-        <div class="step-desc">Upload XML files directly or fetch from Azure Blob Storage</div>
+        <div class="step-title">Fetch details using parsed PO's</div>
+        <div class="step-desc">Fetch details using parsed PO's</div>
       </div>
     </div>
     <div class="step-body">
@@ -473,7 +473,7 @@
           <div class="ref-tags" id="blobPoRefTags"><span style="color:#aaa;font-size:12px">Upload supplier template first to auto-populate&hellip;</span></div>
         </div>
         <button class="btn btn-primary" id="btnFetchFeeds" disabled>
-          &#128279; Fetch E2open PO &amp; carrier feed from RIS blob
+          &#128279; Fetch carrier feed from Azure Blob
         </button>
       </div>
 
@@ -481,19 +481,10 @@
       <div class="tab-panel" id="panelUploadFeeds">
         <div class="feeds-grid">
           <div>
-            <div class="feed-drop-label">PO Feed XML</div>
-            <div class="feed-drop-zone" id="poDropZone">
-              <div style="font-size:24px;margin-bottom:6px">📄</div>
-              <div id="poDropZoneText">Drop PO XML here</div>
-              <div style="font-size:11px;color:#888;margin-top:4px">or <u style="cursor:pointer" onclick="event.stopPropagation();document.getElementById('poFeedInput').click()">browse</u></div>
-            </div>
-            <input type="file" id="poFeedInput" accept=".xml" style="display:none" />
-          </div>
-          <div>
-            <div class="feed-drop-label">ASN Feed XML</div>
+            <div class="feed-drop-label">Carrier Feed XML</div>
             <div class="feed-drop-zone" id="asnDropZone">
               <div style="font-size:24px;margin-bottom:6px">📄</div>
-              <div id="asnDropZoneText">Drop ASN XML here</div>
+              <div id="asnDropZoneText">Drop Carrier Feed XML here</div>
               <div style="font-size:11px;color:#888;margin-top:4px">or <u style="cursor:pointer" onclick="event.stopPropagation();document.getElementById('asnFeedInput').click()">browse</u></div>
             </div>
             <input type="file" id="asnFeedInput" accept=".xml" style="display:none" />
@@ -520,13 +511,13 @@
     <div class="step-header">
       <div class="step-badge" id="badge3">3</div>
       <div>
-        <div class="step-title">Build Bible Excel</div>
-        <div class="step-desc">Merges supplier data + PO feed + ASN feed into MASTER sheet — generates working Bible Excel</div>
+        <div class="step-title">Build Master Workbook</div>
+        <div class="step-desc">Merges supplier data + carrier feed into MASTER sheet — generates workbook</div>
       </div>
     </div>
     <div class="step-body">
       <button class="btn btn-warning" id="btnBuildBible" disabled>
-        📊 Build Bible
+        📊 Build Master Workbook
       </button>
       <div class="status-box" id="status3"></div>
     </div>

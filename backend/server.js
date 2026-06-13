@@ -15,6 +15,7 @@ const vbkreqBuilder = require('./vbkreq-builder');
 const sftpUploader = require('./sftp-uploader');
 const poParser  = require('./po-parser');
 const asnParser = require('./asn-parser');
+const carrierAsnParser = require('./carrier-asn-parser');
 
 const app = express();
 const PORT = 3000;
@@ -118,38 +119,15 @@ app.post('/api/fetch-feeds', async (req, res) => {
     const { poRefs, asnRefs } = req.body;
     if (!poRefs) return res.status(400).json({ error: 'poRefs required' });
 
-    const feedData = await blobClient.fetchFeeds(poRefs, asnRefs || []);
+    const feedData = await blobClient.fetchCarrierFeedsOnly(poRefs);
     sessionState.feedData = feedData;
 
     res.json({
       success: true,
-      poFeedCount: feedData.poFeeds.length,
-      asnFeedCount: feedData.asnFeeds.length,
       carrierAsnCount: (feedData.carrierAsnFiles || []).length,
       localMode: feedData.localMode || false,
       errors: feedData.errors || [],
-      summary: {
-        posFound: feedData.poFeeds.map(p => p.orderId),
-        asnsFound: feedData.asnFeeds.map(a => a.documentId),
-        carrierAsnsFound: (feedData.carrierAsnFiles || []).map(f => f.filename)
-      },
-      feedsSummary: feedData.poFeeds.map(p => ({
-        orderId:      p.orderId,
-        filename:     (feedData.poFilenames || {})[p.orderId] || `PO_${p.orderId}.xml`,
-        supplierName: p.supplierName,
-        factoryName:  p.factoryName,
-        shipDate:     p.shipDate,
-        cancelDate:   p.cancelDate,
-        incoterms:    p.incoterms,
-        lineCount:    p.lineItems.length,
-        lineItems:    p.lineItems.map(li => ({
-          sku:          li.sku,
-          productStyle: li.productStyle,
-          description:  li.description,
-          poQty:        li.poQty,
-          mode:         li.mode
-        }))
-      })),
+      feedsSummary: [],
       carrierAsnFiles: (feedData.carrierAsnFiles || []).map(f => ({
         filename:  f.filename,
         poRef:     f.poRef,
@@ -159,6 +137,9 @@ app.post('/api/fetch-feeds', async (req, res) => {
           fcId:     g.fcId,
           shipDate: g.shipDate,
           supplier: g.supplier,
+          supplierCode:  g.supplierCode,
+          shippingPoint: g.shippingPoint,
+          shippingTerms: g.shippingTerms,
           lines:    (g.lines || []).map(l => ({
             sku:         l.sku,
             ean:         l.ean,
@@ -166,6 +147,7 @@ app.post('/api/fetch-feeds', async (req, res) => {
             size:        l.size,
             colour:      l.colour,
             quantity:    l.quantity,
+            country:     l.country,
             packFormat:  l.packFormat
           }))
         }))
@@ -216,7 +198,6 @@ app.get('/api/feed-raw', (req, res) => {
 // ─────────────────────────────────────────────
 app.post('/api/upload-feeds', (req, res, next) => {
   uploadXml.fields([
-    { name: 'poFeedFile',  maxCount: 1 },
     { name: 'asnFeedFile', maxCount: 1 }
   ])(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
@@ -224,44 +205,56 @@ app.post('/api/upload-feeds', (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const poFeeds  = [];
-    const asnFeeds = [];
-    const errors   = [];
-
-    if (req.files?.poFeedFile?.[0]) {
-      const xmlStr = req.files.poFeedFile[0].buffer.toString('utf8');
-      try {
-        poFeeds.push(await poParser.parse(xmlStr));
-      } catch (e) {
-        errors.push(`PO parse error: ${e.message}`);
-      }
-    }
+    const carrierAsnFiles = [];
+    const errors = [];
 
     if (req.files?.asnFeedFile?.[0]) {
-      const xmlStr = req.files.asnFeedFile[0].buffer.toString('utf8');
+      const xmlStr   = req.files.asnFeedFile[0].buffer.toString('utf8');
+      const filename = req.files.asnFeedFile[0].originalname;
       try {
-        asnFeeds.push(await asnParser.parse(xmlStr));
+        const parsed = await carrierAsnParser.parse(xmlStr);
+        const poRef  = parsed[0]?.poId || '';
+        carrierAsnFiles.push({ filename, xml: xmlStr, poRef, parsed });
       } catch (e) {
-        errors.push(`ASN parse error: ${e.message}`);
+        errors.push(`Carrier feed parse error: ${e.message}`);
       }
     }
 
-    if (poFeeds.length === 0 && asnFeeds.length === 0 && errors.length === 0) {
-      return res.status(400).json({ error: 'No PO or ASN XML file uploaded.' });
+    if (carrierAsnFiles.length === 0 && errors.length === 0) {
+      return res.status(400).json({ error: 'No carrier XML file uploaded.' });
     }
 
-    const feedData = { poFeeds, asnFeeds, errors, localMode: false };
+    const feedData = { poFeeds: [], asnFeeds: [], carrierAsnFiles, errors, localMode: false };
     sessionState.feedData = feedData;
 
     res.json({
       success: true,
-      poFeedCount:  poFeeds.length,
-      asnFeedCount: asnFeeds.length,
+      carrierAsnCount: carrierAsnFiles.length,
       errors,
-      summary: {
-        posFound:  poFeeds.map(p => p.orderId),
-        asnsFound: asnFeeds.map(a => a.documentId)
-      }
+      feedsSummary: [],
+      carrierAsnFiles: carrierAsnFiles.map(f => ({
+        filename:  f.filename,
+        poRef:     f.poRef,
+        asnGroups: (f.parsed || []).map(g => ({
+          asnId:         g.asnId,
+          fcId:          g.fcId,
+          shipDate:      g.shipDate,
+          supplier:      g.supplier,
+          supplierCode:  g.supplierCode,
+          shippingPoint: g.shippingPoint,
+          shippingTerms: g.shippingTerms,
+          lines: (g.lines || []).map(l => ({
+            sku:         l.sku,
+            ean:         l.ean,
+            description: l.description,
+            size:        l.size,
+            colour:      l.colour,
+            quantity:    l.quantity,
+            country:     l.country,
+            packFormat:  l.packFormat
+          }))
+        }))
+      }))
     });
   } catch (err) {
     console.error('upload-feeds error:', err);
@@ -291,11 +284,13 @@ app.get('/api/search-blob', async (req, res) => {
 app.post('/api/build-bible', async (req, res) => {
   try {
     if (!sessionState.supplierData) return res.status(400).json({ error: 'No supplier data. Run parse-supplier first.' });
-    if (!sessionState.feedData) return res.status(400).json({ error: 'No feed data. Run fetch-feeds first.' });
+
+    // feedData optional — default to empty if carrier feed not yet fetched
+    const feedData = sessionState.feedData || { poFeeds: [], asnFeeds: [], carrierAsnFiles: [] };
 
     const { masterRows, filePath, warnings } = await bibleBuilder.build(
       sessionState.supplierData,
-      sessionState.feedData
+      feedData
     );
     sessionState.masterData = masterRows;
 

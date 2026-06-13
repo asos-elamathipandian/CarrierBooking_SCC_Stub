@@ -344,6 +344,78 @@ async function fetchFeeds(poRefs, asnRefs) {
 }
 
 /**
+ * Scan ASNInDavisTurner date folders backwards from today (up to daysBack days)
+ * looking for carrier files containing <PurchaseOrder_ID>{poRef}</PurchaseOrder_ID>.
+ */
+async function fetchCarrierASNsForPOByDateRange(containerClient, poRef, daysBack = 60) {
+  const needle = `<PurchaseOrder_ID>${poRef}</PurchaseOrder_ID>`;
+  const matched = [];
+  const today = new Date();
+
+  for (let d = 0; d < daysBack; d++) {
+    const dt = new Date(today);
+    dt.setDate(dt.getDate() - d);
+    const year  = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day   = String(dt.getDate()).padStart(2, '0');
+    const prefix = `${ASN_CARRIER_FOLDER}/${year}/${month}/${day}/`;
+
+    for await (const blob of containerClient.listBlobsFlat({ prefix })) {
+      const blobRef = containerClient.getBlobClient(blob.name);
+      const download = await blobRef.download(0);
+      const chunks = [];
+      for await (const chunk of download.readableStreamBody) {
+        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+      }
+      const content = Buffer.concat(chunks).toString('utf8');
+      if (content.includes(needle)) {
+        const filename = blob.name.split('/').pop();
+        const lastModified = blob.properties.lastModified || new Date(0);
+        let parsed = [];
+        try { parsed = await carrierAsnParser.parse(content); } catch (_) {}
+        matched.push({ filename, blobPath: blob.name, xml: content, poRef, parsed, lastModified });
+      }
+    }
+    if (matched.length > 0) break; // found files for this PO — stop scanning
+  }
+  return matched;
+}
+
+/**
+ * Fetch carrier ASN feeds directly from blob without needing PO feeds.
+ * Scans ASNInDavisTurner date folders for each PO ref.
+ * Falls back to local samples/feeds/ when env vars are not set.
+ */
+async function fetchCarrierFeedsOnly(poRefs) {
+  const local = isLocalMode() || !hasPOFeedBlob();
+  const carrierAsnFiles = [];
+  const errors = [];
+
+  for (const poRef of poRefs) {
+    try {
+      let files;
+      if (local) {
+        files = readLocalCarrierASNs(poRef);
+        if (files.length === 0) {
+          errors.push(`[LOCAL] No carrier ASN files found in samples/feeds/ for PO ${poRef}`);
+        }
+      } else {
+        const carrierClient = getCarrierASNContainerClient();
+        files = await fetchCarrierASNsForPOByDateRange(carrierClient, poRef, 60);
+        if (files.length === 0) {
+          errors.push(`Carrier ASN not found in blob for PO ${poRef} (scanned last 60 days)`);
+        }
+      }
+      carrierAsnFiles.push(...files);
+    } catch (err) {
+      errors.push(`Error fetching carrier ASN for PO ${poRef}: ${err.message}`);
+    }
+  }
+
+  return { poFeeds: [], asnFeeds: [], carrierAsnFiles, errors, localMode: local };
+}
+
+/**
  * Search blobs by name prefix (or substring in local mode).
  * Returns up to 50 results with name, size, lastModified.
  */
@@ -371,4 +443,4 @@ async function searchBlobs(query) {
   return results;
 }
 
-module.exports = { fetchFeeds, searchBlobs };
+module.exports = { fetchFeeds, fetchCarrierFeedsOnly, searchBlobs };

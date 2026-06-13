@@ -8,6 +8,16 @@ const BIBLE_DIR = path.join(__dirname, '..', 'bible');
 const BIBLE_FILE = path.join(BIBLE_DIR, 'SupplierBible_working.xlsx');
 const LOG_FILE   = path.join(BIBLE_DIR, 'generation-log.json');
 
+// ── FC Master — keyed by POFC / FC_ID from carrier feed ───────────────────────
+// Add / update entries here when new FCs come online.
+const FC_MASTER = {
+  'FC01': { name: 'ASOS Barnsley',           street1: 'Langthwaite Grange Industrial Estate', street2: '', city: 'South Kirkby',   postal: 'WF9 3NR',  country: 'GB' },
+  'FC02': { name: 'ASOS Lichfield',           street1: 'Swan Island',                          street2: '', city: 'Lichfield',      postal: 'WS13 7DD', country: 'GB' },
+  'FC03': { name: 'ASOS Hemel Hempstead',     street1: 'Maylands Avenue',                      street2: '', city: 'Hemel Hempstead',postal: 'HP2 7DE',  country: 'GB' },
+  'FC04': { name: 'ASOS Euro Hub',            street1: 'Sloterweg 793',                        street2: '', city: 'Badhoevedorp',   postal: '1171 VC',  country: 'NL' },
+  'FC05': { name: 'ASOS US Hub',              street1: '5025 Bleigh Avenue',                   street2: '', city: 'Philadelphia',   postal: 'PA 19136', country: 'US' },
+};
+
 const CARTON_TYPES = {
   'BDCM1':   { weight: 1.40, L: 60.00, W: 30.00, H: 40.00 },
   'BDCM3':   { weight: 1.00, L: 45.00, W: 29.50, H: 18.80 },
@@ -32,7 +42,7 @@ const CARTON_TYPES = {
 
 /**
  * Merge supplier data + PO feeds + ASN feeds into MASTER rows.
- * Write to working Excel with all 6 sheets.
+ * Write to working Excel with all sheets.
  */
 async function build(supplierData, feedData) {
   if (!fs.existsSync(BIBLE_DIR)) fs.mkdirSync(BIBLE_DIR, { recursive: true });
@@ -59,6 +69,7 @@ async function build(supplierData, feedData) {
   // carrierAsnIndex[poId][sku] = { asnId, qty, ean, description, size, colour, style, packFormat, country }
   // A PO may appear in multiple carrier files (e.g. split shipments) — merge all.
   const carrierAsnIndex = {}; // poId -> sku -> carrier line data
+  const carrierPoMeta   = {}; // poId -> { supplier, supplierCode, shippingPoint, shippingTerms, fcId }
   // Sort files oldest-first so later files overwrite earlier ones (latest wins)
   const sortedCarrierFiles = [...carrierAsnFiles].sort((a, b) => {
     const ta = a.lastModified ? new Date(a.lastModified).getTime() : 0;
@@ -69,6 +80,14 @@ async function build(supplierData, feedData) {
     for (const asnGroup of (file.parsed || [])) {
       const poId = asnGroup.poId;
       if (!carrierAsnIndex[poId]) carrierAsnIndex[poId] = {};
+      // Always overwrite meta with latest file's data
+      carrierPoMeta[poId] = {
+        supplier:      asnGroup.supplier      || '',
+        supplierCode:  asnGroup.supplierCode  || '',
+        shippingPoint: asnGroup.shippingPoint || '',
+        shippingTerms: asnGroup.shippingTerms || '',
+        fcId:          asnGroup.fcId          || ''
+      };
       for (const line of asnGroup.lines) {
         // Files sorted oldest→newest so every write overwrites with a later file's data
         carrierAsnIndex[poId][line.sku] = {
@@ -142,30 +161,42 @@ async function build(supplierData, feedData) {
         PO_Number:   poNum,
         ASN_Ref:     asnRef,  // carrier ASNID when available
 
-        // From PO feed
-        Supplier_Name:     po?.supplierName   || carrierLine?.style && '' || '',
-        Supplier_ID:       po?.supplierId     || '',
-        Factory_Name:      po?.factoryName    || '',
-        Factory_ID:        po?.factoryId      || '',
-        Factory_Street1:   po?.factoryStreet1 || '',
-        Factory_Street2:   po?.factoryStreet2 || '',
-        Factory_Street3:   po?.factoryStreet3 || '',
-        Factory_City:      po?.factoryCity    || '',
-        Factory_PostalCd:  po?.factoryPostal  || '',
-        Factory_CountryCd: po?.factoryCountry || carrierLine?.country || '',
-        FC_Name:           po?.fcName         || '',
-        FC_ID:             po?.fcId           || carrierLine?.fcId || sRow.FC_ID || 'FC01',
-        FC_Street1:        po?.fcStreet1      || '',
-        FC_Street2:        po?.fcStreet2      || '',
-        FC_Street3:        po?.fcStreet3      || '',
-        FC_City:           po?.fcCity         || '',
-        FC_StateProvinceCd: po?.fcState       || '',
-        FC_PostalCd:       po?.fcPostal       || '',
-        FC_CountryCd:      po?.fcCountry      || 'GB',
-        Carrier_ID:        po?.carrierId      || '',
-        Carrier_Name:      po?.carrierName    || '',
-        Loading_Port_LOCODE: po?.loadingPortId || '',
-        F1_ID:             po?.f1Id           || '',
+        // Supplier — from carrier feed
+        Supplier_Name:     carrierPoMeta[poNum]?.supplier     || '',
+        Supplier_ID:       carrierPoMeta[poNum]?.supplierCode || '',
+
+        // Factory — mandatory from supplier template
+        Factory_Name:      sRow.Factory_Name      || '',
+        Factory_ID:        sRow.Factory_ID        || '',
+        Factory_Street1:   sRow.Factory_Street1   || '',
+        Factory_Street2:   sRow.Factory_Street2   || '',
+        Factory_Street3:   sRow.Factory_Street3   || '',
+        Factory_City:      sRow.Factory_City      || '',
+        Factory_PostalCd:  sRow.Factory_PostalCd  || '',
+        Factory_CountryCd: sRow.Factory_CountryCd || '',
+        Country_Of_Origin:  carrierLine?.country   || '',
+
+        // FC — resolved from FC_MASTER by fcId from carrier feed
+        ...(() => {
+          const fcId = carrierPoMeta[poNum]?.fcId || 'FC01';
+          const fc   = FC_MASTER[fcId] || {};
+          return {
+            FC_ID:              fcId,
+            FC_Name:            fc.name    || '',
+            FC_Street1:         fc.street1 || '',
+            FC_Street2:         fc.street2 || '',
+            FC_Street3:         '',
+            FC_City:            fc.city    || '',
+            FC_StateProvinceCd: '',
+            FC_PostalCd:        fc.postal  || '',
+            FC_CountryCd:       fc.country || 'GB',
+          };
+        })(),
+
+        Carrier_ID:          '3',
+        Carrier_Name:        '',
+        Loading_Port_LOCODE: carrierPoMeta[poNum]?.shippingPoint || '',
+        F1_ID:               carrierPoMeta[poNum]?.fcId          || '',
 
         // SKU — carrier feed takes priority for enrichment, then PO feed
         SKU:           sku,
@@ -206,7 +237,7 @@ async function build(supplierData, feedData) {
         Remarks:  sRow.Remarks  || '',
         ASOS_Intake_Week:    sRow.ASOS_Intake_Week || '',
         Collection_Time:     sRow.Collection_Time  || '',
-        Incoterms:           po?.incoterms          || '',
+        Incoterms:           carrierPoMeta[poNum]?.shippingTerms || '',
         Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || '30'
       });
   }
@@ -229,29 +260,41 @@ async function build(supplierData, feedData) {
           ASN_Ref:      carrierLine.asnId,
           _missingFromSupplier: true,   // flag for Excel highlighting
 
-          Supplier_Name:      po?.supplierName   || '',
-          Supplier_ID:        po?.supplierId     || '',
-          Factory_Name:       po?.factoryName    || '',
-          Factory_ID:         po?.factoryId      || '',
-          Factory_Street1:    po?.factoryStreet1 || '',
-          Factory_Street2:    po?.factoryStreet2 || '',
-          Factory_Street3:    po?.factoryStreet3 || '',
-          Factory_City:       po?.factoryCity    || '',
-          Factory_PostalCd:   po?.factoryPostal  || '',
-          Factory_CountryCd:  po?.factoryCountry || carrierLine.country || '',
-          FC_Name:            po?.fcName         || '',
-          FC_ID:              po?.fcId           || carrierLine.fcId || 'FC01',
-          FC_Street1:         po?.fcStreet1      || '',
-          FC_Street2:         po?.fcStreet2      || '',
-          FC_Street3:         po?.fcStreet3      || '',
-          FC_City:            po?.fcCity         || '',
-          FC_StateProvinceCd: po?.fcState        || '',
-          FC_PostalCd:        po?.fcPostal        || '',
-          FC_CountryCd:       po?.fcCountry       || 'GB',
-          Carrier_ID:         po?.carrierId       || '',
-          Carrier_Name:       po?.carrierName     || '',
-          Loading_Port_LOCODE: po?.loadingPortId  || '',
-          F1_ID:              po?.f1Id            || '',
+          Supplier_Name:      carrierPoMeta[poNum]?.supplier     || '',
+          Supplier_ID:        carrierPoMeta[poNum]?.supplierCode || '',
+
+          // Factory — not available (SKU missing from supplier template)
+          Factory_Name:       '',
+          Factory_ID:         '',
+          Factory_Street1:    '',
+          Factory_Street2:    '',
+          Factory_Street3:    '',
+          Factory_City:       '',
+          Factory_PostalCd:   '',
+          Factory_CountryCd:  '',
+          Country_Of_Origin:   carrierLine.country || '',
+
+          // FC — resolved from FC_MASTER
+          ...(() => {
+            const fcId = carrierPoMeta[poNum]?.fcId || carrierLine.fcId || 'FC01';
+            const fc   = FC_MASTER[fcId] || {};
+            return {
+              FC_ID:              fcId,
+              FC_Name:            fc.name    || '',
+              FC_Street1:         fc.street1 || '',
+              FC_Street2:         fc.street2 || '',
+              FC_Street3:         '',
+              FC_City:            fc.city    || '',
+              FC_StateProvinceCd: '',
+              FC_PostalCd:        fc.postal  || '',
+              FC_CountryCd:       fc.country || 'GB',
+            };
+          })(),
+
+          Carrier_ID:          '3',
+          Carrier_Name:        '',
+          Loading_Port_LOCODE: carrierPoMeta[poNum]?.shippingPoint || '',
+          F1_ID:               carrierPoMeta[poNum]?.fcId          || '',
 
           SKU:           sku,
           Product_Style: poLine?.line?.productStyle || carrierLine.style       || '',
@@ -288,7 +331,7 @@ async function build(supplierData, feedData) {
           Remarks:  'SKU from carrier feed — not found in supplier template',
           ASOS_Intake_Week:    '',
           Collection_Time:     '',
-          Incoterms:           po?.incoterms || '',
+          Incoterms:           carrierPoMeta[poNum]?.shippingTerms || '',
           Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || '30'
         });
       }
@@ -296,12 +339,12 @@ async function build(supplierData, feedData) {
   }
 
   // Write Excel
-  await writeExcel(masterRows, supplierRows, poFeeds, carrierAsnFiles);
+  await writeExcel(masterRows, supplierRows, carrierAsnFiles);
 
   return { masterRows, filePath: BIBLE_FILE, warnings: skuWarnings };
 }
 
-async function writeExcel(masterRows, supplierRows, poFeeds, carrierAsnFiles) {
+async function writeExcel(masterRows, supplierRows, carrierAsnFiles) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'CarrierBookingStub';
   wb.created = new Date();
@@ -346,7 +389,10 @@ async function writeExcel(masterRows, supplierRows, poFeeds, carrierAsnFiles) {
     const hdrs = [
       'PO_Number','ASN_Ref','SKU','No_of_Cartons','Unit_Weight_KG',
       'Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date',
-      'Traffic_Mode','EAN_Barcode','Colour_Code','Size_Code','Carton_Type',
+      'Traffic_Mode',
+      'Factory_Name','Factory_ID','Factory_Street1','Factory_Street2',
+      'Factory_City','Factory_PostalCd','Factory_CountryCd',
+      'EAN_Barcode','Colour_Code','Size_Code','Carton_Type',
       'Carton_Length_cm','Carton_Width_cm','Carton_Height_cm','Carton_Weight_KG',
       'Gross_Weight_KG','Net_Weight_KG','Volume_M3','Booking_Qty','Pack_Type',
       'Collection_Type','Collection_Time','Hazardous','Expected_Delivery_Date',
@@ -355,46 +401,43 @@ async function writeExcel(masterRows, supplierRows, poFeeds, carrierAsnFiles) {
     addSheet('SUPPLIER_INPUT', hdrs, supplierRows);
   }
 
-  // Sheet 2: PO_FEED_EXTRACT
+  // Sheet 2: CARRIER_FEED_EXTRACT — flattened from carrier ASN files
   {
-    const hdrs = ['orderId','supplierName','supplierId','factoryName','factoryId',
-      'factoryCity','factoryCountry','fcName','fcId','carrierId','loadingPortId','incoterms'];
-    addSheet('PO_FEED_EXTRACT', hdrs, poFeeds);
-  }
-
-  // Sheet 3: ASN_FEED_EXTRACT — flattened from carrier ASN files
-  {
-    const asnFlat = [];
+    const carrierFlat = [];
     for (const file of (carrierAsnFiles || [])) {
       for (const asnGroup of (file.parsed || [])) {
         for (const line of (asnGroup.lines || [])) {
-          asnFlat.push({
-            filename:    file.filename,
-            blobPath:    file.blobPath || '',
-            asnId:       asnGroup.asnId,
-            poId:        asnGroup.poId,
-            fcId:        asnGroup.fcId,
-            shipDate:    asnGroup.shipDate,
-            supplier:    asnGroup.supplier,
-            sku:         line.sku,
-            ean:         line.ean,
-            description: line.description,
-            size:        line.size,
-            colour:      line.colour,
-            style:       line.style,
-            packFormat:  line.packFormat,
-            country:     line.country,
-            quantity:    line.quantity
+          carrierFlat.push({
+            filename:      file.filename,
+            blobPath:      file.blobPath || '',
+            asnId:         asnGroup.asnId,
+            poId:          asnGroup.poId,
+            fcId:          asnGroup.fcId,
+            shipDate:      asnGroup.shipDate,
+            supplier:      asnGroup.supplier,
+            supplierCode:  asnGroup.supplierCode,
+            shippingPoint: asnGroup.shippingPoint,
+            shippingTerms: asnGroup.shippingTerms,
+            sku:           line.sku,
+            ean:           line.ean,
+            description:   line.description,
+            size:          line.size,
+            colour:        line.colour,
+            style:         line.style,
+            packFormat:    line.packFormat,
+            country:       line.country,
+            quantity:      line.quantity
           });
         }
       }
     }
     const hdrs = ['filename','blobPath','asnId','poId','fcId','shipDate','supplier',
+                  'supplierCode','shippingPoint','shippingTerms',
                   'sku','ean','description','size','colour','style','packFormat','country','quantity'];
-    addSheet('ASN_FEED_EXTRACT', hdrs, asnFlat);
+    addSheet('CARRIER_FEED_EXTRACT', hdrs, carrierFlat);
   }
 
-  // Sheet 4: MASTER
+  // Sheet 3: MASTER
   {
     const hdrs = Object.keys(masterRows[0] || {});
     const ws = addSheet('MASTER', hdrs, masterRows);
@@ -410,7 +453,7 @@ async function writeExcel(masterRows, supplierRows, poFeeds, carrierAsnFiles) {
     });
   }
 
-  // Sheet 5: CARTON_TYPES
+  // Sheet 4: CARTON_TYPES
   {
     const ws = wb.addWorksheet('CARTON_TYPES');
     const hdrs = ['Carton_Type','Weight_KG','Length_cm','Width_cm','Height_cm'];
@@ -422,7 +465,7 @@ async function writeExcel(masterRows, supplierRows, poFeeds, carrierAsnFiles) {
     ws.columns.forEach(col => { col.width = 18; });
   }
 
-  // Sheet 6: GENERATION_LOG (from JSON sidecar — no Excel re-read needed)
+  // Sheet 5: GENERATION_LOG (from JSON sidecar — no Excel re-read needed)
   {
     const hdrs = ['Timestamp','Booking_Ref','PO_Numbers','Filename','CtrlNumber','SFTP_Status'];
     const existing = readLogFromJson();

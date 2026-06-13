@@ -59,6 +59,7 @@ async function build() {
     '⚠  INSTRUCTIONS: One row per SKU — fill in all RED columns for every SKU line. ' +
     'Multiple rows can share the same PO_Number/ASN_Ref. ' +
     'No_of_Cartons and Unit_Weight_KG must be filled per SKU row. ' +
+    'Factory columns (Factory_Name through Factory_CountryCd) are mandatory — fill once per PO group. ' +
     'Carton dimensions auto-fill from Carton_Type. Dates in DD/MM/YYYY format. Do NOT modify column headers.';
   banner.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
   banner.font   = { bold: true, color: { argb: 'FF7B3F00' }, size: 11 };
@@ -92,6 +93,14 @@ async function build() {
     { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo_Ready_Planned_Collection_Date', width: 34, type: 'mandatory' },
     { key: 'Carrier_Booking_Request_Date',        label: 'Carrier_Booking_Request_Date',        width: 28, type: 'mandatory' },
     { key: 'Traffic_Mode',                        label: 'Traffic_Mode',                        width: 14, type: 'mandatory' },
+    // Factory — mandatory (no longer sourced from PO feed)
+    { key: 'Factory_Name',      label: 'Factory_Name',      width: 28, type: 'mandatory' },
+    { key: 'Factory_ID',        label: 'Factory_ID',        width: 18, type: 'mandatory' },
+    { key: 'Factory_Street1',   label: 'Factory_Street1',   width: 30, type: 'mandatory' },
+    { key: 'Factory_Street2',   label: 'Factory_Street2',   width: 24, type: 'optional'  },
+    { key: 'Factory_City',      label: 'Factory_City',      width: 20, type: 'mandatory' },
+    { key: 'Factory_PostalCd',  label: 'Factory_PostalCd',  width: 16, type: 'mandatory' },
+    { key: 'Factory_CountryCd', label: 'Factory_CountryCd', width: 16, type: 'mandatory' },
     // optional supplier fills
     { key: 'EAN_Barcode',    label: 'EAN_Barcode',    width: 18, type: 'optional' },
     { key: 'Colour_Code',    label: 'Colour_Code',    width: 14, type: 'optional' },

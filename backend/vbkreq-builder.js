@@ -39,6 +39,7 @@ const FC_LOCODE = {
 const MODE_MAP = {
   '10': '10', '30': '30', '40': '40', '50': '50', '60': '60', '70': '70',
   'SEA': '10', 'OCEAN': '10', 'FCL': '10', 'LCL': '10',
+  'CFS': '10', 'CY':  '10',  // supplier template dropdown values
   'ROAD': '30', 'TRUCK': '30',
   'AIR': '40', 'AIR-ASOS': '40', 'AIR ASOS': '40',
   'RAIL': '50',
@@ -157,7 +158,7 @@ async function build(masterRows, purposeCd) {
   const bookingRef = first.Booking_Ref || getBookingRef();
   const version = getBookingVersion(bookingRef, pcd);
   const trafficMode = first.Traffic_Mode || 'CFS';
-  const originCountry = first.Factory_CountryCd || 'XX';
+  const originCountry = first.Country_Of_Origin || first.Factory_CountryCd || 'XX';
   const hazCode = hazardousCode(first.Hazardous);
   const collectionType = first.Collection_Type || 'Delivery';
   const collectionTime = first.Collection_Time || '';
@@ -222,7 +223,6 @@ async function build(masterRows, purposeCd) {
   bpMsg.ele('Reference', { RefTypeCd: 'QY',  SourceRefTypeCd: '128' }).txt(trafficMode);
   bpMsg.ele('Reference', { RefTypeCd: '4B',  SourceRefTypeCd: '128' }).txt(originCountry);
   bpMsg.ele('Reference', { RefTypeCd: 'BH',  SourceRefTypeCd: '128' }).txt(hazCode);
-  bpMsg.ele('Reference', { RefTypeCd: 'SFZ', SourceRefTypeCd: '128' }).txt('13');
   bpMsg.ele('Reference', { RefTypeCd: 'CC',  SourceRefTypeCd: '128' }).txt('Green');
   bpMsg.ele('Reference', { RefTypeCd: 'CD',  SourceRefTypeCd: '128' }).txt(collectionType);
   // CT (Collection Time) — mandatory when collection type is Collection
@@ -276,7 +276,7 @@ async function build(masterRows, purposeCd) {
 
   // Status elements
   bpMsg.ele('Status').ele('Date', { DateTypeCd: '018', TimeZone: 'LT' }).txt(cargoReadyDate);
-  bpMsg.ele('Status').ele('Date', { DateTypeCd: '081', TimeZone: 'LT' }).txt(cargoReadyDate);
+  bpMsg.ele('Status').ele('Date', { DateTypeCd: '081', TimeZone: 'LT' }).txt(bookingReqDate);
 
   const stL = bpMsg.ele('Status');
   stL.ele('Location', { LocTypeCd: 'L' }).ele('LocationID', { Qualifier: 'UN' }).txt(loadingPortLocode);
