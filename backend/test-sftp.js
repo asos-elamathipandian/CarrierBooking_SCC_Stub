@@ -33,6 +33,7 @@ function loadAndValidateConfig() {
     username:       process.env.SFTP_USERNAME,
     password:       process.env.SFTP_PASSWORD       || null,
     privateKeyPath: process.env.SFTP_PRIVATE_KEY_PATH || null,
+    passphrase:     process.env.SFTP_PRIVATE_KEY_PASSPHRASE || null,
     uploadPath:     process.env.SFTP_UPLOAD_PATH    || '/inbound/vbkreq/',
   };
 
@@ -78,6 +79,12 @@ function loadAndValidateConfig() {
     info('SFTP_PRIVATE_KEY_PATH = (not set)');
   }
 
+  if (cfg.passphrase) {
+    pass('SFTP_PRIVATE_KEY_PASSPHRASE = (set)');
+  } else {
+    info('SFTP_PRIVATE_KEY_PASSPHRASE = (not set — key must be unencrypted)');
+  }
+
   if (!cfg.password && !cfg.privateKeyPath) {
     fail('No auth method set — provide SFTP_PASSWORD or SFTP_PRIVATE_KEY_PATH');
     ok = false;
@@ -96,6 +103,7 @@ async function testConnectivity(cfg) {
   const authOpts = {};
   if (cfg.password)           authOpts.password   = cfg.password;
   if (cfg._resolvedKeyPath)   authOpts.privateKey = fs.readFileSync(cfg._resolvedKeyPath);
+  if (cfg.passphrase)         authOpts.passphrase = cfg.passphrase;
 
   const sftp = new SftpClient();
 

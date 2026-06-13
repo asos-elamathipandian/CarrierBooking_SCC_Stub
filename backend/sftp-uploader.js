@@ -12,12 +12,13 @@ function loadConfig() {
   const username   = process.env.SFTP_USERNAME;
   const password   = process.env.SFTP_PASSWORD;
   const keyPath    = process.env.SFTP_PRIVATE_KEY_PATH;
+  const passphrase = process.env.SFTP_PRIVATE_KEY_PASSPHRASE || null;
   const uploadPath = process.env.SFTP_UPLOAD_PATH || '/inbound/vbkreq/';
 
   if (!host || !username) return null; // local mode — SFTP not configured
   if (!password && !keyPath) return null; // need at least one auth method
 
-  return { host, port, username, password: password || null, privateKeyPath: keyPath || null, uploadPath };
+  return { host, port, username, password: password || null, privateKeyPath: keyPath || null, passphrase, uploadPath };
 }
 
 /**
@@ -55,8 +56,9 @@ async function upload(filename, xmlContent) {
   }
 
   const authOpts = {};
-  if (cfg.password)  authOpts.password   = cfg.password;
-  if (keyPath)       authOpts.privateKey = fs.readFileSync(keyPath);
+  if (cfg.password)    authOpts.password   = cfg.password;
+  if (keyPath)         authOpts.privateKey = fs.readFileSync(keyPath);
+  if (cfg.passphrase)  authOpts.passphrase = cfg.passphrase;
 
   const sftp = new SftpClient();
 
