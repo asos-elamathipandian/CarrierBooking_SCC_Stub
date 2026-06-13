@@ -228,7 +228,11 @@ async function fetchCarrierASNsForPO(containerClient, poRef, shipDate, cancelDat
       const lastModified = blob.properties.lastModified || new Date(0);
       console.log(`[Carrier ASN] MATCH: ${blob.name}`);
       let parsed = [];
-      try { parsed = await carrierAsnParser.parse(content); } catch (e) {
+      try {
+        const all = await carrierAsnParser.parse(content);
+        // Filter to only ASN groups belonging to the target PO
+        parsed = all.filter(g => g.poId === poRef);
+      } catch (e) {
         console.warn(`[Carrier ASN] Parse warning for ${filename}: ${e.message}`);
       }
       matched.push({ filename, blobPath: blob.name, xml: content, poRef, parsed, lastModified });
@@ -372,7 +376,11 @@ async function fetchCarrierASNsForPOByDateRange(containerClient, poRef, daysBack
         const filename = blob.name.split('/').pop();
         const lastModified = blob.properties.lastModified || new Date(0);
         let parsed = [];
-        try { parsed = await carrierAsnParser.parse(content); } catch (_) {}
+        try {
+          const all = await carrierAsnParser.parse(content);
+          // Filter to only ASN groups belonging to the target PO
+          parsed = all.filter(g => g.poId === poRef);
+        } catch (_) {}
         matched.push({ filename, blobPath: blob.name, xml: content, poRef, parsed, lastModified });
       }
     }

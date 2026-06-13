@@ -7,13 +7,17 @@ const path = require('path');
 const OUTPUT_DIR = path.join(__dirname, '..', 'output');
 
 function loadConfig() {
-  const configPath = path.join(__dirname, '..', 'config', 'sftp.config.json');
-  if (!fs.existsSync(configPath)) return null; // local mode
-  const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  const required = ['host', 'port', 'username', 'privateKeyPath', 'uploadPath'];
-  const missing = required.filter(k => !cfg[k]);
-  if (missing.length > 0) throw new Error(`SFTP config missing: ${missing.join(', ')}`);
-  return cfg;
+  const host       = process.env.SFTP_HOST;
+  const port       = process.env.SFTP_PORT       || '22';
+  const username   = process.env.SFTP_USERNAME;
+  const password   = process.env.SFTP_PASSWORD;
+  const keyPath    = process.env.SFTP_PRIVATE_KEY_PATH;
+  const uploadPath = process.env.SFTP_UPLOAD_PATH || '/inbound/vbkreq/';
+
+  if (!host || !username) return null; // local mode — SFTP not configured
+  if (!password && !keyPath) return null; // need at least one auth method
+
+  return { host, port, username, password: password || null, privateKeyPath: keyPath || null, uploadPath };
 }
 
 /**
@@ -40,15 +44,20 @@ async function upload(filename, xmlContent) {
   const cfg = loadConfig();
   if (!cfg) return saveLocally(filename, xmlContent);
 
-  const keyPath = path.isAbsolute(cfg.privateKeyPath)
-    ? cfg.privateKeyPath
-    : path.join(__dirname, '..', cfg.privateKeyPath);
+  const keyPath = cfg.privateKeyPath
+    ? (path.isAbsolute(cfg.privateKeyPath)
+        ? cfg.privateKeyPath
+        : path.join(__dirname, '..', cfg.privateKeyPath))
+    : null;
 
-  if (!fs.existsSync(keyPath)) {
+  if (keyPath && !fs.existsSync(keyPath)) {
     throw new Error(`Private key file not found: ${keyPath}`);
   }
 
-  const privateKey = fs.readFileSync(keyPath);
+  const authOpts = {};
+  if (cfg.password)  authOpts.password   = cfg.password;
+  if (keyPath)       authOpts.privateKey = fs.readFileSync(keyPath);
+
   const sftp = new SftpClient();
 
   const remotePath = cfg.uploadPath.endsWith('/')
@@ -60,7 +69,7 @@ async function upload(filename, xmlContent) {
       host: cfg.host,
       port: parseInt(cfg.port, 10),
       username: cfg.username,
-      privateKey,
+      ...authOpts,
       readyTimeout: 20000,
       retries: 2,
       retry_minTimeout: 2000
