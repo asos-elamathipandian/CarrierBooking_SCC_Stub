@@ -4,7 +4,8 @@ const ExcelJS = require('exceljs');
 
 const REQUIRED_COLS = [
   'PO_Number', 'SKU', 'No_of_Cartons', 'Unit_Weight_KG', 'Booking_Qty',
-  'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date', 'Traffic_Mode',
+  'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date',
+  'Traffic_Mode', 'Mode_Of_Transport',
   'Factory_Name', 'Factory_ID', 'Factory_Street1', 'Factory_City', 'Factory_PostalCd', 'Factory_CountryCd'
 ];
 

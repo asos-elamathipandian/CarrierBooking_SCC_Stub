@@ -53,11 +53,11 @@ async function build() {
   const ws = wb.addWorksheet('SUPPLIER_INPUT');
 
   // ── Row 1: Instructions banner ───────────────────────────────────────────────
-  ws.mergeCells('A1:AB1');
+  ws.mergeCells('A1:AG1');
   const banner = ws.getCell('A1');
   banner.value =
     '⚠  INSTRUCTIONS: One row per SKU — fill in all RED columns for every SKU line. ' +
-    'Multiple rows can share the same PO_Number/ASN_Ref. ' +
+    'Multiple rows can share the same PO_Number. ' +
     'No_of_Cartons and Unit_Weight_KG must be filled per SKU row. ' +
     'Factory columns (Factory_Name through Factory_CountryCd) are mandatory — fill once per PO group. ' +
     'Carton dimensions auto-fill from Carton_Type. Dates in DD/MM/YYYY format. Do NOT modify column headers.';
@@ -86,13 +86,13 @@ async function build() {
   const columns = [
     // mandatory (red)
     { key: 'PO_Number',                           label: 'PO_Number',                           width: 22, type: 'mandatory' },
-    { key: 'ASN_Ref',                             label: 'ASN_Ref',                             width: 22, type: 'mandatory' },
     { key: 'SKU',                                 label: 'SKU',                                 width: 22, type: 'mandatory' },
     { key: 'No_of_Cartons',                       label: 'No_of_Cartons',                       width: 16, type: 'mandatory' },
     { key: 'Unit_Weight_KG',                      label: 'Unit_Weight_KG',                      width: 16, type: 'mandatory' },
     { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo_Ready_Planned_Collection_Date', width: 34, type: 'mandatory' },
     { key: 'Carrier_Booking_Request_Date',        label: 'Carrier_Booking_Request_Date',        width: 28, type: 'mandatory' },
-    { key: 'Traffic_Mode',                        label: 'Traffic_Mode',                        width: 14, type: 'mandatory' },
+    { key: 'Traffic_Mode',        label: 'Traffic_Mode',        width: 14, type: 'mandatory' },
+    { key: 'Mode_Of_Transport',    label: 'Mode_Of_Transport',    width: 18, type: 'mandatory' },
     // Factory — mandatory (no longer sourced from PO feed)
     { key: 'Factory_Name',      label: 'Factory_Name',      width: 28, type: 'mandatory' },
     { key: 'Factory_ID',        label: 'Factory_ID',        width: 18, type: 'mandatory' },
@@ -123,13 +123,8 @@ async function build() {
     // Collection_Time becomes mandatory when Collection_Type = 'Collection' (HH:MM format)
     { key: 'Collection_Time',  label: 'Collection_Time (HH:MM)', width: 24, type: 'optional' },
     { key: 'Hazardous',        label: 'Hazardous',        width: 20, type: 'default', default: 'N/A' },
-    // optional dates
+    // optional
     { key: 'Expected_Delivery_Date', label: 'Expected_Delivery_Date', width: 24, type: 'optional' },
-    { key: 'ASN_Delivery_Date',      label: 'ASN_Delivery_Date',      width: 20, type: 'optional' },
-    // misc
-    { key: 'ASOS_Intake_Week', label: 'ASOS_Intake_Week', width: 18, type: 'optional' },
-    { key: 'Var_Unit', label: 'Var_Unit', width: 11, type: 'default', default: 0 },
-    { key: 'Var_Pct',  label: 'Var_Pct',  width: 11, type: 'default', default: 0 },
     { key: 'Remarks',  label: 'Remarks',  width: 30, type: 'optional' }
   ];
 
@@ -166,12 +161,11 @@ async function build() {
     const row = ws.getRow(r);
 
     // Static defaults
-    row.getCell(colIdx['Carton_Type']).value   = 'BDCM1';
-    row.getCell(colIdx['Pack_Type']).value      = 'Flat';
-    row.getCell(colIdx['Collection_Type']).value= 'Delivery';
-    row.getCell(colIdx['Hazardous']).value      = 'N/A';
-    row.getCell(colIdx['Var_Unit']).value       = 0;
-    row.getCell(colIdx['Var_Pct']).value        = 0;
+    row.getCell(colIdx['Carton_Type']).value     = 'BDCM1';
+    row.getCell(colIdx['Pack_Type']).value       = 'Flat';
+    row.getCell(colIdx['Collection_Type']).value = 'Delivery';
+    row.getCell(colIdx['Hazardous']).value       = 'N/A';
+    row.getCell(colIdx['Mode_Of_Transport']).value = 'Sea';
 
     // VLOOKUP formulas for carton dimensions from hidden sheet
     const ctRef = `${colLetter(colIdx['Carton_Type'])}${r}`;
@@ -220,7 +214,7 @@ async function build() {
 
     // Date format
     ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date',
-     'Expected_Delivery_Date','ASN_Delivery_Date'].forEach(k =>
+     'Expected_Delivery_Date'].forEach(k =>
       (row.getCell(colIdx[k]).numFmt = 'DD/MM/YYYY')
     );
 
@@ -235,6 +229,13 @@ async function build() {
       formulae: ['"CFS,CY"'],
       showErrorMessage: true, errorTitle: 'Invalid value',
       error: 'Please select CFS or CY'
+    };
+    // Mode_Of_Transport
+    ws.getCell(r, colIdx['Mode_Of_Transport']).dataValidation = {
+      type: 'list', allowBlank: false,
+      formulae: ['"Sea,Air,Road,Rail,Eco"'],
+      showErrorMessage: true, errorTitle: 'Invalid value',
+      error: 'Please select Sea, Air, Road, Rail or Eco'
     };
     // Carton_Type — from hidden lookup sheet
     ws.getCell(r, colIdx['Carton_Type']).dataValidation = {
@@ -271,7 +272,7 @@ async function build() {
     };
     // Date fields
     ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date',
-     'Expected_Delivery_Date','ASN_Delivery_Date'].forEach(k => {
+     'Expected_Delivery_Date'].forEach(k => {
       ws.getCell(r, colIdx[k]).dataValidation = {
         type: 'date', operator: 'greaterThan',
         formulae: [new Date(2020, 0, 1)],

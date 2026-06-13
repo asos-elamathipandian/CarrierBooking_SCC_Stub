@@ -409,6 +409,69 @@
     .blob-missing-msg { margin-top: 8px; padding: 8px 12px; border-radius: 6px; font-size: 12px; line-height: 1.6; }
     .blob-missing-po  { background: #FEF9E7; border-left: 4px solid #F39C12; color: #784212; }
     .blob-missing-asn { background: #FDEDEC; border-left: 4px solid #E74C3C; color: #922B21; }
+
+    /* ── Reference Guide ── */
+    .ref-guide-card { margin-top: 4px; }
+    .ref-guide-header {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; user-select: none;
+      padding: 14px 20px;
+      background: #EBF5FB; border-bottom: 1px solid #D6EAF8;
+    }
+    .ref-guide-header:hover { background: #D6EAF8; }
+    .ref-guide-toggle { font-size: 18px; color: #1F4E79; transition: transform .2s; }
+    .ref-guide-toggle.open { transform: rotate(90deg); }
+    .ref-guide-body { display: none; padding: 20px; }
+    .ref-guide-body.open { display: block; }
+    .rg-summary {
+      background: #F0F8FF; border-left: 4px solid #1F4E79;
+      border-radius: 6px; padding: 14px 16px;
+      font-size: 13px; line-height: 1.8; color: #1a202c; margin-bottom: 20px;
+    }
+    .rg-summary h3 { font-size: 14px; color: #1F4E79; margin-bottom: 8px; }
+    .rg-flow {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+      margin: 12px 0 16px;
+    }
+    .rg-flow-step {
+      background: #1F4E79; color: #fff;
+      border-radius: 6px; padding: 6px 14px;
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+    }
+    .rg-flow-step.carrier { background: #145A32; }
+    .rg-flow-step.system  { background: #5D6D7E; }
+    .rg-flow-arrow { font-size: 16px; color: #888; }
+    .rg-section-title {
+      font-size: 13px; font-weight: 700; color: #1F4E79;
+      text-transform: uppercase; letter-spacing: .6px;
+      margin: 18px 0 8px; border-bottom: 2px solid #D6EAF8; padding-bottom: 4px;
+    }
+    .rg-table-wrap { overflow-x: auto; border: 1px solid #D6EAF8; border-radius: 8px; margin-bottom: 8px; }
+    .rg-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 700px; }
+    .rg-table thead th {
+      background: #1F4E79; color: #fff; padding: 8px 12px;
+      text-align: left; font-size: 11px; font-weight: 600;
+      white-space: nowrap; position: sticky; top: 0; z-index: 1;
+    }
+    .rg-table tbody td { padding: 7px 12px; border-bottom: 1px solid #EBF5FB; vertical-align: top; line-height: 1.5; }
+    .rg-table tbody tr:last-child td { border-bottom: none; }
+    .rg-table tbody tr:hover td { background: #F8FBFF; }
+    .rg-table code { font-family: monospace; font-size: 11px; background: #EBF5FB; padding: 1px 5px; border-radius: 3px; }
+    .src-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 700; white-space: nowrap;
+    }
+    .src-supplier { background: #C0392B; color: #fff; }
+    .src-carrier  { background: #145A32; color: #fff; }
+    .src-system   { background: #5D6D7E; color: #fff; }
+    .src-lookup   { background: #7D3C98; color: #fff; }
+    .src-ui       { background: #E67E22; color: #fff; }
+    .rg-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; font-size: 11px; align-items: center; }
+    .rg-note {
+      font-size: 12px; color: #555; background: #FFFDE7;
+      border-left: 3px solid #F39C12; border-radius: 4px;
+      padding: 8px 12px; margin-top: 10px; line-height: 1.6;
+    }
   </style>
 </head>
 <body>
@@ -604,10 +667,182 @@
     </div>
   </div>
 
+  <!-- ── Reference Guide ── -->
+  <div class="step-card ref-guide-card">
+    <div class="ref-guide-header" onclick="toggleRefGuide(this)">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="step-badge" style="background:#5D6D7E">📖</div>
+        <div>
+          <div class="step-title">Reference Guide — How it works &amp; VBKREQ Field Mapping</div>
+          <div class="step-desc">Click to expand — field sources, flow summary, and XML structure reference</div>
+        </div>
+      </div>
+      <span class="ref-guide-toggle">▶</span>
+    </div>
+    <div class="ref-guide-body" id="refGuideBody">
+
+      <!-- How it works -->
+      <div class="rg-summary">
+        <h3>📋 How this tool works</h3>
+        <p>This tool generates a <strong>VBKREQ XML</strong> (Vendor Booking Request) for submission to E2open TA and DavisTurner. The process runs in five steps:</p>
+        <div class="rg-flow">
+          <div class="rg-flow-step">1 · Supplier uploads Excel</div>
+          <span class="rg-flow-arrow">→</span>
+          <div class="rg-flow-step carrier">2 · Carrier ASN fetched from Azure Blob</div>
+          <span class="rg-flow-arrow">→</span>
+          <div class="rg-flow-step">3 · Master Workbook built</div>
+          <span class="rg-flow-arrow">→</span>
+          <div class="rg-flow-step">4 · VBKREQ XML generated</div>
+          <span class="rg-flow-arrow">→</span>
+          <div class="rg-flow-step system">5 · Uploaded to E2open SFTP</div>
+        </div>
+        <p><strong>Step 1 — Supplier Excel:</strong> The supplier fills in the template (download from <em>Step 1</em>). One row per SKU. All red columns are mandatory. Factory address and booking dates must be completed by the supplier.</p>
+        <p><strong>Step 2 — Carrier Feed:</strong> The DavisTurner carrier ASN XML is either fetched automatically from Azure Blob Storage (keyed on PO numbers parsed from the supplier sheet) or uploaded manually. This feed provides the ASN ID, supplier codes, shipping point, FC destination, country of origin, and line-level SKU quantities.</p>
+        <p><strong>Step 3 — Master Workbook:</strong> The app merges supplier and carrier data row-by-row (matched on PO + SKU). A MASTER sheet is produced. Unmatched rows from either source are also captured. The workbook is downloadable as an audit trail.</p>
+        <p><strong>Step 4 — VBKREQ XML:</strong> The MASTER rows are read and structured into the E2open VBKREQ schema. All field sources are documented below. The XML filename follows the pattern <code>DAVIESTN_E2ASOS_VBKREQ_1.0_&lt;timestamp&gt;&lt;ctrl&gt;.xml</code>.</p>
+        <p><strong>Step 5 — SFTP upload:</strong> The generated XML is pushed to the E2open SFTP server. The booking gets reflected in E2open TA against the ASN shipments and DavisTurner will also receive the booking request through E2open.</p>
+      </div>
+
+      <!-- Legend -->
+      <div class="rg-legend">
+        <strong style="font-size:11px;color:#444">Source key:</strong>
+        <span class="src-badge src-supplier">Supplier Template</span>
+        <span class="src-badge src-carrier">Carrier Feed (ASN XML)</span>
+        <span class="src-badge src-lookup">Internal Lookup Table</span>
+        <span class="src-badge src-system">System Generated</span>
+        <span class="src-badge src-ui">User Selection (UI)</span>
+      </div>
+
+      <!-- Section: Transmission / Envelope -->
+      <div class="rg-section-title">XML Envelope &amp; Transmission</div>
+      <div class="rg-table-wrap"><table class="rg-table">
+        <thead><tr><th>XML Element / Attribute</th><th>Value / Field</th><th>Source</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>XMLTransmission @CtrlNumber</code></td><td>Auto-incrementing integer (persisted in ctrl-counter.json)</td><td><span class="src-badge src-system">System Generated</span></td><td>Unique per generation</td></tr>
+          <tr><td><code>XMLTransmission @Sender</code></td><td><code>DAVIESTN</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded to DT. ⚠ Intentionally set as Sender — E2open SFTP rejects the message if E2open (<code>E2ASOS</code>) is placed as Sender and DavisTurner as Receiver.</td></tr>
+          <tr><td><code>XMLTransmission @Receiver</code></td><td><code>E2ASOS</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded to E2open. ⚠ Intentionally set as Receiver — see Sender note above.</td></tr>
+          <tr><td><code>XMLTransmission @Timestamp</code></td><td>Current date/time at generation</td><td><span class="src-badge src-system">System Generated</span></td><td>Format: YYYYMMDD HH:MM:SS</td></tr>
+          <tr><td><code>BpMessage @PurposeCd</code></td><td>13 / 15 / 01</td><td><span class="src-badge src-ui">User Selection (UI)</span></td><td>13=New, 15=Re-Submission, 01=Cancellation</td></tr>
+        </tbody>
+      </table></div>
+
+      <!-- Section: Booking Header -->
+      <div class="rg-section-title">Booking Header — References &amp; Mode</div>
+      <div class="rg-table-wrap"><table class="rg-table">
+        <thead><tr><th>XML Element</th><th>Field in Master / Value</th><th>Source</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>&lt;Mode&gt;</code></td><td><code>Mode_Of_Transport</code> → mapped to E2 code</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Sea→10, Air→40, Road→30, Rail→50, Eco→70</td></tr>
+          <tr><td><code>Reference QY</code> — Traffic Mode</td><td><code>Traffic_Mode</code> (CFS / CY)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Cargo consolidation method; separate from transport mode</td></tr>
+          <tr><td><code>Reference 4B</code> — Country of Origin</td><td><code>Country_Of_Origin</code> (from <code>&lt;CountryOfOrigin&gt;</code>)</td><td><span class="src-badge src-carrier">Carrier Feed (ASN XML)</span></td><td>Line-level field from carrier XML; falls back to Factory_CountryCd</td></tr>
+          <tr><td><code>Reference BH</code> — Hazardous</td><td><code>Hazardous</code> → Y / N</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>N/A and blank → N; any hazard type → Y</td></tr>
+          <tr><td><code>Reference CC</code> — Cargo Category</td><td><code>Green</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded — ASOS standard</td></tr>
+          <tr><td><code>Reference CD</code> — Collection/Delivery</td><td><code>Collection_Type</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Dropdown: Collection or Delivery (default: Delivery)</td></tr>
+          <tr><td><code>Reference CT</code> — Collection Time</td><td><code>Collection_Time</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Only emitted when Collection_Type = Collection or time is set</td></tr>
+          <tr><td><code>Reference WK</code> — Intake Week</td><td><code>ASOS_Intake_Week</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Not used — ignored</td></tr>
+          <tr><td><code>Remark BRC</code> — Booking Comments</td><td><code>Remarks</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional — only emitted if provided</td></tr>
+        </tbody>
+      </table></div>
+
+      <!-- Section: Trade Partners -->
+      <div class="rg-section-title">Trade Partners</div>
+      <div class="rg-table-wrap"><table class="rg-table">
+        <thead><tr><th>Role</th><th>XML Element</th><th>Field / Value</th><th>Source</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>SU</strong> — Supplier</td><td><code>TradePartnerName</code></td><td><code>Supplier_Name</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;SupplierName&gt;</code> in carrier PO</td></tr>
+          <tr><td><strong>SU</strong> — Supplier</td><td><code>TradePartnerID</code></td><td><code>Supplier_ID</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;SupplierCode&gt;</code> in carrier PO</td></tr>
+          <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerName</code></td><td><code>Factory_Name</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Mandatory column; supplier fills per PO group</td></tr>
+          <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerID</code></td><td><code>Factory_ID</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Factory/vendor code</td></tr>
+          <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerAddress</code></td><td><code>Factory_Street1/2, City, PostalCd, CountryCd</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Street2 is optional</td></tr>
+          <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerName</code></td><td><code>FC_Name</code> (from FC_MASTER)</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>FC_MASTER table keyed on FC_ID (e.g. FC01 = ASOS Barnsley)</td></tr>
+          <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerID</code></td><td><code>FC_ID</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;POFC&gt;</code> or <code>&lt;FinalDestination&gt;</code> in carrier PO</td></tr>
+          <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerAddress</code></td><td>FC street/city/postal/country</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>FC_MASTER table in bible-builder.js — verify addresses are correct</td></tr>
+          <tr><td><strong>CA</strong> — Carrier</td><td><code>TradePartnerID</code></td><td><code>3</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded DavisTurner carrier ID in E2open</td></tr>
+          <tr><td><strong>SL</strong> — Loading Port</td><td><code>TradePartnerID</code></td><td><code>Loading_Port_LOCODE</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;ShippingPoint&gt;</code> UN/LOCODE in carrier PO</td></tr>
+        </tbody>
+      </table></div>
+
+      <!-- Section: Status / Dates / Locations -->
+      <div class="rg-section-title">Status — Dates &amp; Locations</div>
+      <div class="rg-table-wrap"><table class="rg-table">
+        <thead><tr><th>Status Element</th><th>Field / Value</th><th>Source</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>Date 018</code> — Cargo Ready</td><td><code>Cargo_Ready_Planned_Collection_Date</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>DD/MM/YYYY → YYYYMMDD</td></tr>
+          <tr><td><code>Date 081</code> — Booking Request</td><td><code>Carrier_Booking_Request_Date</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>DD/MM/YYYY → YYYYMMDD</td></tr>
+          <tr><td><code>Location L</code> — Loading Port</td><td><code>Loading_Port_LOCODE</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>UN/LOCODE from <code>&lt;ShippingPoint&gt;</code></td></tr>
+          <tr><td><code>Location E</code> — Export Port</td><td>FC_LOCODE lookup by FC_ID</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>FC01/FC02 → GBBSY; update FC_LOCODE table if needed</td></tr>
+          <tr><td><code>Location D</code> — Destination</td><td>FC_LOCODE lookup by FC_ID</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>Same as Location E — port of destination</td></tr>
+          <tr><td><code>Date 211</code> — Booking Req DateTime</td><td>Current timestamp at generation</td><td><span class="src-badge src-system">System Generated</span></td><td>Format: YYYYMMDD HH:MM:SS</td></tr>
+          <tr><td><code>Date OSBT</code></td><td>Current timestamp at generation</td><td><span class="src-badge src-system">System Generated</span></td><td>Format: YYYYMMDD HH:MM:SS</td></tr>
+          <tr><td><code>Date 065</code> — Expected Delivery</td><td><code>Expected_Delivery_Date</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional — only emitted if provided</td></tr>
+          <tr><td><code>Date OSBK</code> — Booking Confirmed</td><td>Current timestamp at generation</td><td><span class="src-badge src-system">System Generated</span></td><td>System time when XML is built</td></tr>
+          <tr><td><code>Date SBK</code></td><td>Current timestamp at generation</td><td><span class="src-badge src-system">System Generated</span></td><td>Same as OSBK</td></tr>
+        </tbody>
+      </table></div>
+
+      <!-- Section: Document -->
+      <div class="rg-section-title">Document — Booking Summary (one per ASN)</div>
+      <div class="rg-table-wrap"><table class="rg-table">
+        <thead><tr><th>XML Element</th><th>Field / Value</th><th>Source</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>Document @Key</code></td><td><code>Booking_Ref</code> (e.g. VB-1000000001)</td><td><span class="src-badge src-system">System Generated</span></td><td>Auto-incrementing booking reference</td></tr>
+          <tr><td><code>Reference ACE</code> — Booking Ref</td><td><code>Booking_Ref</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Same as Document Key</td></tr>
+          <tr><td><code>Reference V0</code> — Version</td><td>1.0 (new) / increments on PurposeCd 15</td><td><span class="src-badge src-system">System Generated</span></td><td>Version history stored in ctrl-counter.json</td></tr>
+          <tr><td><code>Measure N</code> — Net Weight (KG)</td><td>Sum of <code>Unit_Weight_KG</code> per line</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Summed per ASN</td></tr>
+          <tr><td><code>Measure G</code> — Gross Weight (KG)</td><td>Sum of <code>Carton_Weight_KG × No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span> / <span class="src-badge src-lookup">Carton lookup</span></td><td>Carton weight from CARTON_TYPES if not in sheet</td></tr>
+          <tr><td><code>Measure VOL</code> — Volume (M³)</td><td>Sum of <code>(L×W×H ÷ 1,000,000) × No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span> / <span class="src-badge src-lookup">Carton lookup</span></td><td>Dimensions from CARTON_TYPES lookup by Carton_Type</td></tr>
+          <tr><td><code>Measure QUR</code> — Carton Qty</td><td>Sum of <code>No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Summed per ASN</td></tr>
+          <tr><td><code>Measure BKQ</code> — Booking Qty (units)</td><td>Sum of <code>Booking_Qty</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Summed per ASN</td></tr>
+          <tr><td><code>Order @Key / OrderID</code></td><td><code>PO_Number</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>One Order element per PO within the ASN</td></tr>
+        </tbody>
+      </table></div>
+
+      <!-- Section: Line Item -->
+      <div class="rg-section-title">Line Item — SKU Level (one per SKU per PO)</div>
+      <div class="rg-table-wrap"><table class="rg-table">
+        <thead><tr><th>XML Element</th><th>Field / Value</th><th>Source</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>LineItem @Key</code></td><td><code>PO_Number + "_" + SKU + "_" + ASN_Ref</code></td><td><span class="src-badge src-carrier">Carrier Feed</span> + <span class="src-badge src-supplier">Supplier Template</span></td><td>Composite key</td></tr>
+          <tr><td><code>LineItemDescription</code></td><td><code>Description</code> / Product_Style / "SKU {sku}"</td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Falls back through available description fields</td></tr>
+          <tr><td><code>Attribute SI</code> — ASN Ref</td><td><code>ASN_Ref</code> (carrier ASN ID)</td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Carrier's shipment advice number</td></tr>
+          <tr><td><code>Attribute SK</code> — SKU</td><td><code>SKU</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>ASOS product SKU</td></tr>
+          <tr><td><code>Attribute UA</code> — EAN/Barcode</td><td><code>EAN_Barcode</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional; also populated from carrier feed if available</td></tr>
+          <tr><td><code>Attribute CL</code> — Colour</td><td><code>Colour_Code</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional</td></tr>
+          <tr><td><code>Attribute IZ</code> — Size</td><td><code>Size_Code</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional</td></tr>
+          <tr><td><code>Reference PAC</code> — Pack Type</td><td><code>Pack_Type</code> (Flat / Bulk Flat / Hanging)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Default: Flat</td></tr>
+          <tr><td><code>Reference PT</code> — Product Style</td><td><code>Product_Style</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Style code from carrier line</td></tr>
+          <tr><td><code>Reference HZ</code> — Hazardous</td><td><code>Hazardous</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Full hazard type string per line</td></tr>
+          <tr><td><code>Reference DSC</code> — Description</td><td><code>Description</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Item description from carrier</td></tr>
+          <tr><td><code>Reference 98</code> — Carton Type</td><td><code>Carton_Type</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Default: BDCM1; drives dimension lookup</td></tr>
+          <tr><td><code>Reference LN/WD/HT</code> — Dimensions</td><td><code>Carton_Length/Width/Height_cm</code></td><td><span class="src-badge src-lookup">Carton Lookup</span></td><td>Auto-filled via VLOOKUP from CARTON_TYPES table; supplier can override</td></tr>
+          <tr><td><code>Measure BKQ</code> — Booking Qty</td><td><code>Booking_Qty</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Units being shipped</td></tr>
+          <tr><td><code>Measure G</code> — Gross Weight</td><td><code>Carton_Weight_KG × No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span> / <span class="src-badge src-lookup">Carton lookup</span></td><td>Per-line value</td></tr>
+          <tr><td><code>Measure N</code> — Net Weight</td><td><code>Unit_Weight_KG</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Per-unit weight; one value per line</td></tr>
+          <tr><td><code>Measure VOL</code> — Volume</td><td><code>(L×W×H ÷ 1,000,000) × No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span> / <span class="src-badge src-lookup">Carton lookup</span></td><td>Per-line value in M³</td></tr>
+          <tr><td><code>Measure QUR</code> — Carton Qty</td><td><code>No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Per-line carton count</td></tr>
+          <tr><td><code>TradePartner FS</code> — Final Store/FC</td><td><code>F1_ID</code> (= FC_ID from carrier)</td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>ASOS fulfilment centre ID per line; from <code>&lt;POFC&gt;</code></td></tr>
+        </tbody>
+      </table></div>
+
+      <div class="rg-note">
+        ⚠ <strong>Addresses to verify:</strong> The FC_MASTER table in <code>backend/bible-builder.js</code> contains placeholder FC addresses for FC01–FC05. These must be confirmed against the actual ASOS FC address data before going live.<br>
+        ⚠ <strong>FC_LOCODE table:</strong> The destination port LOCODE lookup in <code>backend/vbkreq-builder.js</code> currently maps FC01/FC02/P005 → <code>GBBSY</code>. Update this table if additional FC codes need mapping.
+      </div>
+
+    </div><!-- /ref-guide-body -->
+  </div>
+
 </main>
 
 <footer>CarrierBookingStub v1.0 &nbsp;|&nbsp; DAVIESTN → E2ASOS &nbsp;|&nbsp; QA Stub Tool</footer>
 
 <script src="app.js"></script>
+<script>
+  function toggleRefGuide(header) {
+    const body   = document.getElementById('refGuideBody');
+    const toggle = header.querySelector('.ref-guide-toggle');
+    const isOpen = body.classList.toggle('open');
+    toggle.classList.toggle('open', isOpen);
+  }
+</script>
 </body>
 </html>

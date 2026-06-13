@@ -228,6 +228,7 @@ async function build(supplierData, feedData) {
         Collection_Type: sRow.Collection_Type  || 'Delivery',
         Hazardous:       sRow.Hazardous        || 'N/A',
         Traffic_Mode:    sRow.Traffic_Mode     || '',
+        Mode_Of_Transport: sRow.Mode_Of_Transport || 'Sea',
         Cargo_Ready_Planned_Collection_Date: sRow.Cargo_Ready_Planned_Collection_Date || '',
         Carrier_Booking_Request_Date:        sRow.Carrier_Booking_Request_Date        || '',
         Expected_Delivery_Date:              sRow.Expected_Delivery_Date              || '',
@@ -389,7 +390,7 @@ async function writeExcel(masterRows, supplierRows, carrierAsnFiles) {
     const hdrs = [
       'PO_Number','ASN_Ref','SKU','No_of_Cartons','Unit_Weight_KG',
       'Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date',
-      'Traffic_Mode',
+      'Traffic_Mode','Mode_Of_Transport',
       'Factory_Name','Factory_ID','Factory_Street1','Factory_Street2',
       'Factory_City','Factory_PostalCd','Factory_CountryCd',
       'EAN_Barcode','Colour_Code','Size_Code','Carton_Type',

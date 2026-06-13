@@ -39,7 +39,6 @@ const FC_LOCODE = {
 const MODE_MAP = {
   '10': '10', '30': '30', '40': '40', '50': '50', '60': '60', '70': '70',
   'SEA': '10', 'OCEAN': '10', 'FCL': '10', 'LCL': '10',
-  'CFS': '10', 'CY':  '10',  // supplier template dropdown values
   'ROAD': '30', 'TRUCK': '30',
   'AIR': '40', 'AIR-ASOS': '40', 'AIR ASOS': '40',
   'RAIL': '50',
@@ -171,8 +170,8 @@ async function build(masterRows, purposeCd) {
   const loadingPortLocode = first.Loading_Port_LOCODE || first.Loading_Port_ID || 'XXXX';
   const fcId = first.FC_ID || 'FC01';
   const destLocode = FC_LOCODE[fcId] || 'GBBSY';
-  // Transport mode: from PO feed line, fallback to 30 (Road)
-  const transportModeCode = resolveMode(first.Transport_Mode_Code || masterRows[0]._poMode || '30');
+  // Transport mode: from Mode_Of_Transport column (Sea/Air/Road etc), fallback to 30 (Road)
+  const transportModeCode = resolveMode(first.Mode_Of_Transport || '30');
 
   // Totals — pre-compute per-row values used in Document sections
   for (const row of masterRows) {
@@ -287,9 +286,8 @@ async function build(masterRows, purposeCd) {
   const stD = bpMsg.ele('Status');
   stD.ele('Location', { LocTypeCd: 'D' }).ele('LocationID', { Qualifier: 'UN' }).txt(destLocode);
 
-  const bookingReqDateTime = `${bookingReqDate} ${now.split(' ')[1]}`;
-  bpMsg.ele('Status').ele('Date', { DateTypeCd: '211', TimeZone: 'LT' }).txt(bookingReqDateTime);
-  bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBT', TimeZone: 'LT' }).txt(bookingReqDateTime);
+  bpMsg.ele('Status').ele('Date', { DateTypeCd: '211', TimeZone: 'LT' }).txt(now);
+  bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBT', TimeZone: 'LT' }).txt(now);
 
   if (asnDeliveryDate) bpMsg.ele('Status').ele('Date', { DateTypeCd: '238' }).txt(asnDeliveryDate);
   if (expectedDeliveryDate) bpMsg.ele('Status').ele('Date', { DateTypeCd: '065' }).txt(expectedDeliveryDate);
