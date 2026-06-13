@@ -288,7 +288,7 @@ app.post('/api/build-bible', async (req, res) => {
     // feedData optional — default to empty if carrier feed not yet fetched
     const feedData = sessionState.feedData || { poFeeds: [], asnFeeds: [], carrierAsnFiles: [] };
 
-    const { masterRows, filePath, warnings } = await bibleBuilder.build(
+    const { masterRows, filePath, warnings, extraSkuWarnings } = await bibleBuilder.build(
       sessionState.supplierData,
       feedData
     );
@@ -299,7 +299,8 @@ app.post('/api/build-bible', async (req, res) => {
       success: true,
       masterRowCount: masterRows.length,
       downloadUrl: `/bible/${filename}`,
-      warnings: warnings || []
+      warnings: warnings || [],
+      extraSkuWarnings: extraSkuWarnings || []
     });
   } catch (err) {
     console.error('build-bible error:', err);

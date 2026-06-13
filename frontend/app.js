@@ -408,8 +408,12 @@ btnBuildBible.addEventListener('click', async () => {
       : '';
     let html = `✅ Bible built with <strong>${data.masterRowCount}</strong> MASTER row(s).${dlLink}`;
     if (data.warnings && data.warnings.length) {
-      html += `<br/><br/>⚠️ <strong>${data.warnings.length} SKU(s) excluded</strong> — in supplier template but not on carrier feed:<br/>`
+      html += `<br/><br/>⚠️ <strong>${data.warnings.length} SKU(s) excluded</strong> — in supplier template but NOT on carrier ASN:<br/>`
             + data.warnings.map(w => `&nbsp;• ${w}`).join('<br/>');
+    }
+    if (data.extraSkuWarnings && data.extraSkuWarnings.length) {
+      html += `<br/><br/>⚠️ <strong>${data.extraSkuWarnings.length} extra SKU(s) from carrier ASN</strong> — not in your supplier template (included in VBKREQ with Booking_Qty=0 — please review):<br/>`
+            + data.extraSkuWarnings.map(w => `&nbsp;• ${w}`).join('<br/>');
     }
     setStatus(3, 'success', html);
     setBadge(3, 'done');

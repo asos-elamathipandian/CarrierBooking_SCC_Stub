@@ -339,10 +339,23 @@ async function build(supplierData, feedData) {
     }
   }
 
+  // ── Extra SKUs on carrier feed but not in supplier template ─────────────────
+  const extraSkuWarnings = [];
+  if (hasCarrierData) {
+    for (const [poNum, skuMap] of Object.entries(carrierAsnIndex)) {
+      for (const sku of Object.keys(skuMap)) {
+        if (!coveredKeys.has(`${poNum}_${sku}`)) {
+          const c = carrierAsnIndex[poNum][sku];
+          extraSkuWarnings.push(`PO ${poNum} — SKU ${sku} (${c.description || c.colour || ''} / ${c.size || ''}) is on the carrier ASN but was NOT in your supplier template — included in VBKREQ with Booking_Qty=0`);
+        }
+      }
+    }
+  }
+
   // Write Excel
   await writeExcel(masterRows, supplierRows, carrierAsnFiles);
 
-  return { masterRows, filePath: BIBLE_FILE, warnings: skuWarnings };
+  return { masterRows, filePath: BIBLE_FILE, warnings: skuWarnings, extraSkuWarnings };
 }
 
 async function writeExcel(masterRows, supplierRows, carrierAsnFiles) {
