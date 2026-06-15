@@ -77,6 +77,23 @@ async function parse(buffer) {
     rows.push(obj);
   });
 
+  // Server-side fill-down for Booking_Group: propagate the first value seen for each PO
+  // to all subsequent rows sharing that PO (fallback if the Excel formula was cleared/pasted-over).
+  const poGroupMap = {};
+  for (const row of rows) {
+    const po = String(row.PO_Number || '').trim();
+    const bg = String(row.Booking_Group || '').trim();
+    if (po && bg) {
+      if (!poGroupMap[po]) poGroupMap[po] = bg; // record first occurrence
+    }
+  }
+  for (const row of rows) {
+    const po = String(row.PO_Number || '').trim();
+    if (po && (!row.Booking_Group || String(row.Booking_Group).trim() === '') && poGroupMap[po]) {
+      row.Booking_Group = poGroupMap[po];
+    }
+  }
+
   return { rows, validationErrors, sheetName: sheet.name, headerRowNum };
 }
 

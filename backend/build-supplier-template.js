@@ -131,7 +131,6 @@ async function build() {
     { key: 'Collection_Time',                     label: 'Collection_Time (HH:MM)',             width: 24, type: 'optional' },
     { key: 'Hazardous',                           label: 'Hazardous',                           width: 20, type: 'default', default: 'N/A' },
     // optional
-    { key: 'Expected_Delivery_Date',              label: 'Expected_Delivery_Date',              width: 24, type: 'optional' },
     { key: 'Remarks',                             label: 'Remarks',                             width: 30, type: 'optional' }
   ];
 
@@ -196,6 +195,22 @@ async function build() {
     row.getCell(colIdx['Net_Weight_KG']).value   = { formula: `IFERROR(${unitW}*${bkq},0)` };
     row.getCell(colIdx['Volume_M3']).value        = { formula: `IFERROR((${cL}*${cW}*${cH}/1000000)*${noC},0)` };
 
+    // Booking_Group auto-fill: rows 5+ look up the first occurrence of the same PO in prior rows.
+    // When a match is found the cell fills automatically; when blank (first row for this PO)
+    // the dropdown validation still lets the user pick Separate / Club.
+    if (r > 4) {
+      const bgCol = colLetter(colIdx['Booking_Group']);
+      const poCol = colLetter(colIdx['PO_Number']);
+      row.getCell(colIdx['Booking_Group']).value = {
+        formula: `IF($${poCol}${r}="","",IFERROR(INDEX($${bgCol}$4:${bgCol}${r-1},MATCH($${poCol}${r},$${poCol}$4:$${poCol}${r-1},0)),""))`
+      };
+      // Light amber tint on auto-filled rows so the user can see the cell is derived
+      row.getCell(colIdx['Booking_Group']).fill = {
+        type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' }
+      };
+      row.getCell(colIdx['Booking_Group']).font = { color: { argb: 'FF7B3F00' }, size: 10 };
+    }
+
     // Alternating row shading
     const rowFill = r % 2 === 0
       ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9F9F9' } }
@@ -222,8 +237,7 @@ async function build() {
     row.getCell(colIdx['Volume_M3']).numFmt = '0.0000';
 
     // Date format
-    ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date',
-     'Expected_Delivery_Date'].forEach(k =>
+    ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date'].forEach(k =>
       (row.getCell(colIdx[k]).numFmt = 'DD/MM/YYYY')
     );
 
@@ -289,8 +303,7 @@ async function build() {
       showErrorMessage: true, errorTitle: 'Invalid', error: 'Enter a positive weight in KG'
     };
     // Date fields
-    ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date',
-     'Expected_Delivery_Date'].forEach(k => {
+    ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date'].forEach(k => {
       ws.getCell(r, colIdx[k]).dataValidation = {
         type: 'date', operator: 'greaterThan',
         formulae: [new Date(2020, 0, 1)],

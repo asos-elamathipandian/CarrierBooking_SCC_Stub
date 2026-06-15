@@ -99,8 +99,9 @@ function getBookingVersion(bookingRef, purposeCd) {
   } else if (purposeCd === '01') {
     version = data.bookingVersions[bookingRef] || 1;
   } else {
-    // 13 — new request
-    version = 1;
+    // 13 — new request: start at 1, but preserve any existing version so a
+    // re-run of the same Booking_Ref doesn't silently reset the counter.
+    version = data.bookingVersions[bookingRef] || 1;
     data.bookingVersions[bookingRef] = version;
   }
 
@@ -253,7 +254,7 @@ async function build(masterRows, purposeCd) {
   if (first.Factory_PostalCd) addrFA.ele('PostalCd').txt(first.Factory_PostalCd);
   if (first.Factory_CountryCd) addrFA.ele('CountryCd').txt(first.Factory_CountryCd);
 
-  // TradePartner: FD with address
+  // TradePartner: FD — Final Destination (from <FinalDestination> in carrier feed, FC address lookup)
   const tpFD = bpMsg.ele('TradePartner', { RoleCd: 'FD' });
   tpFD.ele('TradePartnerName').txt(first.FC_Name || '');
   tpFD.ele('TradePartnerID', { Qualifier: '93' }).txt(fcId);
@@ -264,6 +265,12 @@ async function build(masterRows, purposeCd) {
   if (first.FC_StateProvinceCd) addrFD.ele('StateProvinceCd').txt(first.FC_StateProvinceCd);
   if (first.FC_PostalCd) addrFD.ele('PostalCd').txt(first.FC_PostalCd);
   addrFD.ele('CountryCd').txt(first.FC_CountryCd || 'GB');
+
+  // TradePartner: FS — from <POFC> in carrier feed
+  if (first.POFC_ID) {
+    const tpFS = bpMsg.ele('TradePartner', { RoleCd: 'FS' });
+    tpFS.ele('TradePartnerID', { Qualifier: '93' }).txt(first.POFC_ID);
+  }
 
   // TradePartner: CA
   const tpCA = bpMsg.ele('TradePartner', { RoleCd: 'CA' });

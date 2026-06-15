@@ -82,26 +82,29 @@ async function build(supplierData, feedData) {
       if (!carrierAsnIndex[poId]) carrierAsnIndex[poId] = {};
       // Always overwrite meta with latest file's data
       carrierPoMeta[poId] = {
-        supplier:      asnGroup.supplier      || '',
-        supplierCode:  asnGroup.supplierCode  || '',
-        shippingPoint: asnGroup.shippingPoint || '',
-        shippingTerms: asnGroup.shippingTerms || '',
-        fcId:          asnGroup.fcId          || ''
+        supplier:         asnGroup.supplier         || '',
+        supplierCode:     asnGroup.supplierCode     || '',
+        shippingPoint:    asnGroup.shippingPoint    || '',
+        shippingTerms:    asnGroup.shippingTerms    || '',
+        pofc:             asnGroup.pofc             || '',
+        finalDestination: asnGroup.finalDestination || ''
       };
       for (const line of asnGroup.lines) {
         // Files sorted oldest→newest so every write overwrites with a later file's data
         carrierAsnIndex[poId][line.sku] = {
-          asnId:       asnGroup.asnId,
-          fcId:        asnGroup.fcId,
-          shipDate:    asnGroup.shipDate,
-          ean:         line.ean,
-          description: line.description,
-          size:        line.size,
-          colour:      line.colour,
-          style:       line.style,
-          packFormat:  line.packFormat,
-          country:     line.country,
-          quantity:    line.quantity
+          asnId:                asnGroup.asnId,
+          pofc:                 asnGroup.pofc,
+          finalDestination:     asnGroup.finalDestination,
+          shipDate:             asnGroup.shipDate,
+          ean:                  line.ean,
+          description:          line.description,
+          size:                 line.size,
+          colour:               line.colour,
+          style:                line.style,
+          packFormat:           line.packFormat,
+          country:              line.country,
+          quantity:             line.quantity,
+          expectedDeliveryDate: line.expectedDeliveryDate || ''
         };
       }
     }
@@ -176,9 +179,9 @@ async function build(supplierData, feedData) {
         Factory_CountryCd: sRow.Factory_CountryCd || '',
         Country_Of_Origin:  carrierLine?.country   || '',
 
-        // FC — resolved from FC_MASTER by fcId from carrier feed
+        // FC — resolved from FC_MASTER by FinalDestination from carrier feed (TradePartner FD)
         ...(() => {
-          const fcId = carrierPoMeta[poNum]?.fcId || 'FC01';
+          const fcId = carrierPoMeta[poNum]?.finalDestination || 'FC01';
           const fc   = FC_MASTER[fcId] || {};
           return {
             FC_ID:              fcId,
@@ -196,7 +199,8 @@ async function build(supplierData, feedData) {
         Carrier_ID:          '3',
         Carrier_Name:        '',
         Loading_Port_LOCODE: carrierPoMeta[poNum]?.shippingPoint || '',
-        F1_ID:               carrierPoMeta[poNum]?.fcId          || '',
+        POFC_ID:             carrierPoMeta[poNum]?.pofc           || '',
+        F1_ID:               carrierPoMeta[poNum]?.pofc           || '',
 
         // SKU — carrier feed takes priority for enrichment, then PO feed
         SKU:           sku,
@@ -231,7 +235,7 @@ async function build(supplierData, feedData) {
         Mode_Of_Transport: sRow.Mode_Of_Transport || 'Sea',
         Cargo_Ready_Planned_Collection_Date: sRow.Cargo_Ready_Planned_Collection_Date || '',
         Carrier_Booking_Request_Date:        sRow.Carrier_Booking_Request_Date        || '',
-        Expected_Delivery_Date:              sRow.Expected_Delivery_Date              || '',
+        Expected_Delivery_Date:              carrierLine?.expectedDeliveryDate || sRow.Expected_Delivery_Date || '',
         ASN_Delivery_Date:                   sRow.ASN_Delivery_Date                  || '',
         Var_Unit: sRow.Var_Unit ?? 0,
         Var_Pct:  sRow.Var_Pct  ?? 0,
@@ -275,9 +279,9 @@ async function build(supplierData, feedData) {
           Factory_CountryCd:  '',
           Country_Of_Origin:   carrierLine.country || '',
 
-          // FC — resolved from FC_MASTER
+          // FC — resolved from FC_MASTER by FinalDestination (TradePartner FD)
           ...(() => {
-            const fcId = carrierPoMeta[poNum]?.fcId || carrierLine.fcId || 'FC01';
+            const fcId = carrierPoMeta[poNum]?.finalDestination || carrierLine.finalDestination || 'FC01';
             const fc   = FC_MASTER[fcId] || {};
             return {
               FC_ID:              fcId,
@@ -295,7 +299,8 @@ async function build(supplierData, feedData) {
           Carrier_ID:          '3',
           Carrier_Name:        '',
           Loading_Port_LOCODE: carrierPoMeta[poNum]?.shippingPoint || '',
-          F1_ID:               carrierPoMeta[poNum]?.fcId          || '',
+          POFC_ID:             carrierPoMeta[poNum]?.pofc           || '',
+          F1_ID:               carrierPoMeta[poNum]?.pofc           || '',
 
           SKU:           sku,
           Product_Style: poLine?.line?.productStyle || carrierLine.style       || '',
@@ -325,7 +330,7 @@ async function build(supplierData, feedData) {
           Traffic_Mode:    po?.lineItems?.[0]?.mode || '',
           Cargo_Ready_Planned_Collection_Date: '',
           Carrier_Booking_Request_Date:        '',
-          Expected_Delivery_Date:              '',
+          Expected_Delivery_Date:              carrierLine.expectedDeliveryDate || '',
           ASN_Delivery_Date:                   '',
           Var_Unit: 0,
           Var_Pct:  0,

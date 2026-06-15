@@ -10,24 +10,26 @@ const xml2js = require('xml2js');
  *
  * Each entry:
  * {
- *   asnId:         string,          // <ASNID> from PO header
- *   poId:          string,          // <PurchaseOrder_ID>
- *   fcId:          string,          // <POFC> — also used as F1_ID
- *   shipDate:      string,          // <ShipDate> DDMMYYYY -> YYYY-MM-DD normalised
+ *   asnId:            string,       // <ASNID> from PO header
+ *   poId:             string,       // <PurchaseOrder_ID>
+ *   pofc:             string,       // <POFC> — used as TradePartner FS
+ *   finalDestination: string,       // <FinalDestination> — used as TradePartner FD (FC address lookup)
+ *   shipDate:         string,       // <ShipDate> DDMMYYYY -> YYYY-MM-DD normalised
  *   supplier:      string,          // <SupplierName>
  *   supplierCode:  string,          // <SupplierCode> — used as Supplier_ID
  *   shippingPoint: string,          // <ShippingPoint> — used as Loading Port
  *   shippingTerms: string,          // <ShippingTerms> — e.g. FOB
  *   lines: [{
- *     sku:         string,        // <SKUItemID>
- *     ean:         string,        // <PrimaryEAN>
- *     description: string,        // <Description>
- *     size:        string,        // <Size>
- *     colour:      string,        // <Colour>
- *     style:       string,        // <LegacyStyle> (OptionID)
- *     packFormat:  string,        // <PackingFormat> F=Flat, H=Hanging
- *     country:     string,        // <CountryOfOrigin>
- *     quantity:    number,        // <Quantity> — shipped qty
+ *     sku:                  string,  // <SKUItemID>
+ *     ean:                  string,  // <PrimaryEAN>
+ *     description:          string,  // <Description>
+ *     size:                 string,  // <Size>
+ *     colour:               string,  // <Colour>
+ *     style:                string,  // <LegacyStyle> (OptionID)
+ *     packFormat:           string,  // <PackingFormat> F=Flat, H=Hanging
+ *     country:              string,  // <CountryOfOrigin>
+ *     quantity:             number,  // <Quantity> — shipped qty
+ *     expectedDeliveryDate: string,  // <ExpectedDeliveryDate> DDMMYYYY -> YYYY-MM-DD
  *   }]
  * }
  */
@@ -44,9 +46,10 @@ async function parse(xmlString) {
   const asnMap = {}; // asnId -> entry
 
   for (const po of poElements) {
-    const poId          = po.PurchaseOrder_ID?.[0] || '';
-    const fcId          = po.POFC?.[0] || po.FinalDestination?.[0] || '';
-    const supplier      = po.SupplierName?.[0]  || '';
+    const poId             = po.PurchaseOrder_ID?.[0] || '';
+    const pofc             = po.POFC?.[0]             || '';
+    const finalDestination = po.FinalDestination?.[0] || '';
+    const supplier         = po.SupplierName?.[0]     || '';
     const supplierCode  = po.SupplierCode?.[0]  || '';
     const shippingPoint = po.ShippingPoint?.[0] || '';
     const shippingTerms = po.ShippingTerms?.[0] || '';
@@ -63,16 +66,17 @@ async function parse(xmlString) {
       const size       = line.Size?.[0] || '';
       const colour     = line.Colour?.[0] || '';
       const style      = line.LegacyStyle?.[0] || line.OptionID?.[0] || '';
-      const packFormat = line.PackingFormat?.[0] || 'F';
-      const country    = line.CountryOfOrigin?.[0] || '';
-      const quantity   = parseFloat(line.Quantity?.[0]) || 0;
+      const packFormat           = line.PackingFormat?.[0] || 'F';
+      const country              = line.CountryOfOrigin?.[0] || '';
+      const quantity             = parseFloat(line.Quantity?.[0]) || 0;
+      const expectedDeliveryDate = normDate(line.ExpectedDeliveryDate?.[0] || '');
 
       if (!sku) continue;
 
       if (!asnMap[asnId]) {
-        asnMap[asnId] = { asnId, poId, fcId, shipDate, supplier, supplierCode, shippingPoint, shippingTerms, lines: [] };
+        asnMap[asnId] = { asnId, poId, pofc, finalDestination, shipDate, supplier, supplierCode, shippingPoint, shippingTerms, lines: [] };
       }
-      asnMap[asnId].lines.push({ sku, ean, description, size, colour, style, packFormat, country, quantity });
+      asnMap[asnId].lines.push({ sku, ean, description, size, colour, style, packFormat, country, quantity, expectedDeliveryDate });
     }
   }
 
