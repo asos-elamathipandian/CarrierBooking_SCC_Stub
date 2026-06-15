@@ -161,6 +161,68 @@
     .purpose-option input[type=radio] { accent-color: #1F4E79; }
     .purpose-option input[type=radio]:checked ~ span { color: #1F4E79; font-weight: 700; }
 
+    /* ── Date override picker ── */
+    .date-override-panel {
+      margin-bottom: 16px;
+      padding: 14px 16px;
+      background: #F8FBFF;
+      border: 1px solid #D6EAF8;
+      border-radius: 8px;
+    }
+    .date-override-label {
+      font-size: 12px; font-weight: 700; color: #1F4E79;
+      text-transform: uppercase; letter-spacing: .4px;
+      margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .date-override-hint {
+      font-size: 11px; color: #888; font-weight: 400;
+      text-transform: none; letter-spacing: 0;
+    }
+    .date-override-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 600px) { .date-override-grid { grid-template-columns: 1fr; } }
+    .date-field-wrap label {
+      display: block; font-size: 12px; font-weight: 600;
+      color: #444; margin-bottom: 4px;
+    }
+    .date-field-wrap .date-badge {
+      display: inline-block;
+      background: #FEF9E7; border: 1px solid #F9CA24;
+      color: #7B3F00; border-radius: 4px;
+      font-size: 10px; font-weight: 700;
+      padding: 1px 6px; margin-left: 5px;
+      vertical-align: middle;
+    }
+    .date-field-wrap input[type=date] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #AED6F1;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #1a202c;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .date-field-wrap input[type=date]:hover { border-color: #2E75B6; }
+    .date-field-wrap input[type=date]:focus {
+      outline: none;
+      border-color: #1F4E79;
+      box-shadow: 0 0 0 3px rgba(31,78,121,.12);
+    }
+    .date-field-wrap .date-clear-btn {
+      margin-top: 4px;
+      font-size: 11px; color: #E74C3C;
+      background: none; border: none;
+      cursor: pointer; padding: 0;
+      display: none;
+    }
+    .date-field-wrap .date-clear-btn.visible { display: inline; }
+    .date-field-wrap .date-clear-btn:hover { text-decoration: underline; }
+
     /* ── XML preview ── */
     .xml-preview-wrap {
       margin-top: 12px;
@@ -181,7 +243,41 @@
       word-break: break-all;
     }
 
-    /* ── Ref tags ── */
+    /* ── Generation cards (multi-VBKREQ) ── */
+    .generation-card {
+      border: 1px solid #D6EAF8;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .generation-card:last-child { margin-bottom: 0; }
+    .gen-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 9px 14px;
+      background: #EBF5FB;
+      border-bottom: 1px solid #D6EAF8;
+    }
+    .gen-title { font-size: 13px; font-weight: 700; color: #1F4E79; }
+    .gen-meta  { font-size: 11px; color: #5d6d7e; }
+    .btn-sm    { padding: 5px 12px !important; font-size: 12px !important; }
+    .xml-pre {
+      background: #1e2533;
+      color: #a8d8a8;
+      padding: 12px 14px;
+      font-size: 11px;
+      line-height: 1.5;
+      max-height: 280px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .gen-details summary {
+      cursor: pointer; padding: 6px 14px;
+      font-size: 12px; color: #1F4E79; background: #f8fbff;
+    }
     .ref-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .tag {
       background: #EBF5FB;
@@ -497,10 +593,11 @@
     <div class="step-body">
       <div class="drop-zone" id="dropZone">
         <div class="drop-zone-icon">📂</div>
-        <div id="dropZoneText">Drag &amp; drop your Excel file here</div>
-        <div class="drop-zone-hint">or <u style="cursor:pointer" onclick="document.getElementById('supplierFileInput').click()">browse to choose a file</u> (.xlsx / .xls)</div>
+        <div id="dropZoneText">Drag &amp; drop your Excel file(s) here</div>
+        <div class="drop-zone-hint">or <u style="cursor:pointer" onclick="document.getElementById('supplierFileInput').click()">browse to choose files</u> (.xlsx / .xls) &mdash; multiple files allowed</div>
       </div>
-      <input type="file" id="supplierFileInput" accept=".xlsx,.xls" />
+      <input type="file" id="supplierFileInput" accept=".xlsx,.xls" multiple />
+      <ul id="supplierFileList" style="margin-top:8px;padding:0 0 0 4px;list-style:none;font-size:12px;color:#555;display:none"></ul>
       <div style="margin-top:10px;text-align:right">
         <button class="btn btn-primary" id="btnParseSupplier" disabled>
           ⬆ Upload &amp; Parse
@@ -596,6 +693,26 @@
       </div>
     </div>
     <div class="step-body">
+      <!-- ── Date overrides ── -->
+      <div class="date-override-panel">
+        <div class="date-override-label">
+          📅 Date Overrides
+          <span class="date-override-hint">— optional. Overrides dates from the supplier template for all rows.</span>
+        </div>
+        <div class="date-override-grid">
+          <div class="date-field-wrap">
+            <label>Cargo Ready / Planned Collection Date <span class="date-badge">DateTypeCd 018</span></label>
+            <input type="date" id="overrideCargoReady" />
+            <button class="date-clear-btn" id="clearCargoReady" onclick="clearDateField('overrideCargoReady','clearCargoReady')">&#10006; Clear</button>
+          </div>
+          <div class="date-field-wrap">
+            <label>Carrier Booking Request Date <span class="date-badge">DateTypeCd 081</span></label>
+            <input type="date" id="overrideBookingReqDate" />
+            <button class="date-clear-btn" id="clearBookingReqDate" onclick="clearDateField('overrideBookingReqDate','clearBookingReqDate')">&#10006; Clear</button>
+          </div>
+        </div>
+      </div>
+
       <div class="purpose-selector">
         <label style="font-size:13px;font-weight:600;color:#444;margin-bottom:6px;display:block">Purpose Code</label>
         <div class="purpose-options">
@@ -618,9 +735,7 @@
       </button>
       <div class="status-box" id="status4"></div>
       <div class="xml-preview-wrap" id="xmlPreviewWrap">
-        <label>Generated XML Preview:</label>
-        <pre id="xmlPreview"></pre>
-        <a class="download-link" id="xmlDownloadLink" href="#" download>⬇ Download XML</a>
+        <div id="generationsContainer"></div>
       </div>
     </div>
   </div>
@@ -636,7 +751,7 @@
     </div>
     <div class="step-body">
       <button class="btn btn-danger" id="btnUploadSftp" disabled>
-        ⬆ Upload to E2open SFTP
+        ⬆ Upload All to E2open SFTP
       </button>
       <div class="status-box" id="status5"></div>
     </div>

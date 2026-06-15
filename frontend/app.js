@@ -6,11 +6,12 @@ const API = 'http://localhost:3000/api';
 const state = {
   poRefs: [],
   asnRefs: [],
-  supplierRows: [],   // raw rows from supplier Excel (keyed by PO_Number + SKU)
+  supplierRows: [],
   feedsFetched: false,
   biblBuilt: false,
   lastXml: null,
-  lastFilename: null
+  lastFilename: null,
+  generations: []
 };
 
 // ── Element refs ───────────────────────────────────────────────────────────────
@@ -59,11 +60,16 @@ function setLoading(btn, loading) {
 }
 
 // ── Drop zone & file input ────────────────────────────────────────────────────
-function applyFileToZone(file) {
-  if (!file) return;
+function applyFilesToZone(files) {
+  if (!files || files.length === 0) return;
   dropZone.classList.add('has-file');
   dropZone.classList.remove('drag-over');
-  dropZoneText.textContent = '✓ ' + file.name;
+  dropZoneText.textContent = files.length === 1
+    ? '✓ ' + files[0].name
+    : `✓ ${files.length} files selected`;
+  const listEl = document.getElementById('supplierFileList');
+  listEl.innerHTML = [...files].map(f => `<li>📄 ${f.name}</li>`).join('');
+  listEl.style.display = 'block';
   btnParseSupplier.disabled = false;
 }
 
@@ -75,33 +81,38 @@ dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classL
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
-  const file = e.dataTransfer.files[0];
-  if (file && /\.xlsx?$/i.test(file.name)) {
-    // Assign to the hidden input via DataTransfer so FormData works
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    supplierFileInput.files = dt.files;
-    applyFileToZone(file);
-  } else if (file) {
+  const allDropped = [...e.dataTransfer.files];
+  const valid   = allDropped.filter(f => /\.xlsx?$/i.test(f.name));
+  const invalid = allDropped.filter(f => !/\.xlsx?$/i.test(f.name));
+  if (invalid.length > 0) {
     dropZone.classList.remove('drag-over');
-    setStatus(1, 'error', '❌ Please drop an Excel file (.xlsx or .xls)');
+    setStatus(1, 'error', '❌ Only Excel files (.xlsx or .xls) are accepted');
+    return;
   }
+  if (valid.length === 0) return;
+  const dt = new DataTransfer();
+  valid.forEach(f => dt.items.add(f));
+  supplierFileInput.files = dt.files;
+  applyFilesToZone(supplierFileInput.files);
 });
 
-supplierFileInput.addEventListener('change', () => applyFileToZone(supplierFileInput.files[0]));
+supplierFileInput.addEventListener('change', () => applyFilesToZone(supplierFileInput.files));
 
 // ── Step 1: Parse Supplier ─────────────────────────────────────────────────────
 btnParseSupplier.addEventListener('click', async () => {
-  const file = supplierFileInput.files[0];
-  if (!file) return;
+  const files = supplierFileInput.files;
+  if (!files || files.length === 0) return;
 
   setLoading(btnParseSupplier, true);
-  setStatus(1, 'loading', '⏳ Parsing supplier Excel…');
+  const loadMsg = files.length === 1
+    ? '⏳ Parsing supplier Excel…'
+    : `⏳ Parsing ${files.length} supplier Excel files…`;
+  setStatus(1, 'loading', loadMsg);
   refsPreview.innerHTML = '';
 
   try {
     const fd = new FormData();
-    fd.append('supplierFile', file);
+    for (const file of files) fd.append('supplierFiles', file);
     const res  = await fetch(`${API}/parse-supplier`, { method: 'POST', body: fd });
     const data = await res.json();
 
@@ -119,7 +130,8 @@ btnParseSupplier.addEventListener('click', async () => {
         : '<span style="color:#aaa;font-size:12px">No PO refs found in template.</span>';
     }
 
-    let html = `✅ Parsed <strong>${data.rowCount}</strong> rows — found <strong>${state.poRefs.length}</strong> PO ref(s).`;
+    const fileCountNote = data.fileCount > 1 ? ` from <strong>${data.fileCount}</strong> files` : '';
+    let html = `✅ Parsed <strong>${data.rowCount}</strong> rows${fileCountNote} — found <strong>${state.poRefs.length}</strong> PO ref(s).`;
     if (data.validationErrors && data.validationErrors.length) {
       html += `<br/>⚠️ Validation warnings:<br/>${data.validationErrors.join('<br/>')}`;
     }
@@ -427,6 +439,25 @@ btnBuildBible.addEventListener('click', async () => {
 });
 
 // ── Step 4: Generate VBKREQ ───────────────────────────────────────────────────
+// Date picker — show/hide clear button
+function wireDateClear(inputId, clearBtnId) {
+  const input = document.getElementById(inputId);
+  const btn   = document.getElementById(clearBtnId);
+  if (!input || !btn) return;
+  input.addEventListener('change', () => btn.classList.toggle('visible', !!input.value));
+}
+wireDateClear('overrideCargoReady',    'clearCargoReady');
+wireDateClear('overrideBookingReqDate','clearBookingReqDate');
+
+// Exposed to onclick= in HTML
+function clearDateField(inputId, clearBtnId) {
+  const input = document.getElementById(inputId);
+  const btn   = document.getElementById(clearBtnId);
+  if (input) input.value = '';
+  if (btn)   btn.classList.remove('visible');
+}
+window.clearDateField = clearDateField;
+
 btnGenerateVbkreq.addEventListener('click', async () => {
   setLoading(btnGenerateVbkreq, true);
   const purposeCd = document.querySelector('input[name="purposeCd"]:checked')?.value || '13';
@@ -434,30 +465,33 @@ btnGenerateVbkreq.addEventListener('click', async () => {
   setStatus(4, 'loading', `⏳ Generating VBKREQ XML — PurposeCd <strong>${purposeCd}</strong> (${purposeLabel})…`);
   xmlPreviewWrap.classList.remove('visible');
 
+  const overrideCargoReady     = document.getElementById('overrideCargoReady')?.value    || '';
+  const overrideBookingReqDate = document.getElementById('overrideBookingReqDate')?.value || '';
+
   try {
     const res  = await fetch(`${API}/generate-vbkreq`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ purposeCd })
+      body: JSON.stringify({ purposeCd, overrideCargoReady, overrideBookingReqDate })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
-    state.lastXml      = data.xml;
-    state.lastFilename = data.filename;
+    state.generations  = data.generations || [];
+    state.lastXml      = state.generations[0]?.xml      || null;
+    state.lastFilename = state.generations[0]?.filename || null;
 
-    setStatus(4, 'success', `✅ VBKREQ generated — <strong>${data.filename}</strong> (PurposeCd: ${purposeCd} | Version: ${data.version || ''} | CtrlNumber: ${data.ctrlNumber})`);
+    const count = state.generations.length;
+    const dateNote = [];
+    if (overrideCargoReady)     dateNote.push(`Cargo Ready: <strong>${overrideCargoReady}</strong>`);
+    if (overrideBookingReqDate) dateNote.push(`Booking Req: <strong>${overrideBookingReqDate}</strong>`);
+    const dateStr = dateNote.length ? `<br/>📅 Date overrides applied — ${dateNote.join(' &nbsp;|&nbsp; ')}` : '';
+    setStatus(4, 'success',
+      `✅ ${count} VBKREQ${count > 1 ? 's' : ''} generated — PurposeCd: ${purposeCd} (${purposeLabel})${dateStr}`
+    );
     setBadge(4, 'done');
-
-    // Show XML preview
-    xmlPreview.textContent = data.xml;
+    renderGenerations(state.generations);
     xmlPreviewWrap.classList.add('visible');
-
-    // Blob download
-    const blob = new Blob([data.xml], { type: 'application/xml' });
-    xmlDownloadLink.href = URL.createObjectURL(blob);
-    xmlDownloadLink.download = data.filename;
-
     btnUploadSftp.disabled = false;
     setBadge(5, 'active');
     refreshLog();
@@ -468,38 +502,104 @@ btnGenerateVbkreq.addEventListener('click', async () => {
   }
 });
 
-// ── Step 5: Upload SFTP ────────────────────────────────────────────────────────
+// ── Step 5: Upload All SFTP ───────────────────────────────────────────────────
 btnUploadSftp.addEventListener('click', async () => {
-  if (!state.lastXml || !state.lastFilename) {
-    setStatus(5, 'error', '❌ No XML generated. Run step 4 first.');
+  if (!state.generations || state.generations.length === 0) {
+    setStatus(5, 'error', '❌ No VBKREQs generated. Run step 4 first.');
     return;
   }
   setLoading(btnUploadSftp, true);
-  setStatus(5, 'loading', `⏳ Uploading <strong>${state.lastFilename}</strong> to E2open SFTP…`);
+  setStatus(5, 'loading', `⏳ Uploading ${state.generations.length} VBKREQ(s) to E2open SFTP…`);
 
+  const results = [];
+  for (let i = 0; i < state.generations.length; i++) {
+    const gen = state.generations[i];
+    try {
+      const res = await fetch(`${API}/upload-sftp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      results.push({ filename: gen.filename, ok: true, remotePath: data.remotePath, localMode: data.localMode });
+      const btn = document.querySelector(`.gen-upload-btn[data-idx="${i}"]`);
+      if (btn) { btn.textContent = '✅ Uploaded'; btn.style.background = '#27AE60'; btn.disabled = true; }
+    } catch (err) {
+      results.push({ filename: gen.filename, ok: false, error: err.message });
+      const btn = document.querySelector(`.gen-upload-btn[data-idx="${i}"]`);
+      if (btn) { btn.disabled = false; btn.textContent = '⬆ Retry'; }
+    }
+  }
+
+  const ok   = results.filter(r => r.ok);
+  const fail = results.filter(r => !r.ok);
+  let html = `✅ ${ok.length} of ${results.length} uploaded`;
+  if (ok.length)   html += ':<br/>' + ok.map(r   => `&nbsp;• ${r.filename} → ${r.localMode ? 'local output/' : r.remotePath}`).join('<br/>');
+  if (fail.length) html += `<br/>❌ ${fail.length} failed:<br/>` + fail.map(r => `&nbsp;• ${r.filename}: ${r.error}`).join('<br/>');
+  setStatus(5, fail.length === 0 ? 'success' : 'error', html);
+  setBadge(5, fail.length === 0 ? 'done' : 'active');
+  refreshLog();
+  setLoading(btnUploadSftp, false);
+});
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderGenerations(generations) {
+  const container = document.getElementById('generationsContainer');
+  container.innerHTML = '';
+  generations.forEach((gen, i) => {
+    const groupLabel = gen.group
+      ? `Group: <strong>${gen.group}</strong>`
+      : (generations.length > 1 ? `Booking ${i + 1}` : 'Generated VBKREQ');
+    const poList = (gen.poNumbers || []).join(', ') || '—';
+    const card = document.createElement('div');
+    card.className = 'generation-card';
+    card.innerHTML = `
+      <div class="gen-header">
+        <span class="gen-title">${groupLabel}</span>
+        <span class="gen-meta">POs: ${poList} &nbsp;|&nbsp;Ctrl#: ${gen.ctrlNumber} &nbsp;|&nbsp;v${gen.version || 1}</span>
+        <a class="download-link" href="#" download="${gen.filename}">⬇ ${gen.filename}</a>
+        <button class="btn btn-danger btn-sm gen-upload-btn" data-idx="${i}">⬆ Upload SFTP</button>
+      </div>
+      <details class="gen-details">
+        <summary>▶ Preview XML</summary>
+        <pre class="xml-pre">${escapeHtml(gen.xml)}</pre>
+      </details>
+    `;
+    const blob = new Blob([gen.xml], { type: 'application/xml' });
+    card.querySelector('a').href = URL.createObjectURL(blob);
+    card.querySelector('.gen-upload-btn').addEventListener('click', () => uploadGeneration(i));
+    container.appendChild(card);
+  });
+}
+
+async function uploadGeneration(idx) {
+  const gen = state.generations[idx];
+  if (!gen) return;
+  const btn = document.querySelector(`.gen-upload-btn[data-idx="${idx}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Uploading…'; }
   try {
-    const res  = await fetch(`${API}/upload-sftp`, {
+    const res = await fetch(`${API}/upload-sftp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: state.lastFilename, xmlContent: state.lastXml })
+      body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Unknown error');
-
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    if (btn) { btn.textContent = '✅ Uploaded'; btn.style.background = '#27AE60'; }
     setStatus(5, 'success',
-      `✅ Uploaded successfully!<br/>
-       Remote path: <strong>${data.remotePath}</strong><br/>
-       Bytes sent: ${data.bytesSent}<br/>
-       Uploaded at: ${data.uploadedAt}`
+      `✅ <strong>${gen.filename}</strong> uploaded — ${data.localMode ? 'saved locally (no SFTP configured)' : `remote: ${data.remotePath}`}`
     );
     setBadge(5, 'done');
     refreshLog();
   } catch (err) {
-    setStatus(5, 'error', `❌ Upload failed: ${err.message}`);
-  } finally {
-    setLoading(btnUploadSftp, false);
+    if (btn) { btn.disabled = false; btn.textContent = '⬆ Upload SFTP'; }
+    setStatus(5, 'error', `❌ ${err.message}`);
   }
-});
+}
 
 // ── Generation Log ─────────────────────────────────────────────────────────────
 async function refreshLog() {

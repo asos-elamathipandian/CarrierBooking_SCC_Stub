@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node backend/server.js",
     "build-bible": "node backend/build-bible-template.js",
+    "build-template": "node backend/build-supplier-template.js",
     "test:sftp": "node backend/test-sftp.js"
   },
   "dependencies": {

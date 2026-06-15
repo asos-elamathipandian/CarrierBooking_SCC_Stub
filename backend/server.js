@@ -58,25 +58,39 @@ let sessionState = {
   feedData: null,
   masterData: null,
   lastXml: null,
-  lastFilename: null
+  lastFilename: null,
+  lastCtrlNumber: null,
+  lastGenerations: []
 };
 
 // ─────────────────────────────────────────────
 // POST /api/parse-supplier
 // Accept supplier Excel upload, extract PO/ASN refs
 // ─────────────────────────────────────────────
-app.post('/api/parse-supplier', upload.single('supplierFile'), async (req, res) => {
+app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const parsed = await supplierReader.parse(req.file.buffer);
-    // Debug: log header keys and first row
-    if (parsed.rows.length > 0) {
-      console.log('[parse-supplier] headers found:', Object.keys(parsed.rows[0]));
-      console.log('[parse-supplier] first row sample:', JSON.stringify(parsed.rows[0]).slice(0, 300));
-    } else {
-      console.log('[parse-supplier] no rows parsed — headerRow:', parsed.headerRowNum);
+    const files = req.files;
+    if (!files || files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
+
+    // Parse each file and merge rows + validation errors
+    let allRows = [];
+    let allValidationErrors = [];
+
+    for (const file of files) {
+      const parsed = await supplierReader.parse(file.buffer);
+      if (parsed.rows.length > 0) {
+        console.log(`[parse-supplier] ${file.originalname} — headers:`, Object.keys(parsed.rows[0]));
+        console.log(`[parse-supplier] ${file.originalname} — first row:`, JSON.stringify(parsed.rows[0]).slice(0, 300));
+      } else {
+        console.log(`[parse-supplier] ${file.originalname} — no rows parsed — headerRow:`, parsed.headerRowNum);
+      }
+      allRows = allRows.concat(parsed.rows);
+      allValidationErrors = allValidationErrors.concat(
+        (parsed.validationErrors || []).map(e => `[${file.originalname}] ${e}`)
+      );
     }
-    sessionState.supplierData = parsed;
+
+    sessionState.supplierData = { rows: allRows, validationErrors: allValidationErrors };
     sessionState.feedData = null;
     sessionState.masterData = null;
     sessionState.lastXml = null;
@@ -92,17 +106,18 @@ app.post('/api/parse-supplier', upload.single('supplierFile'), async (req, res) 
       if (typeof v === 'object') return String(v);
       return v;
     };
-    const safeRows = parsed.rows.map(r =>
+    const safeRows = allRows.map(r =>
       Object.fromEntries(Object.entries(r).map(([k, v]) => [k, sanitizeVal(v)]))
     );
 
     res.json({
       success: true,
       rowCount: safeRows.length,
+      fileCount: files.length,
       poRefs: [...new Set(safeRows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))],
       rows: safeRows,
       preview: safeRows.slice(0, 5),
-      validationErrors: parsed.validationErrors || []
+      validationErrors: allValidationErrors
     });
   } catch (err) {
     console.error('parse-supplier error:', err);
@@ -316,11 +331,51 @@ app.post('/api/generate-vbkreq', async (req, res) => {
   try {
     if (!sessionState.masterData) return res.status(400).json({ error: 'No master data. Run build-bible first.' });
 
-    const { xml, filename, ctrlNumber, version } = await vbkreqBuilder.build(sessionState.masterData, req.body.purposeCd || '13');
-    sessionState.lastXml = xml;
-    sessionState.lastFilename = filename;
+    const purposeCd = req.body.purposeCd || '13';
+    const overrideCargoReady     = req.body.overrideCargoReady     || '';
+    const overrideBookingReqDate = req.body.overrideBookingReqDate || '';
 
-    res.json({ success: true, xml, filename, ctrlNumber, version });
+    // Apply optional date overrides to a working copy of master rows
+    const workingRows = sessionState.masterData.map(row => {
+      if (!overrideCargoReady && !overrideBookingReqDate) return row;
+      const r = { ...row };
+      if (overrideCargoReady)     r.Cargo_Ready_Planned_Collection_Date = overrideCargoReady;
+      if (overrideBookingReqDate) r.Carrier_Booking_Request_Date        = overrideBookingReqDate;
+      return r;
+    });
+
+    // Group rows by Booking_Group; blank = single combined booking
+    const groupMap = new Map();
+    for (const row of workingRows) {
+      const group = String(row.Booking_Group || '').trim() || '__ALL__';
+      if (!groupMap.has(group)) groupMap.set(group, []);
+      groupMap.get(group).push(row);
+    }
+
+    const generations = [];
+    for (const [group, groupRows] of groupMap) {
+      const { xml, filename, ctrlNumber, version } = await vbkreqBuilder.build(groupRows, purposeCd);
+      const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
+      const bookingRef = groupRows[0]?.Booking_Ref || '';
+      const groupLabel = group === '__ALL__' ? '' : group;
+      bibleBuilder.appendGenerationLog({
+        timestamp:  new Date().toISOString(),
+        bookingRef,
+        poNumbers,
+        filename,
+        ctrlNumber,
+        group: groupLabel,
+        sftp: null
+      });
+      generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers });
+    }
+
+    sessionState.lastGenerations  = generations;
+    sessionState.lastXml          = generations[0]?.xml          || null;
+    sessionState.lastFilename     = generations[0]?.filename     || null;
+    sessionState.lastCtrlNumber   = generations[0]?.ctrlNumber   || null;
+
+    res.json({ success: true, generations });
   } catch (err) {
     console.error('generate-vbkreq error:', err);
     res.status(500).json({ error: err.message });
@@ -339,6 +394,16 @@ app.post('/api/upload-sftp', async (req, res) => {
     if (!fname || !xml) return res.status(400).json({ error: 'No XML to upload. Run generate-vbkreq first.' });
 
     const result = await sftpUploader.upload(fname, xml);
+
+    // Update log entry with SFTP outcome — find ctrlNumber for this filename
+    const gen = (sessionState.lastGenerations || []).find(g => g.filename === fname);
+    const ctrlNum = gen?.ctrlNumber || sessionState.lastCtrlNumber;
+    bibleBuilder.updateGenerationLog(fname, ctrlNum, {
+      sftp:       result.localMode ? 'local' : 'uploaded',
+      sftpPath:   result.remotePath || null,
+      uploadedAt: result.uploadedAt || new Date().toISOString()
+    });
+
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('upload-sftp error:', err);
@@ -365,6 +430,17 @@ app.get('/api/generation-log', async (req, res) => {
 // ─────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
+});
+
+// ─────────────────────────────────────────────
+// Global error handler — always return JSON so
+// the frontend never receives an HTML error page
+// ─────────────────────────────────────────────
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
 app.listen(PORT, () => {

@@ -507,8 +507,18 @@ function appendGenerationLog(entry) {
   writeLogToJson(entries);
 }
 
+function updateGenerationLog(filename, ctrlNumber, patch) {
+  const entries = readLogFromJson();
+  const idx = entries.slice().reverse().findIndex(e => e.filename === filename && e.ctrlNumber === ctrlNumber);
+  if (idx !== -1) {
+    const realIdx = entries.length - 1 - idx;
+    entries[realIdx] = { ...entries[realIdx], ...patch };
+    writeLogToJson(entries);
+  }
+}
+
 function getGenerationLog() {
   return readLogFromJson();
 }
 
-module.exports = { build, appendGenerationLog, getGenerationLog };
+module.exports = { build, appendGenerationLog, updateGenerationLog, getGenerationLog };

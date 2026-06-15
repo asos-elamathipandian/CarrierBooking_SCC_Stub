@@ -53,14 +53,17 @@ async function build() {
   const ws = wb.addWorksheet('SUPPLIER_INPUT');
 
   // ── Row 1: Instructions banner ───────────────────────────────────────────────
-  ws.mergeCells('A1:AG1');
+  ws.mergeCells('A1:AI1');
   const banner = ws.getCell('A1');
   banner.value =
     '⚠  INSTRUCTIONS: One row per SKU — fill in all RED columns for every SKU line. ' +
+    'Mandatory fields are grouped on the LEFT. ' +
     'Multiple rows can share the same PO_Number. ' +
     'No_of_Cartons and Unit_Weight_KG must be filled per SKU row. ' +
     'Factory columns (Factory_Name through Factory_CountryCd) are mandatory — fill once per PO group. ' +
-    'Carton dimensions auto-fill from Carton_Type. Dates in DD/MM/YYYY format. Do NOT modify column headers.';
+    'Carton dimensions auto-fill from Carton_Type. Dates in DD/MM/YYYY format. Do NOT modify column headers. ' +
+    'BOOKING_GROUP (mandatory): choose “Separate” to generate one VBKREQ per PO, or “Club” to combine multiple POs into one VBKREQ. ' +
+    'BOOKING_REF: enter a short reference code e.g. BK001, BK002 to identify each booking batch — rows sharing the same Booking_Ref are grouped together.';
   banner.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
   banner.font   = { bold: true, color: { argb: 'FF7B3F00' }, size: 11 };
   banner.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' };
@@ -71,7 +74,8 @@ async function build() {
     { col: 1, label: ' RED = Mandatory ',           argb: 'FFC0392B' },
     { col: 2, label: ' GREEN = Has default ',        argb: 'FF27AE60' },
     { col: 3, label: ' BLUE = Auto-calculated ',     argb: 'FF2E75B6' },
-    { col: 4, label: ' GREY = Optional ',            argb: 'FF555555' },
+    { col: 4, label: ' ORANGE = Fill reference ',    argb: 'FFE67E22' },
+    { col: 5, label: ' GREY = Optional ',            argb: 'FF555555' },
   ];
   legendItems.forEach(({ col, label, argb }) => {
     const cell = ws.getCell(2, col);
@@ -84,48 +88,51 @@ async function build() {
 
   // ── Row 3: Column headers ────────────────────────────────────────────────────
   const columns = [
-    // mandatory (red)
+    // ── MANDATORY (left group, red) ──────────────────────────────────────────
     { key: 'PO_Number',                           label: 'PO_Number',                           width: 22, type: 'mandatory' },
     { key: 'SKU',                                 label: 'SKU',                                 width: 22, type: 'mandatory' },
+    { key: 'Booking_Qty',                         label: 'Booking_Qty',                         width: 14, type: 'mandatory' },
     { key: 'No_of_Cartons',                       label: 'No_of_Cartons',                       width: 16, type: 'mandatory' },
     { key: 'Unit_Weight_KG',                      label: 'Unit_Weight_KG',                      width: 16, type: 'mandatory' },
     { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo_Ready_Planned_Collection_Date', width: 34, type: 'mandatory' },
     { key: 'Carrier_Booking_Request_Date',        label: 'Carrier_Booking_Request_Date',        width: 28, type: 'mandatory' },
-    { key: 'Traffic_Mode',        label: 'Traffic_Mode',        width: 14, type: 'mandatory' },
-    { key: 'Mode_Of_Transport',    label: 'Mode_Of_Transport',    width: 18, type: 'mandatory' },
-    // Factory — mandatory (no longer sourced from PO feed)
-    { key: 'Factory_Name',      label: 'Factory_Name',      width: 28, type: 'mandatory' },
-    { key: 'Factory_ID',        label: 'Factory_ID',        width: 18, type: 'mandatory' },
-    { key: 'Factory_Street1',   label: 'Factory_Street1',   width: 30, type: 'mandatory' },
-    { key: 'Factory_Street2',   label: 'Factory_Street2',   width: 24, type: 'optional'  },
-    { key: 'Factory_City',      label: 'Factory_City',      width: 20, type: 'mandatory' },
-    { key: 'Factory_PostalCd',  label: 'Factory_PostalCd',  width: 16, type: 'mandatory' },
-    { key: 'Factory_CountryCd', label: 'Factory_CountryCd', width: 16, type: 'mandatory' },
-    // optional supplier fills
-    { key: 'EAN_Barcode',    label: 'EAN_Barcode',    width: 18, type: 'optional' },
-    { key: 'Colour_Code',    label: 'Colour_Code',    width: 14, type: 'optional' },
-    { key: 'Size_Code',      label: 'Size_Code',      width: 12, type: 'optional' },
-    { key: 'Booking_Qty',    label: 'Booking_Qty',    width: 14, type: 'mandatory' },
+    { key: 'Traffic_Mode',                        label: 'Traffic_Mode',                        width: 14, type: 'mandatory' },
+    { key: 'Mode_Of_Transport',                   label: 'Mode_Of_Transport',                   width: 18, type: 'mandatory' },
+    // Factory — mandatory
+    { key: 'Factory_Name',                        label: 'Factory_Name',                        width: 28, type: 'mandatory' },
+    { key: 'Factory_ID',                          label: 'Factory_ID',                          width: 18, type: 'mandatory' },
+    { key: 'Factory_Street1',                     label: 'Factory_Street1',                     width: 30, type: 'mandatory' },
+    { key: 'Factory_City',                        label: 'Factory_City',                        width: 20, type: 'mandatory' },
+    { key: 'Factory_PostalCd',                    label: 'Factory_PostalCd',                    width: 16, type: 'mandatory' },
+    { key: 'Factory_CountryCd',                   label: 'Factory_CountryCd',                   width: 16, type: 'mandatory' },
+    // ── BOOKING GROUP (mandatory, immediately after mandatory block) ──────────
+    { key: 'Booking_Group',                       label: 'Booking_Group',                       width: 18, type: 'mandatory' },
+    { key: 'Booking_Ref',                         label: 'Booking_Ref\n(e.g. BK001)',           width: 20, type: 'note' },
+    // ── OPTIONAL / AUTO / DEFAULT (right group) ──────────────────────────────
+    { key: 'Factory_Street2',                     label: 'Factory_Street2',                     width: 24, type: 'optional'  },
+    { key: 'EAN_Barcode',                         label: 'EAN_Barcode',                         width: 18, type: 'optional' },
+    { key: 'Colour_Code',                         label: 'Colour_Code',                         width: 14, type: 'optional' },
+    { key: 'Size_Code',                           label: 'Size_Code',                           width: 12, type: 'optional' },
     // carton (default + dropdown)
-    { key: 'Carton_Type',    label: 'Carton_Type',    width: 22, type: 'default', default: 'BDCM1' },
+    { key: 'Carton_Type',                         label: 'Carton_Type',                         width: 22, type: 'default', default: 'BDCM1' },
     // auto dims (VLOOKUP)
-    { key: 'Carton_Length_cm', label: 'Carton_Length_cm', width: 18, type: 'auto' },
-    { key: 'Carton_Width_cm',  label: 'Carton_Width_cm',  width: 17, type: 'auto' },
-    { key: 'Carton_Height_cm', label: 'Carton_Height_cm', width: 17, type: 'auto' },
-    { key: 'Carton_Weight_KG', label: 'Carton_Weight_KG', width: 18, type: 'auto' },
+    { key: 'Carton_Length_cm',                    label: 'Carton_Length_cm',                    width: 18, type: 'auto' },
+    { key: 'Carton_Width_cm',                     label: 'Carton_Width_cm',                     width: 17, type: 'auto' },
+    { key: 'Carton_Height_cm',                    label: 'Carton_Height_cm',                    width: 17, type: 'auto' },
+    { key: 'Carton_Weight_KG',                    label: 'Carton_Weight_KG',                    width: 18, type: 'auto' },
     // auto-calc
-    { key: 'Gross_Weight_KG',  label: 'Gross_Weight_KG',  width: 17, type: 'auto' },
-    { key: 'Net_Weight_KG',    label: 'Net_Weight_KG',    width: 16, type: 'auto' },
-    { key: 'Volume_M3',        label: 'Volume_M3',        width: 13, type: 'auto' },
+    { key: 'Gross_Weight_KG',                     label: 'Gross_Weight_KG',                     width: 17, type: 'auto' },
+    { key: 'Net_Weight_KG',                       label: 'Net_Weight_KG',                       width: 16, type: 'auto' },
+    { key: 'Volume_M3',                           label: 'Volume_M3',                           width: 13, type: 'auto' },
     // dropdowns with defaults
-    { key: 'Pack_Type',        label: 'Pack_Type',        width: 14, type: 'default', default: 'Flat' },
-    { key: 'Collection_Type',  label: 'Collection_Type',  width: 18, type: 'default', default: 'Delivery' },
+    { key: 'Pack_Type',                           label: 'Pack_Type',                           width: 14, type: 'default', default: 'Flat' },
+    { key: 'Collection_Type',                     label: 'Collection_Type',                     width: 18, type: 'default', default: 'Delivery' },
     // Collection_Time becomes mandatory when Collection_Type = 'Collection' (HH:MM format)
-    { key: 'Collection_Time',  label: 'Collection_Time (HH:MM)', width: 24, type: 'optional' },
-    { key: 'Hazardous',        label: 'Hazardous',        width: 20, type: 'default', default: 'N/A' },
+    { key: 'Collection_Time',                     label: 'Collection_Time (HH:MM)',             width: 24, type: 'optional' },
+    { key: 'Hazardous',                           label: 'Hazardous',                           width: 20, type: 'default', default: 'N/A' },
     // optional
-    { key: 'Expected_Delivery_Date', label: 'Expected_Delivery_Date', width: 24, type: 'optional' },
-    { key: 'Remarks',  label: 'Remarks',  width: 30, type: 'optional' }
+    { key: 'Expected_Delivery_Date',              label: 'Expected_Delivery_Date',              width: 24, type: 'optional' },
+    { key: 'Remarks',                             label: 'Remarks',                             width: 30, type: 'optional' }
   ];
 
   const headerRow = ws.getRow(3);
@@ -142,6 +149,8 @@ async function build() {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E75B6' } };
     } else if (col.type === 'default') {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF27AE60' } };
+    } else if (col.type === 'note') {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE67E22' } };
     } else {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF555555' } };
     }
@@ -258,6 +267,15 @@ async function build() {
       type: 'list', allowBlank: false,
       formulae: ['"Flammable,Glass - Hazardous,Hazardous,N/A"']
     };
+    // Booking_Group — mandatory dropdown
+    ws.getCell(r, colIdx['Booking_Group']).dataValidation = {
+      type: 'list', allowBlank: false,
+      formulae: ['"Separate,Club"'],
+      showInputMessage: true, promptTitle: 'Booking Group',
+      prompt: 'Separate = one VBKREQ per PO.  Club = combine selected POs into one VBKREQ.',
+      showErrorMessage: true, errorTitle: 'Invalid value',
+      error: 'Please select “Separate” or “Club”'
+    };
     // No_of_Cartons — whole number > 0
     ws.getCell(r, colIdx['No_of_Cartons']).dataValidation = {
       type: 'whole', operator: 'greaterThan',
@@ -281,7 +299,19 @@ async function build() {
       };
     });
   }
-
+  // ── Booking_Ref header note ──────────────────────────────────────────────────
+  ws.getCell(3, colIdx['Booking_Ref']).note = {
+    texts: [{
+      font: { size: 10, bold: true },
+      text: 'Enter a short booking reference code\n'
+    }, {
+      font: { size: 10 },
+      text: 'Examples: BK001, BK002, BK003\n\n'
+    }, {
+      font: { size: 10, italic: true },
+      text: 'Rows sharing the same Booking_Ref are grouped into the same VBKREQ when Booking_Group = “Club”.'
+    }]
+  };
   // ── Freeze rows 1-3 (banner + header + legend) ────────────────────────────────
   ws.views = [{ state: 'frozen', ySplit: 3, xSplit: 0, showGridLines: true }];
 
@@ -291,10 +321,11 @@ async function build() {
   await wb.xlsx.writeFile(OUT_FILE);
   console.log(`✅  SupplierInput_template.xlsx created at:\n    ${OUT_FILE}`);
   console.log('\nColumn summary:');
-  console.log('  🔴 Mandatory (7) :', columns.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
-  console.log('  🟢 Defaulted (6) :', columns.filter(c => c.type === 'default').map(c => c.label).join(', '));
-  console.log('  🔵 Auto-calc (7) :', columns.filter(c => c.type === 'auto').map(c => c.label).join(', '));
-  console.log('  ⚫ Optional (7)  :', columns.filter(c => c.type === 'optional').map(c => c.label).join(', '));
+  console.log('  🔴 Mandatory :', columns.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
+  console.log('  🟠 Note/Ref  :', columns.filter(c => c.type === 'note').map(c => c.label).join(', '));
+  console.log('  🟢 Defaulted :', columns.filter(c => c.type === 'default').map(c => c.label).join(', '));
+  console.log('  🔵 Auto-calc :', columns.filter(c => c.type === 'auto').map(c => c.label).join(', '));
+  console.log('  ⚫ Optional  :', columns.filter(c => c.type === 'optional').map(c => c.label).join(', '));
 }
 
 build().catch(err => {
