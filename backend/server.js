@@ -55,6 +55,7 @@ const uploadXml = multer({
 // In-memory session state (per server instance)
 let sessionState = {
   supplierData: null,
+  supplierHeaderPoRefs: [],
   feedData: null,
   masterData: null,
   lastXml: null,
@@ -75,6 +76,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
     // Parse each file and merge rows + validation errors
     let allRows = [];
     let allValidationErrors = [];
+    let allHeaderPoRefs = [];
 
     for (const file of files) {
       const parsed = await supplierReader.parse(file.buffer);
@@ -88,9 +90,11 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
       allValidationErrors = allValidationErrors.concat(
         (parsed.validationErrors || []).map(e => `[${file.originalname}] ${e}`)
       );
+      allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
     }
 
     sessionState.supplierData = { rows: allRows, validationErrors: allValidationErrors };
+    sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
     sessionState.feedData = null;
     sessionState.masterData = null;
     sessionState.lastXml = null;
@@ -110,13 +114,31 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
       Object.fromEntries(Object.entries(r).map(([k, v]) => [k, sanitizeVal(v)]))
     );
 
+    // Compute distinct POs from BOOKING_HEADER (authoritative, even if SKU_LINES is empty)
+    const poRefs = [...new Set(allHeaderPoRefs.map(p => String(p).trim()).filter(Boolean))];
+
+    // Compute booking groups from SKU rows (falls back to header POs if no SKU rows)
+    const sourceRows = safeRows.length > 0 ? safeRows
+      : poRefs.map(po => ({ PO_Number: po, Booking_Group: 'Single Booking' }));
+    const groupKeys = new Set();
+    for (const row of sourceRows) {
+      const bg = String(row.Booking_Group || '').trim();
+      const po = String(row.PO_Number    || '').trim();
+      if (!po) continue;
+      if (bg === 'Multiple') { groupKeys.add('__ALL__'); }
+      else {
+        const m = bg.match(/^Multiple POs-(BK\d+)$/i);
+        groupKeys.add(m ? m[1].toUpperCase() : 'PO__' + po);
+      }
+    }
+
     res.json({
       success: true,
       rowCount: safeRows.length,
       fileCount: files.length,
-      poRefs: [...new Set(safeRows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))],
-      rows: safeRows,
-      preview: safeRows.slice(0, 5),
+      poCount: poRefs.length,
+      bookingCount: groupKeys.size,
+      poRefs,
       validationErrors: allValidationErrors
     });
   } catch (err) {
@@ -344,20 +366,34 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       return r;
     });
 
-    // Group rows by Booking_Group; blank = single combined booking
+    // Derive a grouping key from Booking_Group:
+    //   "Single Booking"      → one VBKREQ per PO  (key = PO_Number)
+    //   "Multiple POs-BKxxx"  → all rows with same code in one VBKREQ (key = BKxxx)
+    //   "Multiple"            → everything in one VBKREQ (key = __ALL__)
+    //   blank / unknown       → treat as Single Booking for safety
+    function resolveGroupKey(row) {
+      const bg = String(row.Booking_Group || '').trim();
+      if (bg === 'Multiple') return '__ALL__';
+      const multiMatch = bg.match(/^Multiple POs-(BK\d+)$/i);
+      if (multiMatch) return multiMatch[1].toUpperCase();
+      // "Single Booking" or blank/legacy → one VBKREQ per PO
+      return `PO__${String(row.PO_Number || '').trim()}`;
+    }
+
     const groupMap = new Map();
     for (const row of workingRows) {
-      const group = String(row.Booking_Group || '').trim() || '__ALL__';
+      const group = resolveGroupKey(row);
       if (!groupMap.has(group)) groupMap.set(group, []);
       groupMap.get(group).push(row);
     }
 
     const generations = [];
     for (const [group, groupRows] of groupMap) {
-      const { xml, filename, ctrlNumber, version } = await vbkreqBuilder.build(groupRows, purposeCd);
+      const { xml, filename, ctrlNumber, version, bookingRef: vbRef } = await vbkreqBuilder.build(groupRows, purposeCd);
       const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
-      const bookingRef = groupRows[0]?.Booking_Ref || '';
-      const groupLabel = group === '__ALL__' ? '' : group;
+      const bookingRef = vbRef || groupRows[0]?.Booking_Ref || '';
+      // Human-readable label: strip the internal PO__ prefix used for Single Booking keys
+      const groupLabel = group === '__ALL__' ? 'Multiple' : group.startsWith('PO__') ? group.replace('PO__', '') : group;
       bibleBuilder.appendGenerationLog({
         timestamp:  new Date().toISOString(),
         bookingRef,
@@ -367,7 +403,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
         group: groupLabel,
         sftp: null
       });
-      generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers });
+      generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers, bookingRef });
     }
 
     sessionState.lastGenerations  = generations;
@@ -407,6 +443,74 @@ app.post('/api/upload-sftp', async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('upload-sftp error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
+// GET /api/tagged-template
+// Build and return supplier Excel with VBKREQ_Ref column mapped to each PO
+// ─────────────────────────────────────────────
+app.get('/api/tagged-template', async (req, res) => {
+  try {
+    const generations = sessionState.lastGenerations || [];
+    const headerPoRefs = sessionState.supplierHeaderPoRefs || [];
+    if (!generations.length) return res.status(400).json({ error: 'No VBKREQs generated yet. Run the pipeline first.' });
+
+    // Build PO → VBKREQ_Ref map
+    const poToRef = {};
+    for (const gen of generations) {
+      const ref = gen.filename || gen.ctrlNumber || '';
+      for (const po of (gen.poNumbers || [])) poToRef[String(po).trim()] = ref;
+    }
+
+    const ExcelJS = require('exceljs');
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'CarrierBookingStub';
+    wb.created = new Date();
+    const ws = wb.addWorksheet('PO_VBKREQ_MAP');
+    ws.properties.tabColor = { argb: 'FF1F4E79' };
+
+    // Header row
+    const cols = [
+      { header: 'PO_Number',   key: 'po',  width: 28 },
+      { header: 'VBKREQ_Ref', key: 'ref', width: 60 },
+      { header: 'Status',     key: 'st',  width: 18 }
+    ];
+    const hdr = ws.getRow(1);
+    cols.forEach((c, i) => {
+      const cell = hdr.getCell(i + 1);
+      cell.value = c.header;
+      cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+      cell.font  = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getColumn(i + 1).width = c.width;
+    });
+    hdr.height = 24;
+
+    // Data rows — one per PO from BOOKING_HEADER
+    const allPOs = [...new Set(headerPoRefs.map(p => String(p).trim()).filter(Boolean))];
+    allPOs.forEach((po, i) => {
+      const ref = poToRef[po] || '';
+      const row = ws.getRow(i + 2);
+      row.getCell(1).value = po;
+      row.getCell(2).value = ref;
+      const matched = !!ref;
+      row.getCell(3).value = matched ? 'Generated' : 'Not generated';
+      row.getCell(3).fill = { type: 'pattern', pattern: 'solid',
+        fgColor: { argb: matched ? 'FFE8F5E9' : 'FFFCE8E8' } };
+      row.getCell(3).font = { color: { argb: matched ? 'FF1B5E20' : 'FF7B1F1F' }, bold: true, size: 10 };
+      row.commit();
+    });
+    ws.views = [{ state: 'frozen', ySplit: 1, showGridLines: true }];
+
+    const buf = await wb.xlsx.writeBuffer();
+    const ts  = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="PO_VBKREQ_Map_${ts}.xlsx"`);
+    res.send(buf);
+  } catch (err) {
+    console.error('tagged-template error:', err);
     res.status(500).json({ error: err.message });
   }
 });

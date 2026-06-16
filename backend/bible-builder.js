@@ -160,17 +160,21 @@ async function build(supplierData, feedData) {
 
     masterRows.push({
         // Booking identity
-        Booking_Ref: sRow.Booking_Ref || '',
-        PO_Number:   poNum,
-        ASN_Ref:     asnRef,  // carrier ASNID when available
+        Booking_Ref:   sRow.Booking_Ref   || '',
+        Booking_Group: sRow.Booking_Group || '',
+        PO_Number:     poNum,
+        ASN_Ref:       asnRef,  // carrier ASNID when available
 
         // Supplier — from carrier feed
         Supplier_Name:     carrierPoMeta[poNum]?.supplier     || '',
         Supplier_ID:       carrierPoMeta[poNum]?.supplierCode || '',
 
         // Factory — mandatory from supplier template
-        Factory_Name:      sRow.Factory_Name      || '',
+        // Factory_ID 9999 = Dummy Factory: name defaults to "Dummy Factory", address intentionally blank
         Factory_ID:        sRow.Factory_ID        || '',
+        Factory_Name:      String(sRow.Factory_ID || '').trim() === '9999'
+                             ? (sRow.Factory_Name || 'Dummy Factory')
+                             : (sRow.Factory_Name || ''),
         Factory_Street1:   sRow.Factory_Street1   || '',
         Factory_Street2:   sRow.Factory_Street2   || '',
         Factory_Street3:   sRow.Factory_Street3   || '',
@@ -260,9 +264,10 @@ async function build(supplierData, feedData) {
         const poLine = poByLinesku[`${poNum}_${sku}`];
         const ct = CARTON_TYPES['BDCM1'];
         masterRows.push({
-          Booking_Ref:  '',
-          PO_Number:    poNum,
-          ASN_Ref:      carrierLine.asnId,
+          Booking_Ref:   '',
+          Booking_Group: '',
+          PO_Number:     poNum,
+          ASN_Ref:       carrierLine.asnId,
           _missingFromSupplier: true,   // flag for Excel highlighting
 
           Supplier_Name:      carrierPoMeta[poNum]?.supplier     || '',

@@ -378,7 +378,7 @@ async function build(masterRows, purposeCd) {
   }
 
   const xml = root.end({ prettyPrint: true });
-  return { xml, filename, ctrlNumber, version };
+  return { xml, filename, ctrlNumber, version, bookingRef };
 }
 
 module.exports = { build, CARTON_TYPES };

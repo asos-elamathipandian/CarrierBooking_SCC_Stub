@@ -506,6 +506,50 @@
     .blob-missing-po  { background: #FEF9E7; border-left: 4px solid #F39C12; color: #784212; }
     .blob-missing-asn { background: #FDEDEC; border-left: 4px solid #E74C3C; color: #922B21; }
 
+    /* ── Pipeline ── */
+    .pipeline-stages { display: flex; flex-direction: column; gap: 0; }
+    .pipeline-stage {
+      border: 1px solid #D6EAF8; border-radius: 8px; overflow: hidden;
+      transition: border-color .25s, opacity .25s;
+    }
+    .pipeline-stage.ps-pending { opacity: .45; }
+    .pipeline-stage.ps-active  { border-color: #E67E22; opacity: 1; }
+    .pipeline-stage.ps-done    { border-color: #27AE60; opacity: 1; }
+    .pipeline-stage.ps-error   { border-color: #E74C3C; opacity: 1; }
+    .ps-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; background: #EBF5FB;
+    }
+    .pipeline-stage.ps-active .ps-header { background: #FEF9E7; }
+    .pipeline-stage.ps-done   .ps-header { background: #EAFAF1; }
+    .pipeline-stage.ps-error  .ps-header { background: #FDEDEC; }
+    .ps-num {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: #BDC3C7; color: #fff;
+      font-weight: 700; font-size: 12px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .pipeline-stage.ps-active .ps-num { background: #E67E22; }
+    .pipeline-stage.ps-done   .ps-num { background: #27AE60; }
+    .pipeline-stage.ps-error  .ps-num { background: #E74C3C; }
+    .ps-title { font-size: 13px; font-weight: 600; color: #1F4E79; flex: 1; }
+    .ps-inline-status { font-size: 11px; color: #888; }
+    .ps-body { padding: 14px 16px; }
+    .pipeline-arrow {
+      text-align: center; font-size: 18px; color: #AED6F1;
+      line-height: 1; padding: 4px 0;
+    }
+    .asn-status-grid { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 12px; }
+    .asn-status-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .asn-status-row.found     { background: #EAFAF1; color: #1E8449; }
+    .asn-status-row.not-found { background: #FEF9E7; color: #784212; }
+    .proceed-bar { margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .proceed-note { font-size: 12px; color: #555; font-style: italic; }
+
     /* ── Reference Guide ── */
     .ref-guide-card { margin-top: 4px; }
     .ref-guide-header {
@@ -609,175 +653,156 @@
     </div>
   </div>
 
-  <!-- ── Step 2: Provide PO & ASN Feeds ── -->
-  <div class="step-card" id="card2">
+  <!-- ── Pipeline Card (Steps 2-5) ── -->
+  <div class="step-card" id="pipelineCard" style="display:none">
     <div class="step-header">
-      <div class="step-badge" id="badge2">2</div>
+      <div class="step-badge" id="badgePipeline">2</div>
       <div>
-        <div class="step-title">Fetch details using parsed PO's</div>
-        <div class="step-desc">Fetch details using parsed PO's</div>
+        <div class="step-title">Booking Pipeline</div>
+        <div class="step-desc">Fetch ASN feeds → Build master workbook → Generate &amp; upload VBKREQ</div>
       </div>
     </div>
     <div class="step-body">
+      <div class="pipeline-stages">
 
-      <!-- Tab strip -->
-      <div class="tab-strip">
-        <button class="tab-btn active" id="tabBtnBlob" onclick="switchFeedTab('blob')">&#9729; Fetch from Azure Blob</button>
-        <button class="tab-btn" id="tabBtnUpload" onclick="switchFeedTab('upload')">&#128194; Upload XML Files</button>
-      </div>
-
-      <!-- Panel: Fetch from Azure Blob -->
-      <div class="tab-panel active" id="panelFetchBlob">
-        <div style="margin-bottom:14px">
-          <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px">PO Refs to fetch (auto-picked from supplier template):</div>
-          <div class="ref-tags" id="blobPoRefTags"><span style="color:#aaa;font-size:12px">Upload supplier template first to auto-populate&hellip;</span></div>
-        </div>
-        <button class="btn btn-primary" id="btnFetchFeeds" disabled>
-          &#128279; Fetch carrier feed from Azure Blob
-        </button>
-      </div>
-
-      <!-- Panel: Upload XML Files -->
-      <div class="tab-panel" id="panelUploadFeeds">
-        <div class="feeds-grid">
-          <div>
-            <div class="feed-drop-label">Carrier Feed XML</div>
-            <div class="feed-drop-zone" id="asnDropZone">
-              <div style="font-size:24px;margin-bottom:6px">📄</div>
-              <div id="asnDropZoneText">Drop Carrier Feed XML here</div>
-              <div style="font-size:11px;color:#888;margin-top:4px">or <u style="cursor:pointer" onclick="event.stopPropagation();document.getElementById('asnFeedInput').click()">browse</u></div>
+        <!-- ── Stage 1: Fetch Feeds ── -->
+        <div class="pipeline-stage ps-pending" id="pstage1">
+          <div class="ps-header">
+            <span class="ps-num" id="psNum1">1</span>
+            <span class="ps-title">Fetch Carrier Feeds</span>
+            <span class="ps-inline-status" id="psInline1"></span>
+          </div>
+          <div class="ps-body" id="psBody1">
+            <div class="tab-strip">
+              <button class="tab-btn active" id="tabBtnBlob" onclick="switchFeedTab('blob')">&#9729; Azure Blob (auto)</button>
+              <button class="tab-btn" id="tabBtnUpload" onclick="switchFeedTab('upload')">&#128194; Upload XML</button>
             </div>
-            <input type="file" id="asnFeedInput" accept=".xml" style="display:none" />
+            <div class="tab-panel active" id="panelFetchBlob">
+              <div style="font-size:12px;color:#555;margin-bottom:8px">PO refs auto-picked from supplier template:</div>
+              <div class="ref-tags" id="blobPoRefTags"><span style="color:#aaa;font-size:12px">Upload supplier template first&hellip;</span></div>
+            </div>
+            <div class="tab-panel" id="panelUploadFeeds">
+              <div class="feed-drop-label">Carrier Feed XML</div>
+              <div class="feed-drop-zone" id="asnDropZone">
+                <div style="font-size:24px;margin-bottom:6px">&#128196;</div>
+                <div id="asnDropZoneText">Drop Carrier Feed XML here</div>
+                <div style="font-size:11px;color:#888;margin-top:4px">or <u style="cursor:pointer" onclick="event.stopPropagation();document.getElementById('asnFeedInput').click()">browse</u></div>
+              </div>
+              <input type="file" id="asnFeedInput" accept=".xml" style="display:none" />
+            </div>
+            <div style="margin-top:12px">
+              <button class="btn btn-primary" id="btnFetchFeeds" disabled>&#128279; Fetch Carrier Feeds</button>
+            </div>
+            <div id="psFetchResult" style="margin-top:10px"></div>
           </div>
         </div>
-        <button class="btn btn-primary" id="btnUploadFeeds" disabled>
-          &#11014; Upload &amp; Parse Feeds
-        </button>
-      </div>
 
-      <!-- Panel: Fetch from Azure Blob (moved to first tab above) -->
+        <div class="pipeline-arrow">&#8595;</div>
 
-      <div class="status-box" id="status2"></div>
-
-      <!-- Feed preview panel — shown after successful fetch/upload -->
-      <div id="feedPreviewPanel">
-        <div id="blobResultTable" style="display:none"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Step 3: Build Bible ── -->
-  <div class="step-card" id="card3">
-    <div class="step-header">
-      <div class="step-badge" id="badge3">3</div>
-      <div>
-        <div class="step-title">Build Master Workbook</div>
-        <div class="step-desc">Merges supplier data + carrier feed into MASTER sheet — generates workbook</div>
-      </div>
-    </div>
-    <div class="step-body">
-      <button class="btn btn-warning" id="btnBuildBible" disabled>
-        📊 Build Master Workbook
-      </button>
-      <div class="status-box" id="status3"></div>
-    </div>
-  </div>
-
-  <!-- ── Step 4: Generate VBKREQ ── -->
-  <div class="step-card" id="card4">
-    <div class="step-header">
-      <div class="step-badge" id="badge4">4</div>
-      <div>
-        <div class="step-title">Generate VBKREQ XML</div>
-        <div class="step-desc">Reads MASTER sheet and builds the VBKREQ XML ready for E2open</div>
-      </div>
-    </div>
-    <div class="step-body">
-      <!-- ── Date overrides ── -->
-      <div class="date-override-panel">
-        <div class="date-override-label">
-          📅 Date Overrides
-          <span class="date-override-hint">— optional. Overrides dates from the supplier template for all rows.</span>
-        </div>
-        <div class="date-override-grid">
-          <div class="date-field-wrap">
-            <label>Cargo Ready / Planned Collection Date <span class="date-badge">DateTypeCd 018</span></label>
-            <input type="date" id="overrideCargoReady" />
-            <button class="date-clear-btn" id="clearCargoReady" onclick="clearDateField('overrideCargoReady','clearCargoReady')">&#10006; Clear</button>
+        <!-- ── Stage 2: Build Workbook ── -->
+        <div class="pipeline-stage ps-pending" id="pstage2">
+          <div class="ps-header">
+            <span class="ps-num" id="psNum2">2</span>
+            <span class="ps-title">Build Master Workbook</span>
+            <span class="ps-inline-status" id="psInline2"></span>
           </div>
-          <div class="date-field-wrap">
-            <label>Carrier Booking Request Date <span class="date-badge">DateTypeCd 081</span></label>
-            <input type="date" id="overrideBookingReqDate" />
-            <button class="date-clear-btn" id="clearBookingReqDate" onclick="clearDateField('overrideBookingReqDate','clearBookingReqDate')">&#10006; Clear</button>
+          <div class="ps-body" id="psBody2" style="display:none">
+            <div id="psBuildResult" style="margin-bottom:10px"></div>
+            <div id="psProceed2Wrap" style="display:none">
+              <div class="proceed-bar">
+                <button class="btn btn-success" id="btnProceedGenerate">&#10004; Proceed — Configure &amp; Generate VBKREQ</button>
+                <span class="proceed-note">Review warnings above before proceeding</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="purpose-selector">
-        <label style="font-size:13px;font-weight:600;color:#444;margin-bottom:6px;display:block">Purpose Code</label>
-        <div class="purpose-options">
-          <label class="purpose-option">
-            <input type="radio" name="purposeCd" value="13" checked>
-            <span><strong>13 — Request</strong> <em>(new booking)</em></span>
-          </label>
-          <label class="purpose-option">
-            <input type="radio" name="purposeCd" value="15">
-            <span><strong>15 — Re-Submission</strong> <em>(increments version)</em></span>
-          </label>
-          <label class="purpose-option">
-            <input type="radio" name="purposeCd" value="01">
-            <span><strong>01 — Cancellation</strong> <em>(mandatory fields only)</em></span>
-          </label>
+        <div class="pipeline-arrow">&#8595;</div>
+
+        <!-- ── Stage 3: Generate VBKREQ ── -->
+        <div class="pipeline-stage ps-pending" id="pstage3">
+          <div class="ps-header">
+            <span class="ps-num" id="psNum3">3</span>
+            <span class="ps-title">Generate VBKREQ XML</span>
+            <span class="ps-inline-status" id="psInline3"></span>
+          </div>
+          <div class="ps-body" id="psBody3" style="display:none">
+            <div class="date-override-panel" style="margin-bottom:12px">
+              <div class="date-override-label">&#128197; Date Overrides <span class="date-override-hint">— optional; overrides dates from supplier template</span></div>
+              <div class="date-override-grid">
+                <div class="date-field-wrap">
+                  <label>Cargo Ready / Planned Collection Date <span class="date-badge">DateTypeCd 018</span></label>
+                  <input type="date" id="overrideCargoReady" />
+                  <button class="date-clear-btn" id="clearCargoReady" onclick="clearDateField('overrideCargoReady','clearCargoReady')">&#10006; Clear</button>
+                </div>
+                <div class="date-field-wrap">
+                  <label>Carrier Booking Request Date <span class="date-badge">DateTypeCd 081</span></label>
+                  <input type="date" id="overrideBookingReqDate" />
+                  <button class="date-clear-btn" id="clearBookingReqDate" onclick="clearDateField('overrideBookingReqDate','clearBookingReqDate')">&#10006; Clear</button>
+                </div>
+              </div>
+            </div>
+            <div class="purpose-selector" style="margin-bottom:14px">
+              <label style="font-size:13px;font-weight:600;color:#444;margin-bottom:6px;display:block">Purpose Code</label>
+              <div class="purpose-options">
+                <label class="purpose-option">
+                  <input type="radio" name="purposeCd" value="13" checked>
+                  <span><strong>13 &mdash; Request</strong> <em>(new booking)</em></span>
+                </label>
+                <label class="purpose-option">
+                  <input type="radio" name="purposeCd" value="15">
+                  <span><strong>15 &mdash; Re-Submission</strong> <em>(increments version)</em></span>
+                </label>
+                <label class="purpose-option">
+                  <input type="radio" name="purposeCd" value="01">
+                  <span><strong>01 &mdash; Cancellation</strong> <em>(mandatory fields only)</em></span>
+                </label>
+              </div>
+            </div>
+            <button class="btn btn-warning" id="btnGenerateVbkreq">&#9881; Generate VBKREQ</button>
+            <div id="psGenResult" style="margin-top:10px"></div>
+            <div class="xml-preview-wrap" id="xmlPreviewWrap" style="margin-top:10px">
+              <div id="generationsContainer"></div>
+            </div>
+            <div id="psProceed3Wrap" style="display:none">
+              <div class="proceed-bar" style="margin-top:14px">
+                <button class="btn btn-danger" id="btnProceedUpload">&#11014; Upload All to E2open SFTP</button>
+                <span class="proceed-note">This will send all generated VBKREQs to the carrier</span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <button class="btn btn-success" id="btnGenerateVbkreq" disabled>
-        ⚙ Generate VBKREQ
-      </button>
-      <div class="status-box" id="status4"></div>
-      <div class="xml-preview-wrap" id="xmlPreviewWrap">
-        <div id="generationsContainer"></div>
-      </div>
-    </div>
-  </div>
 
-  <!-- ── Step 5: Upload to SFTP ── -->
-  <div class="step-card" id="card5">
-    <div class="step-header">
-      <div class="step-badge" id="badge5">5</div>
-      <div>
-        <div class="step-title">Upload to E2open SFTP</div>
-        <div class="step-desc">Uploads the generated VBKREQ XML to E2open SFTP — carrier and TA will receive it</div>
-      </div>
-    </div>
-    <div class="step-body">
-      <button class="btn btn-danger" id="btnUploadSftp" disabled>
-        ⬆ Upload All to E2open SFTP
-      </button>
-      <div class="status-box" id="status5"></div>
-    </div>
-  </div>
+        <div class="pipeline-arrow">&#8595;</div>
 
-  <!-- ── Generation Log ── -->
+        <!-- ── Stage 4: Upload SFTP ── -->
+        <div class="pipeline-stage ps-pending" id="pstage4">
+          <div class="ps-header">
+            <span class="ps-num" id="psNum4">4</span>
+            <span class="ps-title">Upload to E2open SFTP</span>
+            <span class="ps-inline-status" id="psInline4"></span>
+          </div>
+          <div class="ps-body" id="psBody4" style="display:none">
+            <div id="psUploadResult"></div>
+          </div>
+        </div>
+
+      </div><!-- /.pipeline-stages -->
+    </div><!-- /.step-body -->
+  </div><!-- /#pipelineCard -->
+
+  <!-- ── PO → VBKREQ Map ── -->
   <div class="step-card">
     <div class="step-header">
-      <div class="step-badge btn-secondary" style="background:#5D6D7E">📋</div>
+      <div class="step-badge" style="background:#5D6D7E">📥</div>
       <div>
-        <div class="step-title">Generation Log</div>
-        <div class="step-desc">Last 50 VBKREQ generations</div>
+        <div class="step-title">PO → VBKREQ Reference Map</div>
+        <div class="step-desc">Shows each PO and its generated VBKREQ reference — populated after generation</div>
       </div>
     </div>
     <div class="step-body">
-      <button class="btn btn-secondary" id="btnRefreshLog" style="margin-bottom:10px">🔄 Refresh Log</button>
-      <div class="log-table-wrap">
-        <table id="logTable">
-          <thead>
-            <tr>
-              <th>Timestamp</th><th>Booking Ref</th><th>PO Numbers</th>
-              <th>Filename</th><th>Ctrl#</th><th>SFTP</th>
-            </tr>
-          </thead>
-          <tbody id="logBody"><tr><td colspan="6" style="text-align:center;color:#999">No entries yet</td></tr></tbody>
-        </table>
+      <div id="taggedTemplatePanel">
+        <span style="font-size:12px;color:#aaa">Complete the pipeline and generate VBKREQs — the mapping will appear here.</span>
       </div>
     </div>
   </div>
