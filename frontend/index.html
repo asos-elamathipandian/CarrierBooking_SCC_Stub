@@ -3,345 +3,312 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CarrierBookingStub — VBKREQ Generator</title>
+  <title>Carrier Booking — VBKREQ Simulator</title>
   <style>
+    :root {
+      --navy:   #0B1E3A;
+      --blue:   #1565C0;
+      --accent: #0288D1;
+      --cyan:   #38BDF8;
+      --mint:   #059669;
+      --amber:  #D97706;
+      --red:    #DC2626;
+      --surface:#F1F5F9;
+      --card:   #FFFFFF;
+      --border: #E2E8F0;
+      --text:   #0F172A;
+      --muted:  #64748B;
+      --light:  #94A3B8;
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: #f0f4f8;
-      color: #1a202c;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--surface);
+      color: var(--text);
       min-height: 100vh;
     }
 
     /* ── Header ── */
     header {
-      background: linear-gradient(135deg, #1F4E79 0%, #2E75B6 100%);
+      background: linear-gradient(135deg, #07121F 0%, var(--navy) 50%, #122444 100%);
       color: #fff;
-      padding: 18px 32px;
+      padding: 0 32px;
+      height: 62px;
       display: flex;
       align-items: center;
       gap: 14px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+      box-shadow: 0 2px 12px rgba(0,0,0,.4);
+      position: sticky; top: 0; z-index: 100;
     }
-    header .logo { font-size: 28px; }
-    header h1 { font-size: 22px; font-weight: 600; letter-spacing: .3px; }
-    header p  { font-size: 12px; opacity: .8; margin-top: 2px; }
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--cyan) 0%, var(--accent) 50%, transparent 100%);
+    }
+    .header-logo {
+      width: 40px; height: 40px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; flex-shrink: 0;
+    }
+    .header-titles h1 { font-size: 18px; font-weight: 700; letter-spacing: .2px; }
+    .header-titles p  { font-size: 11px; color: rgba(255,255,255,.5); margin-top: 2px; }
+    .header-badge { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .header-chip {
+      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+      border-radius: 20px; padding: 4px 12px;
+      font-size: 11px; color: rgba(255,255,255,.75); font-weight: 600; white-space: nowrap;
+    }
+    .header-chip.live {
+      background: rgba(5,150,105,.2); border-color: rgba(52,211,153,.35); color: #6EE7B7;
+    }
+    .header-chip.live::before { content: '●'; color: #34D399; margin-right: 5px; font-size: 8px; vertical-align: middle; }
 
     /* ── Layout ── */
     main {
       max-width: 960px;
-      margin: 32px auto;
+      margin: 28px auto;
       padding: 0 20px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 16px;
     }
 
     /* ── Step card ── */
     .step-card {
-      background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.1);
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
       overflow: hidden;
+      border: 1px solid var(--border);
     }
     .step-header {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 14px;
       padding: 14px 20px;
-      background: #EBF5FB;
-      border-bottom: 1px solid #D6EAF8;
+      background: linear-gradient(135deg, #F8FAFF 0%, #EFF4FF 100%);
+      border-bottom: 1px solid var(--border);
     }
     .step-badge {
-      width: 32px; height: 32px;
-      border-radius: 50%;
-      background: #1F4E79;
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: var(--navy);
       color: #fff;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 15px;
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
+      box-shadow: 0 2px 6px rgba(11,30,58,.3);
     }
-    .step-badge.done   { background: #27AE60; }
-    .step-badge.active { background: #E67E22; }
-    .step-title { font-size: 15px; font-weight: 600; color: #1F4E79; }
-    .step-desc  { font-size: 12px; color: #5d6d7e; margin-top: 2px; }
-
-    .step-body { padding: 16px 20px; }
+    .step-badge.done   { background: var(--mint);  box-shadow: 0 2px 6px rgba(5,150,105,.35); }
+    .step-badge.active { background: var(--amber); box-shadow: 0 2px 6px rgba(217,119,6,.35); }
+    .step-title { font-size: 15px; font-weight: 700; color: var(--navy); }
+    .step-desc  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .step-body  { padding: 18px 20px; }
 
     /* ── Buttons ── */
     .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 22px;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background .2s, opacity .2s, transform .1s;
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 20px; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: all .18s ease; letter-spacing: .2px; white-space: nowrap;
     }
-    .btn:active:not(:disabled) { transform: scale(.97); }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
-    .btn-primary   { background: #1F4E79; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #154360; }
-    .btn-success   { background: #27AE60; color: #fff; }
-    .btn-success:hover:not(:disabled) { background: #1E8449; }
-    .btn-warning   { background: #E67E22; color: #fff; }
-    .btn-warning:hover:not(:disabled) { background: #CA6F1E; }
-    .btn-danger    { background: #C0392B; color: #fff; }
-    .btn-danger:hover:not(:disabled) { background: #A93226; }
-    .btn-secondary { background: #5D6D7E; color: #fff; }
-    .btn-secondary:hover:not(:disabled) { background: #4A5568; }
+    .btn:active:not(:disabled) { transform: scale(.97) translateY(1px); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary {
+      background: linear-gradient(135deg, #1565C0, #0288D1);
+      color: #fff; box-shadow: 0 2px 8px rgba(2,136,209,.3);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #0D47A1, #0277BD);
+      box-shadow: 0 4px 14px rgba(2,136,209,.4); transform: translateY(-1px);
+    }
+    .btn-success {
+      background: linear-gradient(135deg, #059669, #10B981);
+      color: #fff; box-shadow: 0 2px 8px rgba(5,150,105,.3);
+    }
+    .btn-success:hover:not(:disabled) {
+      background: linear-gradient(135deg, #047857, #059669);
+      box-shadow: 0 4px 14px rgba(5,150,105,.4); transform: translateY(-1px);
+    }
+    .btn-warning {
+      background: linear-gradient(135deg, #D97706, #F59E0B);
+      color: #fff; box-shadow: 0 2px 8px rgba(217,119,6,.3);
+    }
+    .btn-warning:hover:not(:disabled) {
+      background: linear-gradient(135deg, #B45309, #D97706);
+      box-shadow: 0 4px 14px rgba(217,119,6,.4); transform: translateY(-1px);
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, #DC2626, #EF4444);
+      color: #fff; box-shadow: 0 2px 8px rgba(220,38,38,.3);
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: linear-gradient(135deg, #B91C1C, #DC2626);
+      box-shadow: 0 4px 14px rgba(220,38,38,.4); transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: linear-gradient(135deg, #475569, #64748B);
+      color: #fff; box-shadow: 0 2px 6px rgba(71,85,105,.2);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #334155, #475569); transform: translateY(-1px);
+    }
 
     /* ── File input ── */
     .file-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .file-label {
       display: inline-flex; align-items: center; gap: 6px;
-      padding: 9px 18px;
-      border: 2px dashed #2E75B6;
-      border-radius: 6px;
-      font-size: 13px;
-      color: #2E75B6;
-      cursor: pointer;
-      transition: background .2s;
+      padding: 9px 18px; border: 2px dashed var(--accent); border-radius: 8px;
+      font-size: 13px; color: var(--accent); cursor: pointer; transition: background .2s;
     }
+
     /* ── Drop zone ── */
     .drop-zone {
-      border: 2px dashed #AED6F1;
-      border-radius: 10px;
-      padding: 28px 20px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color .2s, background .2s;
-      background: #F8FBFF;
-      color: #555;
-      font-size: 14px;
+      border: 2px dashed #BDD5F5; border-radius: 12px;
+      padding: 32px 20px; text-align: center; cursor: pointer;
+      transition: all .2s; background: #F8FBFF; color: #555; font-size: 14px;
     }
-    .drop-zone:hover, .drop-zone.drag-over {
-      border-color: #1F4E79;
-      background: #EBF5FB;
-    }
-    .drop-zone.has-file {
-      border-color: #27AE60;
-      background: #EAFAF1;
-      color: #1E8449;
-    }
-    .drop-zone-icon { font-size: 32px; margin-bottom: 8px; }
-    .drop-zone-hint { font-size: 12px; color: #888; margin-top: 4px; }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: #EBF5FB; }
+    .drop-zone.has-file { border-color: var(--mint); background: #ECFDF5; color: var(--mint); }
+    .drop-zone-icon { font-size: 38px; margin-bottom: 10px; }
+    .drop-zone-hint { font-size: 12px; color: #888; margin-top: 6px; }
     #supplierFileInput { display: none; }
     .file-name { font-size: 12px; color: #555; font-style: italic; }
 
     /* ── Status messages ── */
     .status-box {
-      margin-top: 12px;
-      padding: 10px 14px;
-      border-radius: 6px;
-      font-size: 13px;
-      line-height: 1.5;
-      display: none;
+      margin-top: 12px; padding: 10px 14px; border-radius: 8px;
+      font-size: 13px; line-height: 1.5; display: none;
     }
-    .status-box.info    { background: #EBF5FB; border-left: 4px solid #2E75B6; color: #1a5276; display: block; }
-    .status-box.success { background: #EAFAF1; border-left: 4px solid #27AE60; color: #1E8449; display: block; }
-    .status-box.error   { background: #FDEDEC; border-left: 4px solid #E74C3C; color: #922B21; display: block; }
-    .status-box.loading { background: #FEF9E7; border-left: 4px solid #F39C12; color: #784212; display: block; }
+    .status-box.info    { background: #EFF6FF; border-left: 4px solid #3B82F6; color: #1D4ED8; display: block; }
+    .status-box.success { background: #ECFDF5; border-left: 4px solid #10B981; color: #065F46; display: block; }
+    .status-box.error   { background: #FEF2F2; border-left: 4px solid #EF4444; color: #991B1B; display: block; }
+    .status-box.loading { background: #FFFBEB; border-left: 4px solid #F59E0B; color: #92400E; display: block; }
 
     /* ── Purpose code selector ── */
     .purpose-selector { margin-bottom: 14px; }
-    .purpose-options { display: flex; gap: 12px; flex-wrap: wrap; }
+    .purpose-options { display: flex; gap: 10px; flex-wrap: wrap; }
     .purpose-option {
       display: flex; align-items: center; gap: 8px;
-      background: #F4F6F7; border: 1px solid #D5D8DC;
-      border-radius: 8px; padding: 8px 14px; cursor: pointer;
-      font-size: 13px; transition: border-color .2s;
+      background: #F8FAFC; border: 1.5px solid var(--border); border-radius: 8px;
+      padding: 8px 14px; cursor: pointer; font-size: 13px;
+      transition: border-color .2s, background .2s;
     }
-    .purpose-option:hover { border-color: #1F4E79; }
-    .purpose-option input[type=radio] { accent-color: #1F4E79; }
-    .purpose-option input[type=radio]:checked ~ span { color: #1F4E79; font-weight: 700; }
+    .purpose-option:hover { border-color: var(--accent); background: #EFF6FF; }
+    .purpose-option input[type=radio] { accent-color: var(--accent); }
+    .purpose-option input[type=radio]:checked ~ span { color: var(--navy); font-weight: 700; }
 
     /* ── Date override picker ── */
     .date-override-panel {
-      margin-bottom: 16px;
-      padding: 14px 16px;
-      background: #F8FBFF;
-      border: 1px solid #D6EAF8;
-      border-radius: 8px;
+      margin-bottom: 16px; padding: 14px 16px;
+      background: #F8FBFF; border: 1px solid #DDE8F8; border-radius: 10px;
     }
     .date-override-label {
-      font-size: 12px; font-weight: 700; color: #1F4E79;
+      font-size: 12px; font-weight: 700; color: var(--navy);
       text-transform: uppercase; letter-spacing: .4px;
       margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
     }
-    .date-override-hint {
-      font-size: 11px; color: #888; font-weight: 400;
-      text-transform: none; letter-spacing: 0;
-    }
-    .date-override-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
+    .date-override-hint { font-size: 11px; color: #888; font-weight: 400; text-transform: none; letter-spacing: 0; }
+    .date-override-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 600px) { .date-override-grid { grid-template-columns: 1fr; } }
-    .date-field-wrap label {
-      display: block; font-size: 12px; font-weight: 600;
-      color: #444; margin-bottom: 4px;
-    }
+    .date-field-wrap label { display: block; font-size: 12px; font-weight: 600; color: #444; margin-bottom: 4px; }
     .date-field-wrap .date-badge {
-      display: inline-block;
-      background: #FEF9E7; border: 1px solid #F9CA24;
-      color: #7B3F00; border-radius: 4px;
-      font-size: 10px; font-weight: 700;
-      padding: 1px 6px; margin-left: 5px;
-      vertical-align: middle;
+      display: inline-block; background: #FEF3C7; border: 1px solid #FCD34D;
+      color: #78350F; border-radius: 4px; font-size: 10px; font-weight: 700;
+      padding: 1px 6px; margin-left: 5px; vertical-align: middle;
     }
     .date-field-wrap input[type=date] {
-      width: 100%;
-      padding: 8px 10px;
-      border: 1px solid #AED6F1;
-      border-radius: 6px;
-      font-size: 13px;
-      color: #1a202c;
-      background: #fff;
-      cursor: pointer;
+      width: 100%; padding: 8px 10px; border: 1.5px solid #BDD5F5; border-radius: 8px;
+      font-size: 13px; color: var(--text); background: #fff; cursor: pointer;
       transition: border-color .2s, box-shadow .2s;
     }
-    .date-field-wrap input[type=date]:hover { border-color: #2E75B6; }
-    .date-field-wrap input[type=date]:focus {
-      outline: none;
-      border-color: #1F4E79;
-      box-shadow: 0 0 0 3px rgba(31,78,121,.12);
-    }
+    .date-field-wrap input[type=date]:hover { border-color: var(--accent); }
+    .date-field-wrap input[type=date]:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(11,30,58,.1); }
     .date-field-wrap .date-clear-btn {
-      margin-top: 4px;
-      font-size: 11px; color: #E74C3C;
-      background: none; border: none;
-      cursor: pointer; padding: 0;
-      display: none;
+      margin-top: 4px; font-size: 11px; color: var(--red);
+      background: none; border: none; cursor: pointer; padding: 0; display: none;
     }
     .date-field-wrap .date-clear-btn.visible { display: inline; }
     .date-field-wrap .date-clear-btn:hover { text-decoration: underline; }
 
     /* ── XML preview ── */
-    .xml-preview-wrap {
-      margin-top: 12px;
-      display: none;
-    }
+    .xml-preview-wrap { margin-top: 12px; display: none; }
     .xml-preview-wrap.visible { display: block; }
     .xml-preview-wrap label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; display: block; }
     pre#xmlPreview {
-      background: #1e2533;
-      color: #a8d8a8;
-      padding: 14px;
-      border-radius: 6px;
-      font-size: 12px;
-      line-height: 1.6;
-      max-height: 380px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
+      background: #0D1117; color: #7EE787; padding: 14px; border-radius: 8px;
+      font-size: 12px; line-height: 1.6; max-height: 380px; overflow: auto;
+      white-space: pre-wrap; word-break: break-all; border: 1px solid #30363D;
     }
 
     /* ── Generation cards (multi-VBKREQ) ── */
-    .generation-card {
-      border: 1px solid #D6EAF8;
-      border-radius: 6px;
-      margin-bottom: 10px;
-      overflow: hidden;
-    }
+    .generation-card { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
     .generation-card:last-child { margin-bottom: 0; }
     .gen-header {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      padding: 9px 14px;
-      background: #EBF5FB;
-      border-bottom: 1px solid #D6EAF8;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #EFF6FF 0%, #EBF5FB 100%);
+      border-bottom: 1px solid var(--border);
     }
-    .gen-title { font-size: 13px; font-weight: 700; color: #1F4E79; }
-    .gen-meta  { font-size: 11px; color: #5d6d7e; }
+    .gen-title { font-size: 13px; font-weight: 700; color: var(--navy); }
+    .gen-meta  { font-size: 11px; color: var(--muted); }
     .btn-sm    { padding: 5px 12px !important; font-size: 12px !important; }
     .xml-pre {
-      background: #1e2533;
-      color: #a8d8a8;
-      padding: 12px 14px;
-      font-size: 11px;
-      line-height: 1.5;
-      max-height: 280px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
+      background: #0D1117; color: #7EE787; padding: 12px 14px; font-size: 11px;
+      line-height: 1.5; max-height: 280px; overflow: auto;
+      white-space: pre-wrap; word-break: break-all; border-top: 1px solid #30363D;
     }
-    .gen-details summary {
-      cursor: pointer; padding: 6px 14px;
-      font-size: 12px; color: #1F4E79; background: #f8fbff;
-    }
+    .gen-details summary { cursor: pointer; padding: 6px 14px; font-size: 12px; color: var(--accent); background: #F8FBFF; }
     .ref-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .tag {
-      background: #EBF5FB;
-      border: 1px solid #AED6F1;
-      color: #1A5276;
-      border-radius: 12px;
-      padding: 3px 10px;
-      font-size: 12px;
-      font-weight: 500;
+      background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E40AF;
+      border-radius: 20px; padding: 3px 12px; font-size: 12px; font-weight: 600;
     }
 
     /* ── Log table ── */
     .log-table-wrap { margin-top: 12px; overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { background: #1F4E79; color: #fff; padding: 7px 10px; text-align: left; }
-    td { padding: 6px 10px; border-bottom: 1px solid #e8edf3; }
-    tr:hover td { background: #F4F6F7; }
-    .badge-ok   { background: #27AE60; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
-    .badge-fail { background: #E74C3C; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+    th { background: var(--navy); color: #fff; padding: 8px 10px; text-align: left; }
+    td { padding: 7px 10px; border-bottom: 1px solid #EEF2FA; }
+    tr:hover td { background: #F8FAFC; }
+    .badge-ok   { background: #059669; color: #fff; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+    .badge-fail { background: var(--red); color: #fff; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; }
 
     /* ── Download link ── */
     .download-link {
-      display: inline-flex; align-items: center; gap: 6px;
-      margin-top: 8px;
-      color: #1F4E79;
-      font-size: 13px;
-      font-weight: 600;
-      text-decoration: none;
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+      color: var(--accent); font-size: 13px; font-weight: 600; text-decoration: none;
     }
     .download-link:hover { text-decoration: underline; }
 
     /* ── Spinner ── */
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner {
-      width: 16px; height: 16px;
-      border: 2px solid rgba(255,255,255,.4);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin .7s linear infinite;
-      display: inline-block;
+      width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff; border-radius: 50%;
+      animation: spin .6s linear infinite; display: inline-block; vertical-align: middle;
     }
 
     footer {
-      text-align: center;
-      font-size: 11px;
-      color: #999;
-      padding: 20px;
+      text-align: center; font-size: 11px; color: var(--light);
+      padding: 24px; letter-spacing: .5px;
     }
 
     /* ── Feed source tabs ── */
-    .tab-strip { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #D6EAF8; }
+    .tab-strip { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid var(--border); }
     .tab-btn {
-      padding: 8px 20px;
-      font-size: 13px;
-      font-weight: 600;
-      background: none;
-      border: none;
-      border-bottom: 3px solid transparent;
-      margin-bottom: -2px;
-      cursor: pointer;
-      color: #5d6d7e;
-      transition: color .2s, border-color .2s;
+      padding: 8px 20px; font-size: 13px; font-weight: 600; background: none; border: none;
+      border-bottom: 3px solid transparent; margin-bottom: -2px; cursor: pointer;
+      color: var(--muted); transition: color .2s, border-color .2s;
+      display: flex; align-items: center; gap: 6px;
     }
-    .tab-btn.active { color: #1F4E79; border-bottom-color: #1F4E79; }
+    .tab-btn.active { color: var(--navy); border-bottom-color: var(--accent); }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
@@ -350,266 +317,252 @@
     @media (max-width: 600px) { .feeds-grid { grid-template-columns: 1fr; } }
     .feed-drop-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
     .feed-drop-zone {
-      border: 2px dashed #AED6F1;
-      border-radius: 8px;
-      padding: 18px 12px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color .2s, background .2s;
-      background: #F8FBFF;
-      color: #555;
-      font-size: 13px;
+      border: 2px dashed #BDD5F5; border-radius: 10px;
+      padding: 18px 12px; text-align: center; cursor: pointer;
+      transition: all .2s; background: #F8FBFF; color: #555; font-size: 13px;
     }
-    .feed-drop-zone:hover, .feed-drop-zone.drag-over { border-color: #1F4E79; background: #EBF5FB; }
-    .feed-drop-zone.has-file { border-color: #27AE60; background: #EAFAF1; color: #1E8449; }
+    .feed-drop-zone:hover, .feed-drop-zone.drag-over { border-color: var(--accent); background: #EBF5FB; }
+    .feed-drop-zone.has-file { border-color: var(--mint); background: #ECFDF5; color: var(--mint); }
 
     /* ── Blob search ── */
     .blob-search-row { display: flex; gap: 8px; margin-top: 14px; }
-    .blob-search-row input {
-      flex: 1;
-      padding: 9px 12px;
-      border: 1px solid #BDC3C7;
-      border-radius: 6px;
-      font-size: 13px;
-    }
-    .blob-search-row input:focus { outline: none; border-color: #2E75B6; box-shadow: 0 0 0 2px #D6EAF8; }
-    .blob-results { margin-top: 10px; max-height: 200px; overflow-y: auto; border: 1px solid #EBF5FB; border-radius: 6px; }
+    .blob-search-row input { flex: 1; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; }
+    .blob-search-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(2,136,209,.1); }
+    .blob-results { margin-top: 10px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
     .blob-result-item {
-      padding: 6px 10px;
-      border-bottom: 1px solid #EBF5FB;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      padding: 6px 10px; border-bottom: 1px solid #EEF2FA;
+      display: flex; justify-content: space-between; align-items: center;
     }
     .blob-result-item:last-child { border-bottom: none; }
-    .blob-result-item:hover { background: #F4F6F7; }
-    .blob-result-name { font-family: monospace; color: #1a5276; font-size: 12px; word-break: break-all; }
+    .blob-result-item:hover { background: #F8FAFC; }
+    .blob-result-name { font-family: monospace; color: #1E3A5F; font-size: 12px; word-break: break-all; }
     .blob-result-meta { color: #888; font-size: 11px; white-space: nowrap; margin-left: 8px; }
 
     /* ── Feed preview panel ── */
     #feedPreviewPanel { margin-top: 14px; display: none; }
     .feed-preview-section { margin-bottom: 14px; }
     .feed-preview-title {
-      font-size: 12px; font-weight: 700; color: #1F4E79;
+      font-size: 12px; font-weight: 700; color: var(--navy);
       text-transform: uppercase; letter-spacing: .5px;
       margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
     }
     .feed-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .feed-preview-table th {
-      background: #EBF5FB; color: #1a5276; padding: 6px 10px;
-      text-align: left; font-weight: 600; border-bottom: 2px solid #AED6F1;
-    }
-    .feed-preview-table td { padding: 6px 10px; border-bottom: 1px solid #EBF5FB; vertical-align: top; }
+    .feed-preview-table th { background: #EFF6FF; color: #1E3A5F; padding: 6px 10px; text-align: left; font-weight: 600; border-bottom: 2px solid #BDD5F5; }
+    .feed-preview-table td { padding: 6px 10px; border-bottom: 1px solid #EEF2FA; vertical-align: top; }
     .feed-preview-table tr:last-child td { border-bottom: none; }
-    .feed-preview-table tr:hover td { background: #F4F6F7; }
+    .feed-preview-table tr:hover td { background: #F8FAFC; }
     .btn-view-xml {
       padding: 3px 10px; font-size: 11px; font-weight: 600;
-      border: 1px solid #AED6F1; border-radius: 4px;
-      background: #EBF5FB; color: #1a5276; cursor: pointer;
-      transition: background .15s;
+      border: 1px solid #BDD5F5; border-radius: 6px;
+      background: #EFF6FF; color: #1E3A5F; cursor: pointer; transition: background .15s;
     }
-    .btn-view-xml:hover { background: #D6EAF8; }
+    .btn-view-xml:hover { background: #DBEAFE; }
     .feed-xml-row { display: none; }
     .feed-xml-row.open { display: table-row; }
     .feed-xml-row td { padding: 0; }
     pre.feed-xml-pre {
-      background: #1e2533; color: #a8d8a8;
-      padding: 12px 14px; margin: 0;
-      font-size: 11px; line-height: 1.55;
-      max-height: 300px; overflow: auto;
+      background: #0D1117; color: #7EE787; padding: 12px 14px; margin: 0;
+      font-size: 11px; line-height: 1.55; max-height: 300px; overflow: auto;
       white-space: pre-wrap; word-break: break-all;
     }
     .carrier-asn-list { display: flex; flex-direction: column; gap: 6px; }
-    .carrier-asn-item {
-      border-radius: 6px;
-      background: #F8FBFF; border: 1px solid #D6EAF8;
-      overflow: hidden;
-    }
-    .carrier-asn-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 7px 12px;
-    }
-    .carrier-asn-info { font-family: monospace; font-size: 12px; color: #1a5276; }
+    .carrier-asn-item { border-radius: 8px; background: #F8FBFF; border: 1px solid var(--border); overflow: hidden; }
+    .carrier-asn-header { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; }
+    .carrier-asn-info { font-family: monospace; font-size: 12px; color: #1E3A5F; }
     .carrier-asn-ref  { font-size: 11px; color: #888; margin-top: 2px; }
     .carrier-asn-xml  { display: none; }
     .carrier-asn-xml.open { display: block; }
 
     /* ── Supplier parse table ── */
     .parse-summary-stats { display: flex; gap: 6px; flex-wrap: wrap; }
-    .parse-stat-badge {
-      background: #EBF5FB; border: 1px solid #AED6F1; border-radius: 6px;
-      padding: 3px 10px; font-size: 11px; font-weight: 600; color: #1a5276;
-    }
-    .parse-table-wrap { border: 1px solid #D6EAF8; border-radius: 8px; overflow: hidden; margin-top: 8px; }
+    .parse-stat-badge { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 4px 12px; font-size: 11px; font-weight: 700; color: #1E3A5F; }
+    .parse-table-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-top: 8px; }
     .parse-table-scroll { overflow-x: auto; max-height: 280px; overflow-y: auto; }
     .supplier-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 780px; }
-    .supplier-table th {
-      background: #1F4E79; color: #fff; padding: 6px 10px;
-      text-align: left; font-size: 11px; font-weight: 600;
-      white-space: nowrap; position: sticky; top: 0; z-index: 1;
-    }
-    .supplier-table td { padding: 5px 9px; border-bottom: 1px solid #EBF5FB; white-space: nowrap; }
+    .supplier-table th { background: var(--navy); color: #fff; padding: 7px 10px; text-align: left; font-size: 11px; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+    .supplier-table td { padding: 5px 9px; border-bottom: 1px solid #EEF2FA; white-space: nowrap; }
     .supplier-table tbody tr:last-child td { border-bottom: none; }
-    .supplier-table tbody tr:hover td { background: #F4F6F7; }
-    /* ── Lines sub-table (PO feed line items + carrier ASN lines) ── */
-    .lines-expand-wrap { padding: 10px 14px; background: #F8FBFF; border-top: 1px solid #D6EAF8; }
+    .supplier-table tbody tr:hover td { background: #F8FAFC; }
+    .lines-expand-wrap { padding: 10px 14px; background: #F8FBFF; border-top: 1px solid var(--border); }
     .lines-sub-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    .lines-sub-table th { background: #EBF5FB; color: #1a5276; padding: 4px 8px; text-align: left; border-bottom: 1px solid #AED6F1; font-weight: 600; }
-    .lines-sub-table td { padding: 4px 8px; border-bottom: 1px solid #EBF5FB; }
+    .lines-sub-table th { background: #EFF6FF; color: #1E3A5F; padding: 4px 8px; text-align: left; border-bottom: 1px solid #BDD5F5; font-weight: 600; }
+    .lines-sub-table td { padding: 4px 8px; border-bottom: 1px solid #EEF2FA; }
     .lines-sub-table tbody tr:last-child td { border-bottom: none; }
-    .lines-sub-table tbody tr:hover td { background: #F4F6F7; }
+    .lines-sub-table tbody tr:hover td { background: #F8FAFC; }
 
     /* ── PO ↔ ASN mapping table ── */
     #feedMappingSection { margin-top: 16px; }
-    .mapping-table-wrap { border: 1px solid #D6EAF8; border-radius: 8px; overflow: hidden; }
+    .mapping-table-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
     .mapping-table-scroll { overflow-x: auto; max-height: 380px; overflow-y: auto; }
     .mapping-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 900px; }
-    .mapping-table thead th {
-      background: #1F4E79; color: #fff; padding: 7px 10px;
-      text-align: left; font-size: 11px; font-weight: 600;
-      white-space: nowrap; position: sticky; top: 0; z-index: 1;
-    }
-    .mapping-table thead th.col-asn { background: #145A32; }
+    .mapping-table thead th { background: var(--navy); color: #fff; padding: 7px 10px; text-align: left; font-size: 11px; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+    .mapping-table thead th.col-asn { background: #14532D; }
     .mapping-table thead .col-group-po  { background: #1a3c5e; text-align:center; padding: 4px 10px; font-size:10px; letter-spacing:.5px; text-transform:uppercase; }
     .mapping-table thead .col-group-asn { background: #0e3d22; text-align:center; padding: 4px 10px; font-size:10px; letter-spacing:.5px; text-transform:uppercase; }
-    .mapping-table tbody td { padding: 5px 9px; border-bottom: 1px solid #EBF5FB; vertical-align: middle; }
+    .mapping-table tbody td { padding: 5px 9px; border-bottom: 1px solid #EEF2FA; vertical-align: middle; }
     .mapping-table tbody tr:last-child td { border-bottom: none; }
-    .mapping-table tbody tr:hover td { background: #F4F6F7; }
-    .mapping-table tbody tr.row-unmatched-po  td { background: #FEF9E7; }
-    .mapping-table tbody tr.row-unmatched-asn td { background: #FDEDEC; }
-    .mapping-table tbody tr.row-matched       td { background: #EAFAF1; }
-    .badge-matched   { background: #27AE60; color:#fff; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:700; }
-    .badge-po-only   { background: #F39C12; color:#fff; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:700; }
-    .badge-asn-only  { background: #E74C3C; color:#fff; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:700; }
+    .mapping-table tbody tr:hover td { background: #F8FAFC; }
+    .mapping-table tbody tr.row-unmatched-po  td { background: #FFFBEB; }
+    .mapping-table tbody tr.row-unmatched-asn td { background: #FEF2F2; }
+    .mapping-table tbody tr.row-matched       td { background: #ECFDF5; }
+    .badge-matched   { background: #059669; color:#fff; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700; }
+    .badge-po-only   { background: #D97706; color:#fff; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700; }
+    .badge-asn-only  { background: var(--red); color:#fff; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700; }
     .mapping-legend  { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px; font-size:11px; align-items:center; }
     .mapping-summary { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
 
     /* ── Blob result table ── */
-    .blob-result-wrap { border: 1px solid #D6EAF8; border-radius: 8px; overflow: hidden; margin-top: 12px; }
+    .blob-result-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-top: 12px; }
     .blob-result-scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; }
     .blob-result-tbl { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 780px; }
-    .blob-result-tbl thead th {
-      background: #1F4E79; color: #fff; padding: 7px 10px;
-      text-align: left; font-size: 11px; font-weight: 600;
-      white-space: nowrap; position: sticky; top: 0; z-index: 1;
-    }
-    .blob-result-tbl tbody td { padding: 5px 9px; border-bottom: 1px solid #EBF5FB; vertical-align: middle; white-space: nowrap; }
+    .blob-result-tbl thead th { background: var(--navy); color: #fff; padding: 7px 10px; text-align: left; font-size: 11px; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+    .blob-result-tbl tbody td { padding: 5px 9px; border-bottom: 1px solid #EEF2FA; vertical-align: middle; white-space: nowrap; }
     .blob-result-tbl tbody tr:last-child td { border-bottom: none; }
-    .blob-result-tbl tbody tr:hover td { background: #F4F6F7; }
-    .blob-result-tbl tbody tr.row-missing-po  td { background: #FEF9E7; }
-    .blob-result-tbl tbody tr.row-missing-asn td { background: #FDEDEC; }
-    .file-link { color: #1F4E79; text-decoration: none; font-size: 11px; font-weight: 600; }
+    .blob-result-tbl tbody tr:hover td { background: #F8FAFC; }
+    .blob-result-tbl tbody tr.row-missing-po  td { background: #FFFBEB; }
+    .blob-result-tbl tbody tr.row-missing-asn td { background: #FEF2F2; }
+    .file-link { color: var(--accent); text-decoration: none; font-size: 11px; font-weight: 600; }
     .file-link:hover { text-decoration: underline; }
-    .file-link-dl { color: #27AE60; margin-left: 6px; text-decoration: none; font-size: 11px; font-weight: 600; }
+    .file-link-dl { color: #059669; margin-left: 6px; text-decoration: none; font-size: 11px; font-weight: 600; }
     .file-link-dl:hover { text-decoration: underline; }
-    .blob-missing-msg { margin-top: 8px; padding: 8px 12px; border-radius: 6px; font-size: 12px; line-height: 1.6; }
-    .blob-missing-po  { background: #FEF9E7; border-left: 4px solid #F39C12; color: #784212; }
-    .blob-missing-asn { background: #FDEDEC; border-left: 4px solid #E74C3C; color: #922B21; }
+    .blob-missing-msg { margin-top: 8px; padding: 8px 12px; border-radius: 8px; font-size: 12px; line-height: 1.6; }
+    .blob-missing-po  { background: #FFFBEB; border-left: 4px solid #F59E0B; color: #78350F; }
+    .blob-missing-asn { background: #FEF2F2; border-left: 4px solid #EF4444; color: #991B1B; }
 
     /* ── Pipeline ── */
     .pipeline-stages { display: flex; flex-direction: column; gap: 0; }
     .pipeline-stage {
-      border: 1px solid #D6EAF8; border-radius: 8px; overflow: hidden;
-      transition: border-color .25s, opacity .25s;
+      border: 1.5px solid var(--border); border-radius: 10px; overflow: hidden;
+      transition: border-color .25s, box-shadow .25s, opacity .25s;
     }
     .pipeline-stage.ps-pending { opacity: .45; }
-    .pipeline-stage.ps-active  { border-color: #E67E22; opacity: 1; }
-    .pipeline-stage.ps-done    { border-color: #27AE60; opacity: 1; }
-    .pipeline-stage.ps-error   { border-color: #E74C3C; opacity: 1; }
+    .pipeline-stage.ps-active  {
+      border-color: var(--amber); opacity: 1;
+      box-shadow: 0 0 0 3px rgba(217,119,6,.1), 0 4px 16px rgba(217,119,6,.08);
+    }
+    .pipeline-stage.ps-done  { border-color: #10B981; opacity: 1; box-shadow: 0 0 0 2px rgba(16,185,129,.1); }
+    .pipeline-stage.ps-error { border-color: var(--red); opacity: 1; box-shadow: 0 0 0 2px rgba(220,38,38,.1); }
     .ps-header {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 16px; background: #EBF5FB;
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+      border-bottom: 1px solid var(--border);
     }
-    .pipeline-stage.ps-active .ps-header { background: #FEF9E7; }
-    .pipeline-stage.ps-done   .ps-header { background: #EAFAF1; }
-    .pipeline-stage.ps-error  .ps-header { background: #FDEDEC; }
+    .pipeline-stage.ps-active .ps-header { background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); border-bottom-color: #FDE68A; }
+    .pipeline-stage.ps-done   .ps-header { background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); border-bottom-color: #A7F3D0; }
+    .pipeline-stage.ps-error  .ps-header { background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); border-bottom-color: #FECACA; }
     .ps-num {
-      width: 26px; height: 26px; border-radius: 50%;
-      background: #BDC3C7; color: #fff;
-      font-weight: 700; font-size: 12px;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: #CBD5E1; color: #fff; font-weight: 700; font-size: 12px;
       display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      transition: background .25s;
     }
-    .pipeline-stage.ps-active .ps-num { background: #E67E22; }
-    .pipeline-stage.ps-done   .ps-num { background: #27AE60; }
-    .pipeline-stage.ps-error  .ps-num { background: #E74C3C; }
-    .ps-title { font-size: 13px; font-weight: 600; color: #1F4E79; flex: 1; }
-    .ps-inline-status { font-size: 11px; color: #888; }
+    .pipeline-stage.ps-active .ps-num { background: var(--amber); box-shadow: 0 2px 8px rgba(217,119,6,.4); }
+    .pipeline-stage.ps-done   .ps-num { background: #059669; box-shadow: 0 2px 8px rgba(5,150,105,.4); }
+    .pipeline-stage.ps-error  .ps-num { background: var(--red); box-shadow: 0 2px 8px rgba(220,38,38,.4); }
+    .ps-stage-icon { font-size: 16px; }
+    .ps-title { font-size: 13px; font-weight: 700; color: var(--navy); flex: 1; }
+    .ps-inline-status { font-size: 11px; color: var(--muted); }
     .ps-body { padding: 14px 16px; }
     .pipeline-arrow {
-      text-align: center; font-size: 18px; color: #AED6F1;
-      line-height: 1; padding: 4px 0;
+      display: flex; align-items: center; justify-content: center;
+      height: 24px; color: var(--light); font-size: 18px; line-height: 1;
     }
     .asn-status-grid { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 12px; }
     .asn-status-row {
       display: flex; align-items: center; gap: 8px;
-      font-size: 12px; padding: 4px 8px;
-      border-radius: 4px;
+      font-size: 12px; padding: 5px 10px; border-radius: 6px;
     }
-    .asn-status-row.found     { background: #EAFAF1; color: #1E8449; }
-    .asn-status-row.not-found { background: #FEF9E7; color: #784212; }
+    .asn-status-row.found     { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }
+    .asn-status-row.not-found { background: #FFFBEB; color: #78350F; border: 1px solid #FDE68A; }
     .proceed-bar { margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .proceed-note { font-size: 12px; color: #555; font-style: italic; }
+    .proceed-note { font-size: 12px; color: var(--muted); font-style: italic; }
 
-    /* ── Reference Guide ── */
-    .ref-guide-card { margin-top: 4px; }
-    .ref-guide-header {
-      display: flex; align-items: center; justify-content: space-between;
-      cursor: pointer; user-select: none;
-      padding: 14px 20px;
-      background: #EBF5FB; border-bottom: 1px solid #D6EAF8;
+    /* ── Reference Guide — Floating Button + Drawer ── */
+    .readme-fab {
+      position: fixed; bottom: 24px; right: 24px; z-index: 500;
+      width: 52px; height: 52px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--navy), var(--blue));
+      color: #fff; border: none; cursor: pointer;
+      font-size: 22px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 16px rgba(11,30,58,.4);
+      transition: transform .2s, box-shadow .2s;
     }
-    .ref-guide-header:hover { background: #D6EAF8; }
-    .ref-guide-toggle { font-size: 18px; color: #1F4E79; transition: transform .2s; }
-    .ref-guide-toggle.open { transform: rotate(90deg); }
-    .ref-guide-body { display: none; padding: 20px; }
-    .ref-guide-body.open { display: block; }
+    .readme-fab:hover { transform: scale(1.1) translateY(-2px); box-shadow: 0 8px 24px rgba(11,30,58,.5); }
+    .readme-fab-label {
+      position: fixed; bottom: 28px; right: 84px; z-index: 500;
+      background: var(--navy); color: #fff;
+      font-size: 11px; font-weight: 700; letter-spacing: .4px;
+      padding: 5px 10px; border-radius: 6px; white-space: nowrap;
+      opacity: 0; pointer-events: none;
+      transition: opacity .2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    .readme-fab:hover + .readme-fab-label,
+    .readme-fab-label:hover { opacity: 1; }
+    .readme-drawer-overlay {
+      position: fixed; inset: 0; z-index: 600;
+      background: rgba(0,0,0,.35); backdrop-filter: blur(2px);
+      opacity: 0; pointer-events: none; transition: opacity .25s;
+    }
+    .readme-drawer-overlay.open { opacity: 1; pointer-events: all; }
+    .readme-drawer {
+      position: fixed; top: 0; right: 0; bottom: 0; z-index: 700;
+      width: min(780px, 96vw);
+      background: var(--card);
+      box-shadow: -4px 0 32px rgba(0,0,0,.2);
+      display: flex; flex-direction: column;
+      transform: translateX(100%); transition: transform .28s cubic-bezier(.4,0,.2,1);
+    }
+    .readme-drawer.open { transform: translateX(0); }
+    .readme-drawer-head {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 20px;
+      background: linear-gradient(135deg, var(--navy), var(--blue));
+      color: #fff; flex-shrink: 0;
+    }
+    .readme-drawer-head h2 { font-size: 16px; font-weight: 700; flex: 1; }
+    .readme-drawer-close {
+      background: rgba(255,255,255,.15); border: none; color: #fff;
+      width: 32px; height: 32px; border-radius: 8px;
+      font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .readme-drawer-close:hover { background: rgba(255,255,255,.25); }
+    .readme-drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
     .rg-summary {
-      background: #F0F8FF; border-left: 4px solid #1F4E79;
-      border-radius: 6px; padding: 14px 16px;
-      font-size: 13px; line-height: 1.8; color: #1a202c; margin-bottom: 20px;
+      background: #EFF6FF; border-left: 4px solid var(--accent);
+      border: 1px solid #BFDBFE; border-left-width: 4px;
+      border-radius: 8px; padding: 14px 16px;
+      font-size: 13px; line-height: 1.8; color: var(--text); margin-bottom: 20px;
     }
-    .rg-summary h3 { font-size: 14px; color: #1F4E79; margin-bottom: 8px; }
-    .rg-flow {
-      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-      margin: 12px 0 16px;
-    }
-    .rg-flow-step {
-      background: #1F4E79; color: #fff;
-      border-radius: 6px; padding: 6px 14px;
-      font-size: 12px; font-weight: 600; white-space: nowrap;
-    }
-    .rg-flow-step.carrier { background: #145A32; }
-    .rg-flow-step.system  { background: #5D6D7E; }
-    .rg-flow-arrow { font-size: 16px; color: #888; }
+    .rg-summary h3 { font-size: 14px; color: var(--navy); margin-bottom: 8px; }
+    .rg-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0 16px; }
+    .rg-flow-step { background: var(--navy); color: #fff; border-radius: 8px; padding: 6px 14px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .rg-flow-step.carrier { background: #14532D; }
+    .rg-flow-step.system  { background: #475569; }
+    .rg-flow-arrow { font-size: 16px; color: var(--light); }
     .rg-section-title {
-      font-size: 13px; font-weight: 700; color: #1F4E79;
+      font-size: 13px; font-weight: 700; color: var(--navy);
       text-transform: uppercase; letter-spacing: .6px;
-      margin: 18px 0 8px; border-bottom: 2px solid #D6EAF8; padding-bottom: 4px;
+      margin: 18px 0 8px; border-bottom: 2px solid var(--border); padding-bottom: 4px;
     }
-    .rg-table-wrap { overflow-x: auto; border: 1px solid #D6EAF8; border-radius: 8px; margin-bottom: 8px; }
+    .rg-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; }
     .rg-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 700px; }
-    .rg-table thead th {
-      background: #1F4E79; color: #fff; padding: 8px 12px;
-      text-align: left; font-size: 11px; font-weight: 600;
-      white-space: nowrap; position: sticky; top: 0; z-index: 1;
-    }
-    .rg-table tbody td { padding: 7px 12px; border-bottom: 1px solid #EBF5FB; vertical-align: top; line-height: 1.5; }
+    .rg-table thead th { background: var(--navy); color: #fff; padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+    .rg-table tbody td { padding: 7px 12px; border-bottom: 1px solid #EEF2FA; vertical-align: top; line-height: 1.5; }
     .rg-table tbody tr:last-child td { border-bottom: none; }
-    .rg-table tbody tr:hover td { background: #F8FBFF; }
-    .rg-table code { font-family: monospace; font-size: 11px; background: #EBF5FB; padding: 1px 5px; border-radius: 3px; }
-    .src-badge {
-      display: inline-block; padding: 2px 8px; border-radius: 10px;
-      font-size: 10px; font-weight: 700; white-space: nowrap;
-    }
-    .src-supplier { background: #C0392B; color: #fff; }
-    .src-carrier  { background: #145A32; color: #fff; }
-    .src-system   { background: #5D6D7E; color: #fff; }
-    .src-lookup   { background: #7D3C98; color: #fff; }
-    .src-ui       { background: #E67E22; color: #fff; }
+    .rg-table tbody tr:hover td { background: #F8FAFC; }
+    .rg-table code { font-family: monospace; font-size: 11px; background: #EFF6FF; padding: 1px 5px; border-radius: 4px; color: #1E3A5F; }
+    .src-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+    .src-supplier { background: #DC2626; color: #fff; }
+    .src-carrier  { background: #14532D; color: #fff; }
+    .src-system   { background: #475569; color: #fff; }
+    .src-lookup   { background: #6D28D9; color: #fff; }
+    .src-ui       { background: #D97706; color: #fff; }
     .rg-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; font-size: 11px; align-items: center; }
     .rg-note {
       font-size: 12px; color: #555; background: #FFFDE7;
-      border-left: 3px solid #F39C12; border-radius: 4px;
+      border-left: 3px solid #F59E0B; border-radius: 6px;
       padding: 8px 12px; margin-top: 10px; line-height: 1.6;
     }
   </style>
@@ -617,9 +570,12 @@
 <body>
 
 <header>
-  <div class="logo">🚢</div>
-  <div>
-    <h1>CarrierBookingStub — VBKREQ Generator</h1>
+  <div class="header-logo">📦</div>
+  <div class="header-titles">
+    <h1>Carrier Booking &mdash; VBKREQ Simulator</h1>
+  </div>
+  <div class="header-badge">
+    <span class="header-chip">CarrierBookingStub v1.0</span>
   </div>
 </header>
 
@@ -628,15 +584,15 @@
   <!-- ── Step 1: Upload Supplier Excel ── -->
   <div class="step-card" id="card1">
     <div class="step-header">
-      <div class="step-badge active" id="badge1">1</div>
+      <div class="step-badge active" id="badge1">📊</div>
       <div>
         <div class="step-title">Upload Supplier Excel</div>
-        <div class="step-desc">Upload the supplier's Excel file containing PO,SKU and other references</div>
+        <div class="step-desc">Upload the supplier booking request spreadsheet (.xlsx) &mdash; one PO per row</div>
       </div>
     </div>
     <div class="step-body">
       <div class="drop-zone" id="dropZone">
-        <div class="drop-zone-icon">📂</div>
+        <div class="drop-zone-icon">�</div>
         <div id="dropZoneText">Drag &amp; drop your Excel file(s) here</div>
         <div class="drop-zone-hint">or <u style="cursor:pointer" onclick="document.getElementById('supplierFileInput').click()">browse to choose files</u> (.xlsx / .xls) &mdash; multiple files allowed</div>
       </div>
@@ -644,7 +600,7 @@
       <ul id="supplierFileList" style="margin-top:8px;padding:0 0 0 4px;list-style:none;font-size:12px;color:#555;display:none"></ul>
       <div style="margin-top:10px;text-align:right">
         <button class="btn btn-primary" id="btnParseSupplier" disabled>
-          ⬆ Upload &amp; Parse
+          ⚡ Parse Supplier Data
         </button>
       </div>
       <div class="status-box" id="status1"></div>
@@ -656,10 +612,10 @@
   <!-- ── Pipeline Card (Steps 2-5) ── -->
   <div class="step-card" id="pipelineCard" style="display:none">
     <div class="step-header">
-      <div class="step-badge" id="badgePipeline">2</div>
+      <div class="step-badge" id="badgePipeline">⚡</div>
       <div>
         <div class="step-title">Booking Pipeline</div>
-        <div class="step-desc">Fetch ASN feeds → Build master workbook → Generate &amp; upload VBKREQ</div>
+        <div class="step-desc">📡 Fetch &nbsp;&rarr;&nbsp; 🗂 Build &nbsp;&rarr;&nbsp; ⚡ Generate &nbsp;&rarr;&nbsp; 🚀 Upload</div>
       </div>
     </div>
     <div class="step-body">
@@ -669,13 +625,14 @@
         <div class="pipeline-stage ps-pending" id="pstage1">
           <div class="ps-header">
             <span class="ps-num" id="psNum1">1</span>
+            <span class="ps-stage-icon">📡</span>
             <span class="ps-title">Fetch Carrier Feeds</span>
             <span class="ps-inline-status" id="psInline1"></span>
           </div>
           <div class="ps-body" id="psBody1">
             <div class="tab-strip">
-              <button class="tab-btn active" id="tabBtnBlob" onclick="switchFeedTab('blob')">&#9729; Azure Blob (auto)</button>
-              <button class="tab-btn" id="tabBtnUpload" onclick="switchFeedTab('upload')">&#128194; Upload XML</button>
+              <button class="tab-btn active" id="tabBtnBlob" onclick="switchFeedTab('blob')">☁ Azure Blob</button>
+              <button class="tab-btn" id="tabBtnUpload" onclick="switchFeedTab('upload')">📁 Upload XML</button>
             </div>
             <div class="tab-panel active" id="panelFetchBlob">
               <div style="font-size:12px;color:#555;margin-bottom:8px">PO refs auto-picked from supplier template:</div>
@@ -684,14 +641,14 @@
             <div class="tab-panel" id="panelUploadFeeds">
               <div class="feed-drop-label">Carrier Feed XML</div>
               <div class="feed-drop-zone" id="asnDropZone">
-                <div style="font-size:24px;margin-bottom:6px">&#128196;</div>
+                <div style="font-size:24px;margin-bottom:6px">📡</div>
                 <div id="asnDropZoneText">Drop Carrier Feed XML here</div>
                 <div style="font-size:11px;color:#888;margin-top:4px">or <u style="cursor:pointer" onclick="event.stopPropagation();document.getElementById('asnFeedInput').click()">browse</u></div>
               </div>
               <input type="file" id="asnFeedInput" accept=".xml" style="display:none" />
             </div>
             <div style="margin-top:12px">
-              <button class="btn btn-primary" id="btnFetchFeeds" disabled>&#128279; Fetch Carrier Feeds</button>
+              <button class="btn btn-primary" id="btnFetchFeeds" disabled>📡 Fetch Carrier Feeds</button>
             </div>
             <div id="psFetchResult" style="margin-top:10px"></div>
           </div>
@@ -703,6 +660,7 @@
         <div class="pipeline-stage ps-pending" id="pstage2">
           <div class="ps-header">
             <span class="ps-num" id="psNum2">2</span>
+            <span class="ps-stage-icon">🗂</span>
             <span class="ps-title">Build Master Workbook</span>
             <span class="ps-inline-status" id="psInline2"></span>
           </div>
@@ -710,7 +668,7 @@
             <div id="psBuildResult" style="margin-bottom:10px"></div>
             <div id="psProceed2Wrap" style="display:none">
               <div class="proceed-bar">
-                <button class="btn btn-success" id="btnProceedGenerate">&#10004; Proceed — Configure &amp; Generate VBKREQ</button>
+                <button class="btn btn-success" id="btnProceedGenerate">▶ Proceed &mdash; Configure &amp; Generate</button>
                 <span class="proceed-note">Review warnings above before proceeding</span>
               </div>
             </div>
@@ -723,12 +681,13 @@
         <div class="pipeline-stage ps-pending" id="pstage3">
           <div class="ps-header">
             <span class="ps-num" id="psNum3">3</span>
+            <span class="ps-stage-icon">⚡</span>
             <span class="ps-title">Generate VBKREQ XML</span>
             <span class="ps-inline-status" id="psInline3"></span>
           </div>
           <div class="ps-body" id="psBody3" style="display:none">
             <div class="date-override-panel" style="margin-bottom:12px">
-              <div class="date-override-label">&#128197; Date Overrides <span class="date-override-hint">— optional; overrides dates from supplier template</span></div>
+              <div class="date-override-label">📅 Date Overrides <span class="date-override-hint">— optional; overrides dates from supplier template</span></div>
               <div class="date-override-grid">
                 <div class="date-field-wrap">
                   <label>Cargo Ready / Planned Collection Date <span class="date-badge">DateTypeCd 018</span></label>
@@ -759,14 +718,14 @@
                 </label>
               </div>
             </div>
-            <button class="btn btn-warning" id="btnGenerateVbkreq">&#9881; Generate VBKREQ</button>
+            <button class="btn btn-warning" id="btnGenerateVbkreq">⚡ Generate VBKREQ</button>
             <div id="psGenResult" style="margin-top:10px"></div>
             <div class="xml-preview-wrap" id="xmlPreviewWrap" style="margin-top:10px">
               <div id="generationsContainer"></div>
             </div>
             <div id="psProceed3Wrap" style="display:none">
               <div class="proceed-bar" style="margin-top:14px">
-                <button class="btn btn-danger" id="btnProceedUpload">&#11014; Upload All to E2open SFTP</button>
+                <button class="btn btn-danger" id="btnProceedUpload">🚀 Upload All to E2open SFTP</button>
                 <span class="proceed-note">This will send all generated VBKREQs to the carrier</span>
               </div>
             </div>
@@ -779,6 +738,7 @@
         <div class="pipeline-stage ps-pending" id="pstage4">
           <div class="ps-header">
             <span class="ps-num" id="psNum4">4</span>
+            <span class="ps-stage-icon">🚀</span>
             <span class="ps-title">Upload to E2open SFTP</span>
             <span class="ps-inline-status" id="psInline4"></span>
           </div>
@@ -794,10 +754,10 @@
   <!-- ── PO → VBKREQ Map ── -->
   <div class="step-card">
     <div class="step-header">
-      <div class="step-badge" style="background:#5D6D7E">📥</div>
+      <div class="step-badge" style="background:#475569;font-size:18px">🔗</div>
       <div>
-        <div class="step-title">PO → VBKREQ Reference Map</div>
-        <div class="step-desc">Shows each PO and its generated VBKREQ reference — populated after generation</div>
+        <div class="step-title">PO &rarr; VBKREQ Reference Map</div>
+        <div class="step-desc">Generated booking references per PO &mdash; populated after pipeline completes</div>
       </div>
     </div>
     <div class="step-body">
@@ -807,40 +767,44 @@
     </div>
   </div>
 
-  <!-- ── Reference Guide ── -->
-  <div class="step-card ref-guide-card">
-    <div class="ref-guide-header" onclick="toggleRefGuide(this)">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div class="step-badge" style="background:#5D6D7E">📖</div>
-        <div>
-          <div class="step-title">Reference Guide — How it works &amp; VBKREQ Field Mapping</div>
-          <div class="step-desc">Click to expand — field sources, flow summary, and XML structure reference</div>
-        </div>
-      </div>
-      <span class="ref-guide-toggle">▶</span>
-    </div>
-    <div class="ref-guide-body" id="refGuideBody">
+</main>
+
+<!-- ── README Floating Button ── -->
+<button class="readme-fab" onclick="openReadme()" title="Reference Guide">📖</button>
+<span class="readme-fab-label">README / Ref Guide</span>
+
+<!-- ── README Drawer ── -->
+<div class="readme-drawer-overlay" id="readmeOverlay" onclick="closeReadme()"></div>
+<div class="readme-drawer" id="readmeDrawer">
+  <div class="readme-drawer-head">
+    <span style="font-size:22px">📖</span>
+    <h2>Reference Guide &mdash; Field Mapping &amp; Flow</h2>
+    <button class="readme-drawer-close" onclick="closeReadme()">&times;</button>
+  </div>
+  <div class="readme-drawer-body" id="readmeDrawerBody">
 
       <!-- How it works -->
       <div class="rg-summary">
         <h3>📋 How this tool works</h3>
-        <p>This tool generates a <strong>VBKREQ XML</strong> (Vendor Booking Request) for submission to E2open TA and DavisTurner. The process runs in five steps:</p>
+        <p>This tool generates a <strong>VBKREQ XML</strong> (Vendor Booking Request) for submission to E2open TA and DavisTurner. The pipeline runs in four stages:</p>
         <div class="rg-flow">
-          <div class="rg-flow-step">1 · Supplier uploads Excel</div>
+          <div class="rg-flow-step">📊 1 · Supplier uploads Excel</div>
           <span class="rg-flow-arrow">→</span>
-          <div class="rg-flow-step carrier">2 · Carrier ASN fetched from Azure Blob</div>
+          <div class="rg-flow-step carrier">📡 2 · Fetch Carrier ASN Feeds</div>
           <span class="rg-flow-arrow">→</span>
-          <div class="rg-flow-step">3 · Master Workbook built</div>
+          <div class="rg-flow-step">🗂 3 · Build Master Workbook</div>
           <span class="rg-flow-arrow">→</span>
-          <div class="rg-flow-step">4 · VBKREQ XML generated</div>
+          <div class="rg-flow-step">⚡ 4 · Generate VBKREQ XML</div>
           <span class="rg-flow-arrow">→</span>
-          <div class="rg-flow-step system">5 · Uploaded to E2open SFTP</div>
+          <div class="rg-flow-step system">🚀 5 · Upload to E2open SFTP</div>
         </div>
-        <p><strong>Step 1 — Supplier Excel:</strong> The supplier fills in the template (download from <em>Step 1</em>). One row per SKU. All red columns are mandatory. Factory address and booking dates must be completed by the supplier.</p>
-        <p><strong>Step 2 — Carrier Feed:</strong> The DavisTurner carrier ASN XML is either fetched automatically from Azure Blob Storage (keyed on PO numbers parsed from the supplier sheet) or uploaded manually. This feed provides the ASN ID, supplier codes, shipping point, FC destination, country of origin, and line-level SKU quantities.</p>
-        <p><strong>Step 3 — Master Workbook:</strong> The app merges supplier and carrier data row-by-row (matched on PO + SKU). A MASTER sheet is produced. Unmatched rows from either source are also captured. The workbook is downloadable as an audit trail.</p>
-        <p><strong>Step 4 — VBKREQ XML:</strong> The MASTER rows are read and structured into the E2open VBKREQ schema. All field sources are documented below. The XML filename follows the pattern <code>DAVIESTN_E2ASOS_VBKREQ_1.0_&lt;timestamp&gt;&lt;ctrl&gt;.xml</code>.</p>
-        <p><strong>Step 5 — SFTP upload:</strong> The generated XML is pushed to the E2open SFTP server. The booking gets reflected in E2open TA against the ASN shipments and DavisTurner will also receive the booking request through E2open.</p>
+        <p><strong>Step 1 — Supplier Excel (two-sheet template):</strong> The supplier fills in the downloadable template. The template has two data sheets: <strong>BOOKING_HEADER</strong> (one row per PO — mandatory/defaulted booking fields) and <strong>SKU_LINES</strong> (one row per SKU — quantities, weights, carton details). A <strong>FACTORY_LOOKUP</strong> tab lists valid factory codes; selecting a <code>Factory_ID</code> auto-fills name and address via VLOOKUP. Mandatory (pink) columns must be completed; defaulted (green) columns are pre-set and can be changed if needed.</p>
+        <p><strong>Booking_Group</strong> controls how POs are consolidated into bookings: <em>Single Booking</em> = one VBKREQ per PO; <em>Multiple POs-BK001…BK025</em> = all POs sharing the same code are merged into one VBKREQ; <em>Multiple</em> = all POs in the upload combined into a single VBKREQ.</p>
+        <p><strong>Factory_ID 9999 (Dummy Factory):</strong> If a real factory code is not yet known, use <code>9999</code>. Address validation is skipped for this code — the VBKREQ will be generated without a factory address.</p>
+        <p><strong>Stage 2 — Carrier Feed:</strong> The DavisTurner carrier ASN XML is fetched automatically from Azure Blob Storage keyed on the PO numbers from the supplier sheet, or uploaded manually. If no carrier ASN is found for any PO the pipeline stops at this stage — a retry or manual upload is required. The feed provides the ASN ID, supplier codes, shipping point, FC destination, country of origin, and line-level SKU quantities.</p>
+        <p><strong>Stage 3 — Master Workbook:</strong> Supplier and carrier data are merged row-by-row (matched on PO + SKU). A MASTER sheet is produced. SKUs in the supplier template but absent from the carrier feed are flagged as warnings. The workbook is downloadable as an audit trail.</p>
+        <p><strong>Stage 4 — VBKREQ XML:</strong> The MASTER rows are grouped per <code>Booking_Group</code> and structured into the E2open VBKREQ schema. The booking reference (<code>VB-XXXXX</code>) is shown in the PO → VBKREQ Reference Map after generation. The XML filename follows the pattern <code>DAVIESTN_E2ASOS_VBKREQ_1.0_&lt;timestamp&gt;&lt;ctrl&gt;.xml</code>.</p>
+        <p><strong>Stage 5 — SFTP upload:</strong> All generated XMLs are pushed to the E2open SFTP server in one batch. Bookings are reflected in E2open TA against the ASN shipments and DavisTurner receives the booking request through E2open.</p>
       </div>
 
       <!-- Legend -->
@@ -866,19 +830,41 @@
         </tbody>
       </table></div>
 
+      <!-- Section: Supplier Template Structure -->
+      <div class="rg-section-title">Supplier Template — Sheet Structure &amp; Booking_Group</div>
+      <div class="rg-table-wrap"><table class="rg-table">
+        <thead><tr><th>Sheet</th><th>Rows</th><th>Key Columns</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>BOOKING_HEADER</strong></td><td>One row per PO</td><td>PO_Number, Cargo_Ready_Planned_Collection_Date, Carrier_Booking_Request_Date, Traffic_Mode, Mode_Of_Transport, Booking_Group, Factory_ID, Pack_Type, Collection_Type, Hazardous, Factory auto-fill cols, Collection_Time, Remarks</td><td>Mandatory (pink), Defaulted (green), Auto-fill (blue), Optional (grey)</td></tr>
+          <tr><td><strong>SKU_LINES</strong></td><td>One row per SKU</td><td>PO_Number, SKU, Booking_Qty, No_of_Cartons, Unit_Weight_KG, Carton_Type, Carton dimensions &amp; weights</td><td>Must have matching PO_Number to rows in BOOKING_HEADER</td></tr>
+          <tr><td><strong>FACTORY_LOOKUP</strong></td><td>Factory reference</td><td>Factory_ID, Factory_Name, address fields</td><td>Select Factory_ID in BOOKING_HEADER — name &amp; address auto-fill via VLOOKUP</td></tr>
+        </tbody>
+      </table></div>
+      <div class="rg-table-wrap" style="margin-top:10px"><table class="rg-table">
+        <thead><tr><th>Booking_Group value</th><th>Behaviour</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><code>Single Booking</code></td><td>Each PO generates its own VBKREQ independently</td><td>N VBKREQs for N POs</td></tr>
+          <tr><td><code>Multiple POs-BK001</code> … <code>Multiple POs-BK025</code></td><td>All POs sharing the same BK code are merged into one VBKREQ</td><td>One VBKREQ per unique BK code</td></tr>
+          <tr><td><code>Multiple</code></td><td>All POs in the upload combined into a single VBKREQ</td><td>One VBKREQ for the entire upload</td></tr>
+        </tbody>
+      </table></div>
+      <div class="rg-note" style="margin-top:8px">
+        ⚠️ <strong>Factory_ID 9999 (Dummy Factory):</strong> Use when the real factory code is not yet confirmed. Address validation is bypassed — the VBKREQ is generated without factory address fields. Replace with the actual factory code before submission to production.
+      </div>
+
       <!-- Section: Booking Header -->
-      <div class="rg-section-title">Booking Header — References &amp; Mode</div>
+      <div class="rg-section-title">Booking Header — References, Mode &amp; Transport</div>
       <div class="rg-table-wrap"><table class="rg-table">
         <thead><tr><th>XML Element</th><th>Field in Master / Value</th><th>Source</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><code>&lt;Mode&gt;</code></td><td><code>Mode_Of_Transport</code> → mapped to E2 code</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Sea→10, Air→40, Road→30, Rail→50, Eco→70</td></tr>
-          <tr><td><code>Reference QY</code> — Traffic Mode</td><td><code>Traffic_Mode</code> (CFS / CY)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Cargo consolidation method; separate from transport mode</td></tr>
-          <tr><td><code>Reference 4B</code> — Country of Origin</td><td><code>Country_Of_Origin</code> (from <code>&lt;CountryOfOrigin&gt;</code>)</td><td><span class="src-badge src-carrier">Carrier Feed (ASN XML)</span></td><td>Line-level field from carrier XML; falls back to Factory_CountryCd</td></tr>
-          <tr><td><code>Reference BH</code> — Hazardous</td><td><code>Hazardous</code> → Y / N</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>N/A and blank → N; any hazard type → Y</td></tr>
+          <tr><td><code>&lt;Mode&gt;</code></td><td><code>Mode_Of_Transport</code> → mapped to E2 code</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td><strong>Mandatory — defaulted to Road.</strong> Sea→10, Air→40, Road→30, Rail→50, Eco→70</td></tr>
+          <tr><td><code>Reference QY</code> — Traffic Mode</td><td><code>Traffic_Mode</code> (CFS / CY)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Mandatory. CFS = container freight station; CY = container yard</td></tr>
+          <tr><td><code>Reference 4B</code> — Country of Origin</td><td><code>Country_Of_Origin</code> (from <code>&lt;CountryOfOrigin&gt;</code>)</td><td><span class="src-badge src-carrier">Carrier Feed (ASN XML)</span></td><td>Line-level; falls back to Factory_CountryCd if absent from carrier feed</td></tr>
+          <tr><td><code>Reference BH</code> — Hazardous</td><td><code>Hazardous</code> → Y / N</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>N/A and blank → N; any hazard type string → Y. Defaulted to N/A.</td></tr>
           <tr><td><code>Reference CC</code> — Cargo Category</td><td><code>Green</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded — ASOS standard</td></tr>
-          <tr><td><code>Reference CD</code> — Collection/Delivery</td><td><code>Collection_Type</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Dropdown: Collection or Delivery (default: Delivery)</td></tr>
-          <tr><td><code>Reference CT</code> — Collection Time</td><td><code>Collection_Time</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Only emitted when Collection_Type = Collection or time is set</td></tr>
-          <tr><td><code>Reference WK</code> — Intake Week</td><td><code>ASOS_Intake_Week</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Not used — ignored</td></tr>
+          <tr><td><code>Reference CD</code> — Collection/Delivery</td><td><code>Collection_Type</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Dropdown: Collection or Delivery. Defaulted to Delivery.</td></tr>
+          <tr><td><code>Reference CT</code> — Collection Time</td><td><code>Collection_Time</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Only emitted when Collection_Type = Collection or time is provided (HH:MM)</td></tr>
+          <tr><td><code>Reference WK</code> — Intake Week</td><td><code>ASOS_Intake_Week</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Not used — ignored in current schema version</td></tr>
           <tr><td><code>Remark BRC</code> — Booking Comments</td><td><code>Remarks</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional — only emitted if provided</td></tr>
         </tbody>
       </table></div>
@@ -890,9 +876,9 @@
         <tbody>
           <tr><td><strong>SU</strong> — Supplier</td><td><code>TradePartnerName</code></td><td><code>Supplier_Name</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;SupplierName&gt;</code> in carrier PO</td></tr>
           <tr><td><strong>SU</strong> — Supplier</td><td><code>TradePartnerID</code></td><td><code>Supplier_ID</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;SupplierCode&gt;</code> in carrier PO</td></tr>
-          <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerName</code></td><td><code>Factory_Name</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Mandatory column; supplier fills per PO group</td></tr>
-          <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerID</code></td><td><code>Factory_ID</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Factory/vendor code</td></tr>
-          <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerAddress</code></td><td><code>Factory_Street1/2, City, PostalCd, CountryCd</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Street2 is optional</td></tr>
+          <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerName</code></td><td><code>Factory_Name</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Auto-filled via VLOOKUP from FACTORY_LOOKUP tab when Factory_ID is selected</td></tr>
+          <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerID</code></td><td><code>Factory_ID</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Mandatory. Use <code>9999</code> (Dummy Factory) if real code not yet known — address fields are omitted</td></tr>
+          <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerAddress</code></td><td><code>Factory_Street1/2, City, PostalCd, CountryCd</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Auto-filled from FACTORY_LOOKUP. Street2 optional. Omitted entirely for Factory_ID 9999.</td></tr>
           <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerName</code></td><td><code>FC_Name</code> (from FC_MASTER)</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>FC_MASTER table keyed on FC_ID (e.g. FC01 = ASOS Barnsley)</td></tr>
           <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerID</code></td><td><code>FC_ID</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;POFC&gt;</code> or <code>&lt;FinalDestination&gt;</code> in carrier PO</td></tr>
           <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerAddress</code></td><td>FC street/city/postal/country</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>FC_MASTER table in bible-builder.js — verify addresses are correct</td></tr>
@@ -968,21 +954,24 @@
         ⚠ <strong>FC_LOCODE table:</strong> The destination port LOCODE lookup in <code>backend/vbkreq-builder.js</code> currently maps FC01/FC02/P005 → <code>GBBSY</code>. Update this table if additional FC codes need mapping.
       </div>
 
-    </div><!-- /ref-guide-body -->
-  </div>
+    </div><!-- /readme-drawer-body -->
+</div><!-- /readme-drawer -->
 
-</main>
-
-<footer>CarrierBookingStub v1.0 &nbsp;|&nbsp; DAVIESTN → E2ASOS &nbsp;|&nbsp; QA Stub Tool</footer>
+<footer>📦 CarrierBookingStub v1.0</footer>
 
 <script src="app.js"></script>
 <script>
-  function toggleRefGuide(header) {
-    const body   = document.getElementById('refGuideBody');
-    const toggle = header.querySelector('.ref-guide-toggle');
-    const isOpen = body.classList.toggle('open');
-    toggle.classList.toggle('open', isOpen);
+  function openReadme() {
+    document.getElementById('readmeDrawer').classList.add('open');
+    document.getElementById('readmeOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
   }
+  function closeReadme() {
+    document.getElementById('readmeDrawer').classList.remove('open');
+    document.getElementById('readmeOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeReadme(); });
 </script>
 </body>
 </html>

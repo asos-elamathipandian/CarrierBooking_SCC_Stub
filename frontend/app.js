@@ -275,7 +275,6 @@ if (btnFetchFeeds) {
       psSetResult('psFetchResult', `
         <div style="margin-bottom:8px;font-size:13px">${summaryLine}</div>
         <div class="asn-status-grid">${asnGridRows}</div>
-        ${data.errors?.length ? `<div style="color:#922B21;font-size:12px;margin-top:4px">⚠️ ${data.errors.join('<br/>')}</div>` : ''}
       `);
       psSetInline(1, carrierAsnFiles.length > 0 ? '✅ Done' : '⚠️ No ASNs');
       psSetState(1, carrierAsnFiles.length > 0 ? 'done' : 'error');
