@@ -181,6 +181,7 @@ async function build() {
   ];
   const hLastCol = wsH.getColumn(hCols.length).letter;
   const hLegendRow  = addReadme(wsH, 'BOOKING HEADER — Instructions', [
+    '⚠  COMPLETE BOTH SHEETS: Fill in this sheet (BOOKING_HEADER) with PO details AND fill in the SKU_LINES tab with SKU, quantity and carton details for every PO.',
     'One row per PO. Fill all MANDATORY (pink) columns for every PO.',
     'Booking_Group: "Single Booking" = One PO per booking; "Multiple POs-BK001" \u2026 "Multiple POs-BK025" = POs sharing the same code (BK001, BK002 \u2026) combine into one booking; "Multiple" = all POs into one booking.',
     'Factory_ID: select from the FACTORY_LOOKUP tab (last tab). Factory_Name and address auto-fill. Default is 9999 (Dummy Factory) — no address required.',
@@ -295,6 +296,7 @@ async function build() {
   ];
   const sLastCol = wsS.getColumn(sCols.length).letter;
   const sLegendRow  = addReadme(wsS, 'SKU LINES — Instructions', [
+    '⚠  COMPLETE BOTH SHEETS: This tab must be filled in alongside the BOOKING_HEADER tab — enter one row per SKU with PO_Number, SKU, quantities and any further optional details (EAN, Colour, Size).',
     'One row per SKU. PO_Number must exactly match a PO_Number in the BOOKING_HEADER tab.',
     'Fill all MANDATORY (pink) columns: PO_Number, SKU, Booking_Qty, No_of_Cartons, Unit_Weight_KG.',
     'Carton_Type defaults to BDCM1 — change only if the carton is different.',

@@ -166,6 +166,7 @@ async function build(masterRows, purposeCd) {
   const remarks = first.Remarks || '';
   const cargoReadyDate = formatDateYMD(first.Cargo_Ready_Planned_Collection_Date);
   const bookingReqDate = formatDateYMD(first.Carrier_Booking_Request_Date);
+  const shipDate = formatDateYMD(first.Ship_Date);
   const asnDeliveryDate = formatDateYMD(first.ASN_Delivery_Date);
   const expectedDeliveryDate = formatDateYMD(first.Expected_Delivery_Date);
   const loadingPortLocode = first.Loading_Port_LOCODE || first.Loading_Port_ID || 'XXXX';
@@ -247,29 +248,45 @@ async function build(masterRows, purposeCd) {
   const tpFA = bpMsg.ele('TradePartner', { RoleCd: 'FA' });
   tpFA.ele('TradePartnerName').txt(first.Factory_Name || '');
   tpFA.ele('TradePartnerID', { Qualifier: '93' }).txt(first.Factory_ID || '');
-  const addrFA = tpFA.ele('TradePartnerAddress');
   const streets = [first.Factory_Street1, first.Factory_Street2, first.Factory_Street3].filter(Boolean);
-  streets.forEach(s => addrFA.ele('Street').txt(s));
-  if (first.Factory_City) addrFA.ele('City').txt(first.Factory_City);
-  if (first.Factory_PostalCd) addrFA.ele('PostalCd').txt(first.Factory_PostalCd);
-  if (first.Factory_CountryCd) addrFA.ele('CountryCd').txt(first.Factory_CountryCd);
+  const hasFactoryAddress = streets.length > 0 || first.Factory_City || first.Factory_PostalCd || first.Factory_CountryCd;
+  if (hasFactoryAddress) {
+    const addrFA = tpFA.ele('TradePartnerAddress');
+    streets.forEach(s => addrFA.ele('Street').txt(s));
+    if (first.Factory_City) addrFA.ele('City').txt(first.Factory_City);
+    if (first.Factory_PostalCd) addrFA.ele('PostalCd').txt(first.Factory_PostalCd);
+    if (first.Factory_CountryCd) addrFA.ele('CountryCd').txt(first.Factory_CountryCd);
+  }
 
   // TradePartner: FD — Final Destination (from <FinalDestination> in carrier feed, FC address lookup)
+  const FC_ADDRESS_LOOKUP = {
+    'FC01': {
+      name: 'FC01 Barnsley',
+      streets: ['Greater London House', 'Hampstead Road -', 'London'],
+      city: 'London',
+      stateProvinceCd: 'YorkShire',
+      postalCd: 'NW1 7FB',
+      countryCd: 'GB'
+    }
+  };
   const tpFD = bpMsg.ele('TradePartner', { RoleCd: 'FD' });
-  tpFD.ele('TradePartnerName').txt(first.FC_Name || '');
+  const fcLookup = FC_ADDRESS_LOOKUP[fcId];
+  tpFD.ele('TradePartnerName').txt(fcLookup ? fcLookup.name : (first.FC_Name || ''));
   tpFD.ele('TradePartnerID', { Qualifier: '93' }).txt(fcId);
   const addrFD = tpFD.ele('TradePartnerAddress');
-  const fcStreets = [first.FC_Street1, first.FC_Street2, first.FC_Street3].filter(Boolean);
-  fcStreets.forEach(s => addrFD.ele('Street').txt(s));
-  if (first.FC_City) addrFD.ele('City').txt(first.FC_City);
-  if (first.FC_StateProvinceCd) addrFD.ele('StateProvinceCd').txt(first.FC_StateProvinceCd);
-  if (first.FC_PostalCd) addrFD.ele('PostalCd').txt(first.FC_PostalCd);
-  addrFD.ele('CountryCd').txt(first.FC_CountryCd || 'GB');
-
-  // TradePartner: FS — from <POFC> in carrier feed
-  if (first.POFC_ID) {
-    const tpFS = bpMsg.ele('TradePartner', { RoleCd: 'FS' });
-    tpFS.ele('TradePartnerID', { Qualifier: '93' }).txt(first.POFC_ID);
+  if (fcLookup) {
+    fcLookup.streets.forEach(s => addrFD.ele('Street').txt(s));
+    addrFD.ele('City').txt(fcLookup.city);
+    addrFD.ele('StateProvinceCd').txt(fcLookup.stateProvinceCd);
+    addrFD.ele('PostalCd').txt(fcLookup.postalCd);
+    addrFD.ele('CountryCd').txt(fcLookup.countryCd);
+  } else {
+    const fcStreets = [first.FC_Street1, first.FC_Street2, first.FC_Street3].filter(Boolean);
+    fcStreets.forEach(s => addrFD.ele('Street').txt(s));
+    if (first.FC_City) addrFD.ele('City').txt(first.FC_City);
+    if (first.FC_StateProvinceCd) addrFD.ele('StateProvinceCd').txt(first.FC_StateProvinceCd);
+    if (first.FC_PostalCd) addrFD.ele('PostalCd').txt(first.FC_PostalCd);
+    addrFD.ele('CountryCd').txt(first.FC_CountryCd || 'GB');
   }
 
   // TradePartner: CA
@@ -296,7 +313,7 @@ async function build(masterRows, purposeCd) {
   bpMsg.ele('Status').ele('Date', { DateTypeCd: '211', TimeZone: 'LT' }).txt(now);
   bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBT', TimeZone: 'LT' }).txt(now);
 
-  if (asnDeliveryDate) bpMsg.ele('Status').ele('Date', { DateTypeCd: '238' }).txt(asnDeliveryDate);
+  if (shipDate) bpMsg.ele('Status').ele('Date', { DateTypeCd: '238' }).txt(shipDate);
   if (expectedDeliveryDate) bpMsg.ele('Status').ele('Date', { DateTypeCd: '065' }).txt(expectedDeliveryDate);
 
   bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBK' }).txt(now);
@@ -356,7 +373,6 @@ async function build(masterRows, purposeCd) {
         li.ele('LineItemDescription').txt(description);
         li.ele('Attribute', { AttributeTypeCd: 'SI' }).txt(asnRef);
         li.ele('Attribute', { AttributeTypeCd: 'SK' }).txt(sku);
-        if (ean)               li.ele('Attribute', { AttributeTypeCd: 'UA' }).txt(ean);
         if (row.Colour_Code)   li.ele('Attribute', { AttributeTypeCd: 'CL' }).txt(row.Colour_Code);
         if (row.Size_Code)     li.ele('Attribute', { AttributeTypeCd: 'IZ' }).txt(row.Size_Code);
         li.ele('Reference', { RefTypeCd: 'PAC', SourceRefTypeCd: '128' }).txt(packType);
@@ -372,7 +388,7 @@ async function build(masterRows, purposeCd) {
         li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(row._net.toFixed(4));
         li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(row._vol.toFixed(4));
         li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt(row._cartons.toFixed(4));
-        li.ele('TradePartner', { RoleCd: 'FS' }).ele('TradePartnerID', { Qualifier: '93' }).txt(row.F1_ID || '');
+        li.ele('TradePartner', { RoleCd: 'FS' }).ele('TradePartnerID', { Qualifier: '93' }).txt(lineFC);
       }
     }
   }
