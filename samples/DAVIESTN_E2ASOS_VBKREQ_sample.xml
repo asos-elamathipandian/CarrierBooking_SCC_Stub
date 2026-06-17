@@ -1,5 +1,5 @@
 <XMLBundle>
-<XMLTransmission CtrlNumber="91800255" Receiver="E2ASOS" Sender="DAVIESTN" Timestamp="20260528 115030">
+<XMLTransmission CtrlNumber="91800255" Receiver="DAVIESTN" Sender="E2ASOS" Timestamp="20260528 115030">
   <XMLGroup CtrlNumber="91800255" GroupType="BP" IncludedMessages="1">
     <XMLTransaction CtrlNumber="91800255" TransactionType="BPM-VBKREQ">
       <BpMessage MessageType="VBKREQ" PurposeCd="15">

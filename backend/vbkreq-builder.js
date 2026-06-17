@@ -198,8 +198,8 @@ async function build(masterRows, purposeCd) {
 
   const transmission = root.ele('XMLTransmission', {
     CtrlNumber: ctrlNumber,
-    Receiver: 'E2ASOS',
-    Sender: 'DAVIESTN',
+    Receiver: 'DAVIESTN',
+    Sender: 'E2ASOS',
     Timestamp: now
   });
 
