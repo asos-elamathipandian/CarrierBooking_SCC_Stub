@@ -7,6 +7,7 @@ const state = {
   poRefs: [],
   asnRefs: [],
   supplierRows: [],
+  supplierFileNames: [],
   feedsFetched: false,
   biblBuilt: false,
   lastXml: null,
@@ -157,9 +158,10 @@ btnParseSupplier.addEventListener('click', async () => {
       );
     }
 
-    state.poRefs  = data.poRefs  || [];
-    state.asnRefs = [];
-    state.supplierRows = [];
+    state.poRefs          = data.poRefs  || [];
+    state.asnRefs         = [];
+    state.supplierRows    = [];
+    state.supplierFileNames = [...supplierFileInput.files].map(f => f.name);
 
     // Auto-populate PO refs in the blob fetch panel
     const blobPoRefTags = document.getElementById('blobPoRefTags');
@@ -447,8 +449,8 @@ async function pipelineUpload() {
   const badge = document.getElementById('badgePipeline');
   if (badge) { badge.className = 'step-badge ' + (fail.length === 0 ? 'done' : 'active'); if (fail.length === 0) badge.textContent = '✓'; }
   showTaggedTemplateDownload(state.generations || []);
-}
-function renderSupplierSummary(poCount, bookingCount, skuRowCount) {
+  loadHistory(); // refresh history table after upload
+}(poCount, bookingCount, skuRowCount) {
   const panel = document.getElementById('supplierParsePanel');
   if (!panel) return;
   const skuNote = skuRowCount === 0
@@ -538,15 +540,87 @@ function showTaggedTemplateDownload(generations) {
     </tr>`;
   }).join('');
 
+  // Download links for each tagged supplier template
+  const fileNames = state.supplierFileNames || [];
+  const downloadLinks = fileNames.length
+    ? fileNames.map((name, idx) => {
+        const taggedName = name.replace(/\.xlsx?$/i, '') + '_VBRef.xlsx';
+        return `<a class="download-link" style="margin-right:12px" href="${API}/tagged-supplier/${idx}" download="${escapeHtml(taggedName)}">\u2b07 ${escapeHtml(taggedName)}</a>`;
+      }).join('')
+    : '';
+
   panel.innerHTML = `
-    <table style="width:100%;border-collapse:collapse">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
       <thead><tr>
         <th style="${thStyle}">PO Number(s)</th>
         <th style="${thStyle}">ASN/s</th>
         <th style="${thStyle}">VB Ref</th>
       </tr></thead>
       <tbody>${rows}</tbody>
-    </table>`;
+    </table>
+    ${downloadLinks ? `<div style="margin-top:6px;font-size:12px"><strong>Download tagged supplier template(s) with VB Ref:</strong><br/><div style="margin-top:6px">${downloadLinks}</div></div>` : ''}`;
 }
 
 async function refreshLog() {} // kept as no-op — log replaced by tagged template
+
+// ── Recent Booking History ────────────────────────────────────────────────────
+async function loadHistory() {
+  const panel = document.getElementById('historyPanel');
+  if (!panel) return;
+  try {
+    const res  = await fetch(`${API}/generation-log`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load history');
+
+    const entries = data.entries || [];
+    if (!entries.length) {
+      panel.innerHTML = '<span style="font-size:12px;color:#aaa">No bookings generated in the last 3 days.</span>';
+      return;
+    }
+
+    const thStyle = 'background:#374151;color:#fff;padding:6px 10px;text-align:left;font-size:12px;white-space:nowrap';
+    const tdStyle = 'padding:6px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top;font-size:12px';
+
+    const rows = entries.map(e => {
+      const ts      = e.timestamp ? new Date(e.timestamp).toLocaleString('en-GB') : '—';
+      const vbRef   = escapeHtml(e.bookingRef || e.ctrlNumber || '—');
+      const pos     = (e.poNumbers || []).map(p => `<div>${escapeHtml(p)}</div>`).join('') || '—';
+      const asns    = (e.asnRefs   || []).map(a => `<div style="font-family:monospace">${escapeHtml(a)}</div>`).join('') || '<span style="color:#aaa">—</span>';
+      const dlLink  = e.filename
+        ? `<a class="download-link" href="/output/${encodeURIComponent(e.filename)}" download="${escapeHtml(e.filename)}" style="font-size:11px">${escapeHtml(e.filename)}</a>`
+        : '—';
+      const sftpBadge = e.sftp === 'uploaded'
+        ? `<span style="color:#1B5E20;font-weight:700;font-size:11px">✅ Uploaded</span>`
+        : e.sftp === 'local'
+          ? `<span style="color:#784212;font-size:11px">📁 Local</span>`
+          : `<span style="color:#aaa;font-size:11px">—</span>`;
+      const uploadedAt = e.uploadedAt ? new Date(e.uploadedAt).toLocaleString('en-GB') : '—';
+      return `<tr>
+        <td style="${tdStyle};white-space:nowrap">${ts}</td>
+        <td style="${tdStyle};font-family:monospace;font-weight:700;color:#1F4E79">${vbRef}</td>
+        <td style="${tdStyle}">${pos}</td>
+        <td style="${tdStyle}">${asns}</td>
+        <td style="${tdStyle}">${sftpBadge}<div style="font-size:10px;color:#888;margin-top:2px">${uploadedAt}</div></td>
+        <td style="${tdStyle}">${dlLink}</td>
+      </tr>`;
+    }).join('');
+
+    panel.innerHTML = `
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="${thStyle}">Generated</th>
+          <th style="${thStyle}">VB Ref</th>
+          <th style="${thStyle}">PO(s)</th>
+          <th style="${thStyle}">ASN(s)</th>
+          <th style="${thStyle}">Upload Status</th>
+          <th style="${thStyle}">Download XML</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch (err) {
+    if (panel) panel.innerHTML = `<span style="font-size:12px;color:#922B21">❌ ${err.message}</span>`;
+  }
+}
+
+// Load history on page start and after each upload
+loadHistory();

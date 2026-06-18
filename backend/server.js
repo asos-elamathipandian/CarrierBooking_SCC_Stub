@@ -25,9 +25,12 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 // Serve generated bible downloads
-const bibleDir = path.join(__dirname, '..', 'bible');
-if (!fs.existsSync(bibleDir)) fs.mkdirSync(bibleDir, { recursive: true });
-app.use('/bible', express.static(bibleDir));
+const bibleDir  = path.join(__dirname, '..', 'bible');
+const outputDir = path.join(__dirname, '..', 'output');
+if (!fs.existsSync(bibleDir))  fs.mkdirSync(bibleDir,  { recursive: true });
+if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+app.use('/bible',  express.static(bibleDir));
+app.use('/output', express.static(outputDir));
 
 // Multer: store uploads in memory (max 10MB) — Excel files
 const upload = multer({
@@ -95,6 +98,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
 
     sessionState.supplierData = { rows: allRows, validationErrors: allValidationErrors };
     sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
+    sessionState.supplierBuffers = files.map(f => ({ name: f.originalname, buffer: f.buffer }));
     sessionState.feedData = null;
     sessionState.masterData = null;
     sessionState.lastXml = null;
@@ -399,6 +403,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
         timestamp:  new Date().toISOString(),
         bookingRef,
         poNumbers,
+        asnRefs,
         filename,
         ctrlNumber,
         group: groupLabel,
@@ -517,13 +522,93 @@ app.get('/api/tagged-template', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// GET /api/tagged-supplier/:idx
+// Return the original supplier Excel with VBKREQ_Ref written into PO Header
+// ─────────────────────────────────────────────
+app.get('/api/tagged-supplier/:idx', async (req, res) => {
+  try {
+    const idx      = parseInt(req.params.idx, 10);
+    const buffers  = sessionState.supplierBuffers || [];
+    const generations = sessionState.lastGenerations || [];
+
+    if (!buffers[idx]) return res.status(404).json({ error: 'Supplier file not found. Re-upload the template.' });
+    if (!generations.length) return res.status(400).json({ error: 'No VBKREQs generated yet. Run the pipeline first.' });
+
+    // Build PO → VB ref map
+    const poToRef = {};
+    for (const gen of generations) {
+      const ref = gen.bookingRef || gen.ctrlNumber || gen.filename || '';
+      for (const po of (gen.poNumbers || [])) poToRef[String(po).trim()] = ref;
+    }
+
+    const ExcelJS = require('exceljs');
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffers[idx].buffer);
+
+    const wsH = wb.getWorksheet('PO Header') || wb.getWorksheet('BOOKING_HEADER');
+    if (!wsH) return res.status(400).json({ error: 'PO Header sheet not found in supplier file.' });
+
+    // Locate header row and PO_Number column
+    let headerRowNum = 1;
+    let poColIdx     = 1;
+    wsH.eachRow((row, rowNum) => {
+      row.eachCell((cell, colNum) => {
+        const v = String(cell.value || '').replace(/\s*\(.*?\)/, '').trim();
+        if (v === 'PO_Number') { headerRowNum = rowNum; poColIdx = colNum; }
+      });
+    });
+
+    // Append VBKREQ_Ref header after last used column
+    const newColIdx = wsH.columnCount + 1;
+    const hdrCell   = wsH.getRow(headerRowNum).getCell(newColIdx);
+    hdrCell.value = 'VBKREQ_Ref';
+    hdrCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+    hdrCell.font  = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+    hdrCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    wsH.getColumn(newColIdx).width = 52;
+
+    // Write VB ref into each data row
+    wsH.eachRow((row, rowNum) => {
+      if (rowNum <= headerRowNum) return;
+      const po  = String(row.getCell(poColIdx).value || '').trim();
+      if (!po) return;
+      const ref = poToRef[po];
+      const cell = row.getCell(newColIdx);
+      if (ref) {
+        cell.value = ref;
+        cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+        cell.font  = { color: { argb: 'FF1B5E20' }, bold: true, size: 10 };
+      } else {
+        cell.value = 'Not generated';
+        cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE8E8' } };
+        cell.font  = { color: { argb: 'FF7B1F1F' }, size: 10 };
+      }
+      row.commit();
+    });
+
+    const buf      = await wb.xlsx.writeBuffer();
+    const baseName = buffers[idx].name.replace(/\.xlsx?$/i, '');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${baseName}_VBRef.xlsx"`);
+    res.send(buf);
+  } catch (err) {
+    console.error('tagged-supplier error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
 // GET /api/generation-log
-// Return last 50 log entries
+// Return entries from the last 3 days, newest first
 // ─────────────────────────────────────────────
 app.get('/api/generation-log', async (req, res) => {
   try {
-    const log = await bibleBuilder.getGenerationLog();
-    res.json({ success: true, entries: log.slice(-50).reverse() });
+    const log      = await bibleBuilder.getGenerationLog();
+    const cutoff   = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const filtered = log
+      .filter(e => e.timestamp && new Date(e.timestamp) >= cutoff)
+      .reverse();
+    res.json({ success: true, entries: filtered });
   } catch (err) {
     console.error('generation-log error:', err);
     res.status(500).json({ error: err.message });

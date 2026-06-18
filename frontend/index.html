@@ -615,7 +615,7 @@
       <div class="step-badge" id="badgePipeline">⚡</div>
       <div>
         <div class="step-title">Booking Pipeline</div>
-        <div class="step-desc">📡 Fetch ASN &nbsp;&rarr;&nbsp; ⚡ Generate &nbsp;&rarr;&nbsp; 🚀 Upload</div>
+        <div class="step-desc">Fetch ASN details from corresponding PO carrier feed, map and generate booking request messages then upload to E2open/DT SFTP</div>
       </div>
     </div>
     <div class="step-body">
@@ -744,6 +744,22 @@
     <div class="step-body">
       <div id="taggedTemplatePanel">
         <span style="font-size:12px;color:#aaa">Complete the pipeline and generate VBKREQs — the mapping will appear here.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Recent Bookings History ── -->
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-badge" style="background:#374151">🕑</div>
+      <div>
+        <div class="step-title">Recent Booking History</div>
+        <div class="step-desc">VBKREQs generated in the last 3 days — click filename to download XML</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <div id="historyPanel">
+        <span style="font-size:12px;color:#aaa">Loading history…</span>
       </div>
     </div>
   </div>
