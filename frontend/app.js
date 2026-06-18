@@ -21,7 +21,6 @@ const dropZone           = document.getElementById('dropZone');
 const dropZoneText       = document.getElementById('dropZoneText');
 const btnParseSupplier   = document.getElementById('btnParseSupplier');
 const btnRunPipeline     = document.getElementById('btnRunPipeline');
-const xmlPreviewWrap     = document.getElementById('xmlPreviewWrap');
 const refsPreview        = document.getElementById('refsPreview');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -178,8 +177,9 @@ btnParseSupplier.addEventListener('click', async () => {
     refsPreview.innerHTML = '';
     renderSupplierSummary(data.poCount || 0, data.bookingCount || 0, data.rowCount || 0);
 
-    // Show pipeline and activate stage 1
-    document.getElementById('pipelineCard').style.display = '';
+    // Unlock pipeline card and activate stage
+    const pipelineCard = document.getElementById('pipelineCard');
+    if (pipelineCard) pipelineCard.classList.remove('locked');
     const badge = document.getElementById('badgePipeline');
     if (badge) badge.className = 'step-badge active';
     if (btnRunPipeline) btnRunPipeline.disabled = false;
@@ -201,15 +201,126 @@ function progSet(n, state, text) {
   if (text) el.textContent = text;
 }
 
+// ── Cancellation VB Ref lookup ────────────────────────────────────────────────
+// ── Cancel Booking card ───────────────────────────────────────────────────────
+const btnLookupCancel = document.getElementById('btnLookupCancel');
+const btnRunCancel    = document.getElementById('btnRunCancel');
+const cancelPoInput   = document.getElementById('cancelPoInput');
+
+async function renderCancelLookup(pos) {
+  const panel = document.getElementById('cancelLookupPanel');
+  if (!panel) return;
+  panel.style.display = '';
+  panel.innerHTML = '<span style="font-size:12px;color:#888">Looking up existing bookings…</span>';
+  try {
+    const res  = await fetch(`${API}/lookup-vbref?pos=${encodeURIComponent(pos.join(','))}`);
+    const data = await res.json();
+    const refs = data.refs || {};
+    const hasAny = Object.keys(refs).length > 0;
+    const thS = 'background:#7F1D1D;color:#fff;padding:6px 10px;text-align:left;font-size:12px';
+    const tdS = 'padding:6px 10px;border-bottom:1px solid #FEE2E2;font-size:12px';
+    const rows = pos.map(po => {
+      const found = refs[po];
+      const refCell = found
+        ? `<span style="font-family:monospace;font-weight:700;color:#1F4E79">${escapeHtml(found.bookingRef)}</span> <span style="color:#888;font-size:11px">(${new Date(found.timestamp).toLocaleDateString('en-GB')})</span>`
+        : `<span style="color:#B91C1C;font-size:11px">⚠️ No existing booking found</span>`;
+      return `<tr><td style="${tdS}">${escapeHtml(po)}</td><td style="${tdS}">${refCell}</td></tr>`;
+    }).join('');
+    panel.innerHTML = `<table style="width:100%;border-collapse:collapse">
+      <thead><tr><th style="${thS}">PO Number</th><th style="${thS}">VB Ref to Cancel</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+    if (btnRunCancel) btnRunCancel.disabled = !hasAny;
+  } catch (err) {
+    panel.innerHTML = `<span style="font-size:12px;color:#922B21">❌ ${err.message}</span>`;
+  }
+}
+
+if (btnLookupCancel) {
+  btnLookupCancel.addEventListener('click', async () => {
+    const pos = (cancelPoInput?.value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    if (!pos.length) return;
+    await renderCancelLookup(pos);
+  });
+}
+
+if (btnRunCancel) {
+  btnRunCancel.addEventListener('click', async () => {
+    const pos = (cancelPoInput?.value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    if (!pos.length) return;
+    setLoading(btnRunCancel, true);
+    psSetResult('cancelStatus', '<span style="font-size:12px;color:#888">⏳ Generating cancellation VBKREQ(s)…</span>');
+    try {
+      const genRes  = await fetch(`${API}/cancel-booking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ poNumbers: pos })
+      });
+      const genData = await genRes.json();
+      if (!genRes.ok) throw new Error(genData.error || 'Cancel generation failed');
+      const gens = genData.generations || [];
+      const uploadResults = [];
+      for (const gen of gens) {
+        try {
+          const upRes  = await fetch(`${API}/upload-sftp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml })
+          });
+          const upData = await upRes.json();
+          if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
+          uploadResults.push({ filename: gen.filename, ok: true, localMode: upData.localMode });
+        } catch (err) {
+          uploadResults.push({ filename: gen.filename, ok: false, error: err.message });
+        }
+      }
+      renderCancelResult(gens, uploadResults);
+      loadHistory();
+    } catch (err) {
+      psSetResult('cancelStatus', `<div style="color:#922B21;font-size:13px">❌ ${err.message}</div>`);
+    } finally {
+      setLoading(btnRunCancel, false);
+    }
+  });
+}
+
+function renderCancelResult(generations, uploadResults) {
+  const upMap = Object.fromEntries((uploadResults || []).map(r => [r.filename, r]));
+  const thS = 'background:#7F1D1D;color:#fff;padding:7px 10px;text-align:left;font-size:12px;white-space:nowrap';
+  const tdS = 'padding:7px 10px;border-bottom:1px solid #FEE2E2;font-size:12px';
+  const rows = generations.map(gen => {
+    const pos   = (gen.poNumbers || []).map(p => `<div>${escapeHtml(p)}</div>`).join('') || '—';
+    const vbRef = escapeHtml(gen.bookingRef || '—');
+    const up    = upMap[gen.filename];
+    const upBadge = up
+      ? (up.ok
+          ? `<span style="color:#1B5E20;font-size:11px;font-weight:700">✅ ${up.localMode ? 'Saved locally' : 'Uploaded to SFTP'}</span>`
+          : `<span style="color:#922B21;font-size:11px">❌ ${escapeHtml(up.error)}</span>`)
+      : '';
+    const blob   = new Blob([gen.xml], { type: 'application/xml' });
+    const dlHref = URL.createObjectURL(blob);
+    return `<tr>
+      <td style="${tdS}">${pos}</td>
+      <td style="${tdS};font-family:monospace;font-weight:700;color:#7F1D1D">${vbRef}</td>
+      <td style="${tdS}"><a class="download-link" href="${dlHref}" download="${escapeHtml(gen.filename)}" style="font-size:11px;display:block;margin-bottom:3px">⬇ ${escapeHtml(gen.filename)}</a>${upBadge}</td>
+    </tr>`;
+  }).join('');
+  psSetResult('cancelStatus', `
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="${thS}">PO Number(s)</th>
+        <th style="${thS}">VB Ref Cancelled</th>
+        <th style="${thS}">Cancellation XML</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`);
+}
+
 if (btnRunPipeline) {
   btnRunPipeline.addEventListener('click', async () => {
     setLoading(btnRunPipeline, true);
     psSetResult('psFetchResult', '');
     psSetResult('psBuildWarnings', '');
-    psSetResult('psGenResult', '');
-    psSetResult('psUploadResult', '');
-    document.getElementById('generationsContainer').innerHTML = '';
-    if (xmlPreviewWrap) xmlPreviewWrap.classList.remove('visible');
+    psSetResult('resultPanel', '');
 
     const progress = document.getElementById('pipelineProgress');
     if (progress) progress.style.display = '';
@@ -218,8 +329,7 @@ if (btnRunPipeline) {
     progSet(3, 'pending', '⚡ Generate');
     progSet(4, 'pending', '🚀 Upload');
 
-    const purposeCd    = document.querySelector('input[name="purposeCd"]:checked')?.value || '13';
-    const purposeLabel = { '13': 'Submission', '15': 'Re-Submission', '01': 'Cancellation' }[purposeCd] || purposeCd;
+    const purposeCd = document.querySelector('input[name="purposeCd"]:checked')?.value || '13';
     try {
       // ── 1. Fetch ASN ──────────────────────────────────────────────────────
       progSet(1, 'active', '📡 Fetching ASN…');
@@ -276,15 +386,11 @@ if (btnRunPipeline) {
       state.generations  = genData.generations || [];
       state.lastXml      = state.generations[0]?.xml      || null;
       state.lastFilename = state.generations[0]?.filename || null;
-      const count = state.generations.length;
-      psSetResult('psGenResult', `<div style="font-size:13px;color:#1E8449">✅ <strong>${count}</strong> VBKREQ${count > 1 ? 's' : ''} generated — ${purposeLabel}</div>`);
-      renderGenerations(state.generations);
-      if (xmlPreviewWrap) xmlPreviewWrap.classList.add('visible');
+
       progSet(3, 'done', '⚡ Generated ✅');
 
       // ── 4. Upload ─────────────────────────────────────────────────────────
       progSet(4, 'active', '🚀 Uploading…');
-      psSetResult('psUploadResult', `<span style="font-size:12px;color:#784212">⏳ Uploading ${count} VBKREQ(s)…</span>`);
       const results = [];
       for (let i = 0; i < state.generations.length; i++) {
         const gen = state.generations[i];
@@ -297,23 +403,17 @@ if (btnRunPipeline) {
           const upData = await upRes.json();
           if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
           results.push({ filename: gen.filename, ok: true, remotePath: upData.remotePath, localMode: upData.localMode });
-          const btn = document.querySelector(`.gen-upload-btn[data-idx="${i}"]`);
-          if (btn) { btn.textContent = '✅ Uploaded'; btn.style.background = '#27AE60'; btn.disabled = true; }
         } catch (err) {
           results.push({ filename: gen.filename, ok: false, error: err.message });
         }
       }
       const ok   = results.filter(r => r.ok);
       const fail = results.filter(r => !r.ok);
-      let upHtml = `<div style="font-size:13px">✅ <strong>${ok.length}</strong> of <strong>${results.length}</strong> uploaded to SFTP.</div>`;
-      if (ok.length)   upHtml += '<div style="font-size:12px;margin-top:4px">' + ok.map(r => `&nbsp;• ${r.filename} → ${r.localMode ? 'local output/' : r.remotePath}`).join('<br/>') + '</div>';
-      if (fail.length) upHtml += `<div style="font-size:12px;color:#922B21;margin-top:4px">❌ ${fail.length} failed:<br/>` + fail.map(r => `&nbsp;• ${r.filename}: ${r.error}`).join('<br/>') + '</div>';
-      psSetResult('psUploadResult', upHtml);
       progSet(4, fail.length === 0 ? 'done' : 'error', fail.length === 0 ? '🚀 Uploaded ✅' : '🚀 Upload ⚠️');
 
       const badge = document.getElementById('badgePipeline');
       if (badge) { badge.className = 'step-badge ' + (fail.length === 0 ? 'done' : 'active'); if (fail.length === 0) badge.textContent = '✓'; }
-      showTaggedTemplateDownload(state.generations || []);
+      renderResult(state.generations, results);
       loadHistory();
 
     } catch (err) {
@@ -345,98 +445,57 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function renderGenerations(generations) {
-  const container = document.getElementById('generationsContainer');
-  container.innerHTML = '';
-  generations.forEach((gen, i) => {
-    const groupLabel = gen.group
-      ? `Group: <strong>${gen.group}</strong>`
-      : (generations.length > 1 ? `Booking ${i + 1}` : 'Generated VBKREQ');
-    const poList = (gen.poNumbers || []).join(', ') || '—';
-    const card = document.createElement('div');
-    card.className = 'generation-card';
-    card.innerHTML = `
-      <div class="gen-header">
-        <span class="gen-title">${groupLabel}</span>
-        <span class="gen-meta">POs: ${poList} &nbsp;|&nbsp;Ctrl#: ${gen.ctrlNumber} &nbsp;|&nbsp;v${gen.version || 1}</span>
-        <a class="download-link" href="#" download="${gen.filename}">⬇ ${gen.filename}</a>
-        <button class="btn btn-danger btn-sm gen-upload-btn" data-idx="${i}">⬆ Upload SFTP</button>
-      </div>
-      <details class="gen-details">
-        <summary>▶ Preview XML</summary>
-        <pre class="xml-pre">${escapeHtml(gen.xml)}</pre>
-      </details>
-    `;
-    const blob = new Blob([gen.xml], { type: 'application/xml' });
-    card.querySelector('a').href = URL.createObjectURL(blob);
-    card.querySelector('.gen-upload-btn').addEventListener('click', () => uploadGeneration(i));
-    container.appendChild(card);
-  });
-}
+// ── Pipeline result table ─────────────────────────────────────────────────────
+function renderResult(generations, uploadResults) {
+  const panel = document.getElementById('resultPanel');
+  if (!panel || !generations?.length) return;
 
-async function uploadGeneration(idx) {
-  const gen = state.generations[idx];
-  if (!gen) return;
-  const btn = document.querySelector(`.gen-upload-btn[data-idx="${idx}"]`);
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Uploading…'; }
-  try {
-    const res = await fetch(`${API}/upload-sftp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Upload failed');
-    if (btn) { btn.textContent = '✅ Uploaded'; btn.style.background = '#27AE60'; }
-    showTaggedTemplateDownload(state.generations || []);
-  } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = '⬆ Upload SFTP'; }
-    setStatus(5, 'error', `❌ ${err.message}`);
-  }
-}
-
-// ── PO → VBKREQ Map download ─────────────────────────────────────────────────
-function showTaggedTemplateDownload(generations) {
-  const panel = document.getElementById('taggedTemplatePanel');
-  if (!panel) return;
-  if (!generations || !generations.length) return;
-
-  const thStyle = 'background:#1F4E79;color:#fff;padding:6px 10px;text-align:left;font-size:12px';
-  const tdStyle = 'padding:6px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top;font-size:12px';
+  const thStyle = 'background:#1F4E79;color:#fff;padding:7px 10px;text-align:left;font-size:12px;white-space:nowrap';
+  const tdStyle = 'padding:7px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top;font-size:12px';
+  const upMap   = Object.fromEntries((uploadResults || []).map(r => [r.filename, r]));
 
   const rows = generations.map(gen => {
-    const pos   = (gen.poNumbers || []).map(p => `<div>${escapeHtml(p)}</div>`).join('') || '—';
-    const asns  = (gen.asnRefs   || []).map(a => `<div style="font-family:monospace">${escapeHtml(a)}</div>`).join('') || '<span style="color:#aaa">—</span>';
-    const vbRef = escapeHtml(gen.bookingRef || gen.ctrlNumber || '—');
+    const pos    = (gen.poNumbers || []).map(p => `<div>${escapeHtml(p)}</div>`).join('') || '—';
+    const asns   = (gen.asnRefs   || []).map(a => `<div style="font-family:monospace">${escapeHtml(a)}</div>`).join('') || '<span style="color:#aaa">—</span>';
+    const vbRef  = escapeHtml(gen.bookingRef || gen.ctrlNumber || '—');
+    const up     = upMap[gen.filename];
+    const upBadge = up
+      ? (up.ok
+          ? `<span style="color:#1B5E20;font-size:11px;font-weight:700">✅ ${up.localMode ? 'Saved locally' : 'Uploaded to SFTP'}</span>`
+          : `<span style="color:#922B21;font-size:11px">❌ ${escapeHtml(up.error)}</span>`)
+      : '';
+    const blob   = new Blob([gen.xml], { type: 'application/xml' });
+    const dlHref = URL.createObjectURL(blob);
     return `<tr>
       <td style="${tdStyle}">${pos}</td>
       <td style="${tdStyle}">${asns}</td>
       <td style="${tdStyle};font-family:monospace;font-weight:700;color:#1F4E79">${vbRef}</td>
+      <td style="${tdStyle}"><a class="download-link" href="${dlHref}" download="${escapeHtml(gen.filename)}" style="font-size:11px;display:block;margin-bottom:3px">⬇ ${escapeHtml(gen.filename)}</a>${upBadge}</td>
     </tr>`;
   }).join('');
 
-  // Download links for each tagged supplier template
   const fileNames = state.supplierFileNames || [];
-  const downloadLinks = fileNames.length
+  const taggedLinks = fileNames.length
     ? fileNames.map((name, idx) => {
         const taggedName = name.replace(/\.xlsx?$/i, '') + '_VBRef.xlsx';
-        return `<a class="download-link" style="margin-right:12px" href="${API}/tagged-supplier/${idx}" download="${escapeHtml(taggedName)}">\u2b07 ${escapeHtml(taggedName)}</a>`;
+        return `<a class="download-link" style="margin-right:12px;font-size:12px" href="${API}/tagged-supplier/${idx}" download="${escapeHtml(taggedName)}">⬇ ${escapeHtml(taggedName)}</a>`;
       }).join('')
     : '';
 
   panel.innerHTML = `
-    <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:${taggedLinks ? '10' : '0'}px">
       <thead><tr>
         <th style="${thStyle}">PO Number(s)</th>
-        <th style="${thStyle}">ASN/s</th>
+        <th style="${thStyle}">ASN Ref(s)</th>
         <th style="${thStyle}">VB Ref</th>
+        <th style="${thStyle}">VBKREQ File</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    ${downloadLinks ? `<div style="margin-top:6px;font-size:12px"><strong>Download tagged supplier template(s) with VB Ref:</strong><br/><div style="margin-top:6px">${downloadLinks}</div></div>` : ''}`;
+    ${taggedLinks ? `<div style="font-size:12px"><strong>Tagged supplier template(s) with VB Ref:</strong><div style="margin-top:6px">${taggedLinks}</div></div>` : ''}`;
 }
 
-async function refreshLog() {} // kept as no-op — log replaced by tagged template
+async function refreshLog() {} // no-op
 
 // ── Recent Booking History ────────────────────────────────────────────────────
 async function loadHistory() {

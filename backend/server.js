@@ -370,6 +370,24 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       return r;
     });
 
+    // For cancellations, reuse the most recent bookingRef per PO from the generation log
+    if (purposeCd === '01') {
+      const logEntries = readGenerationLog();
+      const poRefMap = {};
+      for (const entry of logEntries) {
+        for (const po of (entry.poNumbers || [])) {
+          const key = String(po).trim();
+          if (!poRefMap[key] || new Date(entry.timestamp) > new Date(poRefMap[key].timestamp)) {
+            poRefMap[key] = { bookingRef: entry.bookingRef, timestamp: entry.timestamp };
+          }
+        }
+      }
+      for (const row of workingRows) {
+        const found = poRefMap[String(row.PO_Number || '').trim()];
+        if (found) row.Booking_Ref = found.bookingRef;
+      }
+    }
+
     // Derive a grouping key from Booking_Group:
     //   "Single Booking"      → one VBKREQ per PO  (key = PO_Number)
     //   "Multiple POs-BKxxx"  → all rows with same code in one VBKREQ (key = BKxxx)
@@ -586,6 +604,11 @@ app.get('/api/tagged-supplier/:idx', async (req, res) => {
       row.commit();
     });
 
+    // Strip conditional formatting — cross-sheet CF rules cause ExcelJS serialization errors
+    for (const ws of wb.worksheets) {
+      ws.conditionalFormattings = [];
+    }
+
     const buf      = await wb.xlsx.writeBuffer();
     const baseName = buffers[idx].name.replace(/\.xlsx?$/i, '');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -593,6 +616,81 @@ app.get('/api/tagged-supplier/:idx', async (req, res) => {
     res.send(buf);
   } catch (err) {
     console.error('tagged-supplier error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Helper: read full generation log from disk
+// ─────────────────────────────────────────────
+const LOG_PATH = path.join(__dirname, '..', 'bible', 'generation-log.json');
+function readGenerationLog() {
+  try {
+    if (fs.existsSync(LOG_PATH)) return JSON.parse(fs.readFileSync(LOG_PATH, 'utf8'));
+  } catch (_) {}
+  return [];
+}
+
+// ─────────────────────────────────────────────
+// POST /api/cancel-booking
+// Generate + return cancellation VBKREQ(s) for given PO numbers
+// ─────────────────────────────────────────────
+app.post('/api/cancel-booking', async (req, res) => {
+  try {
+    const { poNumbers } = req.body || {};
+    if (!poNumbers?.length) return res.status(400).json({ error: 'No PO numbers provided.' });
+
+    const poSet = new Set(poNumbers.map(p => String(p).trim()));
+    const masterRows = (sessionState.masterData || []).filter(r => poSet.has(String(r.PO_Number || '').trim()));
+    if (!masterRows.length) {
+      return res.status(400).json({ error: 'No master data found for these POs. Upload the supplier template and run the pipeline first, then cancel from here.' });
+    }
+
+    // Inject existing Booking_Ref from log
+    const logEntries = readGenerationLog();
+    const poRefMap = {};
+    for (const entry of logEntries) {
+      for (const po of (entry.poNumbers || [])) {
+        const key = String(po).trim();
+        if (!poRefMap[key] || new Date(entry.timestamp) > new Date(poRefMap[key].timestamp)) {
+          poRefMap[key] = { bookingRef: entry.bookingRef };
+        }
+      }
+    }
+    const workingRows = masterRows.map(row => {
+      const found = poRefMap[String(row.PO_Number || '').trim()];
+      return found ? { ...row, Booking_Ref: found.bookingRef } : { ...row };
+    });
+
+    function resolveGroupKey(row) {
+      const bg = String(row.Booking_Group || '').trim();
+      if (bg === 'Multiple') return '__ALL__';
+      const m = bg.match(/^Multiple POs-(BK\d+)$/i);
+      if (m) return m[1].toUpperCase();
+      return `PO__${String(row.PO_Number || '').trim()}`;
+    }
+    const groupMap = new Map();
+    for (const row of workingRows) {
+      const g = resolveGroupKey(row);
+      if (!groupMap.has(g)) groupMap.set(g, []);
+      groupMap.get(g).push(row);
+    }
+
+    const generations = [];
+    for (const [group, groupRows] of groupMap) {
+      const { xml, filename, ctrlNumber, version, bookingRef: vbRef } = await vbkreqBuilder.build(groupRows, '01');
+      const poNums  = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
+      const asnRefs = [...new Set(groupRows.map(r => r.ASN_Ref).filter(Boolean))];
+      const bookingRef = vbRef || groupRows[0]?.Booking_Ref || '';
+      const groupLabel = group === '__ALL__' ? 'Multiple' : group.startsWith('PO__') ? group.replace('PO__', '') : group;
+      bibleBuilder.appendGenerationLog({ timestamp: new Date().toISOString(), bookingRef, poNumbers: poNums, asnRefs, filename, ctrlNumber, group: groupLabel, purposeCd: '01', sftp: null });
+      generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers: poNums, asnRefs, bookingRef });
+    }
+    sessionState.lastGenerations = generations;
+    res.json({ success: true, generations });
+  } catch (err) {
+    console.error('cancel-booking error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -611,6 +709,33 @@ app.get('/api/generation-log', async (req, res) => {
     res.json({ success: true, entries: filtered });
   } catch (err) {
     console.error('generation-log error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
+// GET /api/lookup-vbref?pos=PO1,PO2,...
+// Return most-recent bookingRef per PO from log
+// ─────────────────────────────────────────────
+app.get('/api/lookup-vbref', (req, res) => {
+  try {
+    const poList = String(req.query.pos || '').split(',').map(s => s.trim()).filter(Boolean);
+    const entries = readGenerationLog();
+    const result = {};
+    for (const po of poList) {
+      const matches = entries
+        .filter(e => (e.poNumbers || []).map(String).includes(String(po)))
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      if (matches.length) {
+        result[po] = {
+          bookingRef: matches[0].bookingRef,
+          timestamp:  matches[0].timestamp,
+          filename:   matches[0].filename
+        };
+      }
+    }
+    res.json({ refs: result });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

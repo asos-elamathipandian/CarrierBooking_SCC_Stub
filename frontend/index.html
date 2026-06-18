@@ -202,7 +202,7 @@
     }
     .purpose-option:hover { border-color: var(--accent); background: #EFF6FF; }
     .purpose-option input[type=radio] { accent-color: var(--accent); }
-    .purpose-option input[type=radio]:checked ~ span { color: var(--navy); font-weight: 700; }
+    .step-card.locked { opacity:.55; pointer-events:none; }
 
 
 
@@ -579,12 +579,12 @@
   </div>
 
   <!-- ── Pipeline Card (Steps 2-5) ── -->
-  <div class="step-card" id="pipelineCard" style="display:none">
+  <div class="step-card locked" id="pipelineCard">
     <div class="step-header">
-      <div class="step-badge" id="badgePipeline">⚡</div>
+      <div class="step-badge" id="badgePipeline">2</div>
       <div>
         <div class="step-title">Booking Pipeline</div>
-        <div class="step-desc">Fetch ASN details from corresponding PO carrier feed, map and generate booking request messages then upload to E2open/DT SFTP</div>
+        <div class="step-desc">Fetch ASN from carrier feed, build, generate &amp; upload VBKREQ to E2open/DT SFTP &mdash; runs automatically on click</div>
       </div>
     </div>
     <div class="step-body">
@@ -607,16 +607,12 @@
             <input type="radio" name="purposeCd" value="15">
             <span><strong>15 &mdash; Re-Submission</strong> <em>(increments version)</em></span>
           </label>
-          <label class="purpose-option">
-            <input type="radio" name="purposeCd" value="01">
-            <span><strong>01 &mdash; Cancellation</strong> <em>(mandatory fields only)</em></span>
-          </label>
         </div>
       </div>
 
       <!-- Single run button -->
       <div style="margin-bottom:14px">
-        <button class="btn btn-primary" id="btnRunPipeline" disabled>⚡ Process &amp; Upload to SFTP</button>
+        <button class="btn btn-primary" id="btnRunPipeline" disabled>⚡ Build VB &amp; Upload to SFTP</button>
       </div>
 
       <!-- Inline progress strip -->
@@ -634,48 +630,53 @@
 
       <!-- Status outputs -->
       <div id="psFetchResult" style="margin-bottom:8px"></div>
-      <div id="psBuildWarnings"></div>
-      <div id="psGenResult" style="margin-bottom:8px"></div>
-      <div id="psUploadResult"></div>
-
-      <!-- Generated XML download cards -->
-      <div class="xml-preview-wrap" id="xmlPreviewWrap" style="margin-top:10px">
-        <div id="generationsContainer"></div>
-      </div>
+      <div id="psBuildWarnings" style="margin-bottom:8px"></div>
+      <!-- Result table -->
+      <div id="resultPanel"></div>
 
     </div><!-- /.step-body -->
   </div><!-- /#pipelineCard -->
 
-  <!-- ── PO → VBKREQ Map ── -->
+  <!-- ── Cancel Booking ── -->
   <div class="step-card">
     <div class="step-header">
-      <div class="step-badge" style="background:#475569">2</div>
+      <div class="step-badge" style="background:#7F1D1D">✕</div>
       <div>
-        <div class="step-title">Carrier Booking Creation Pipeline</div>
-        <div class="step-desc"><strong>Step 2</strong> &mdash; ASN details from PO carrier feed blob, map and generate booking request messages then upload to E2open/DT SFTP</div>
+        <div class="step-title">Cancel Booking</div>
+        <div class="step-desc">Look up existing VB Refs by PO and send a cancellation VBKREQ to E2open/DT SFTP</div>
       </div>
     </div>
     <div class="step-body">
-      <div id="taggedTemplatePanel">
-        <span style="font-size:12px;color:#aaa">Complete the pipeline and generate VBKREQs — the mapping will appear here.</span>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:#444;display:block;margin-bottom:5px">PO Number(s) <span style="color:#888;font-weight:400">— comma or newline separated</span></label>
+        <textarea id="cancelPoInput" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #FECACA;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box" placeholder="e.g. 500034236929, 500034236930"></textarea>
       </div>
+      <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn" id="btnLookupCancel" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D">🔍 Look Up Existing Bookings</button>
+        <button class="btn" id="btnRunCancel" disabled style="background:#991B1B;color:#fff;border-color:#991B1B">✕ Cancel &amp; Upload to SFTP</button>
+      </div>
+      <div id="cancelLookupPanel" style="display:none;margin-bottom:12px"></div>
+      <div id="cancelStatus"></div>
     </div>
   </div>
 
   <!-- ── Recent Bookings History ── -->
   <div class="step-card">
-    <div class="step-header">
-      <div class="step-badge" style="background:#374151">🕑</div>
-      <div>
-        <div class="step-title">Recent Booking History</div>
-        <div class="step-desc">VBKREQs generated in the last 3 days — click filename to download XML</div>
+    <details id="historyDetails">
+      <summary class="step-header" style="cursor:pointer;list-style:none;display:flex;align-items:center">
+        <div class="step-badge" style="background:#374151">🕑</div>
+        <div style="flex:1">
+          <div class="step-title">Recent Booking History</div>
+          <div class="step-desc">VBKREQs generated in the last 3 days — click to expand</div>
+        </div>
+        <span style="font-size:16px;color:#94a3b8;margin-left:8px">&#9658;</span>
+      </summary>
+      <div class="step-body">
+        <div id="historyPanel">
+          <span style="font-size:12px;color:#aaa">Loading history…</span>
+        </div>
       </div>
-    </div>
-    <div class="step-body">
-      <div id="historyPanel">
-        <span style="font-size:12px;color:#aaa">Loading history…</span>
-      </div>
-    </div>
+    </details>
   </div>
 
 </main>

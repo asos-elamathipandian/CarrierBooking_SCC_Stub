@@ -319,6 +319,11 @@ async function build(masterRows, purposeCd) {
   bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBK' }).txt(now);
   bpMsg.ele('Status').ele('Date', { DateTypeCd: 'SBK' }).txt(now);
 
+  // Cancellation date — only for PurposeCd 01
+  if (pcd === '01') {
+    bpMsg.ele('Status').ele('Date', { DateTypeCd: '177', TimeZone: 'LT' }).txt(now);
+  }
+
   // Group rows by ASN first, then by PO within each ASN
   const asnGroups = {};
   for (const row of masterRows) {
