@@ -425,7 +425,8 @@ app.post('/api/generate-vbkreq', async (req, res) => {
         filename,
         ctrlNumber,
         group: groupLabel,
-        sftp: null
+        sftp: null,
+        masterRows: groupRows
       });
       generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers, asnRefs, bookingRef });
     }
@@ -638,53 +639,40 @@ function readGenerationLog() {
 // ─────────────────────────────────────────────
 app.post('/api/cancel-booking', async (req, res) => {
   try {
-    const { poNumbers } = req.body || {};
-    if (!poNumbers?.length) return res.status(400).json({ error: 'No PO numbers provided.' });
+    const { inputs = [] } = req.body || {};
+    if (!inputs.length) return res.status(400).json({ error: 'No PO numbers or VB Refs provided.' });
 
-    const poSet = new Set(poNumbers.map(p => String(p).trim()));
-    const masterRows = (sessionState.masterData || []).filter(r => poSet.has(String(r.PO_Number || '').trim()));
-    if (!masterRows.length) {
-      return res.status(400).json({ error: 'No master data found for these POs. Upload the supplier template and run the pipeline first, then cancel from here.' });
-    }
-
-    // Inject existing Booking_Ref from log
     const logEntries = readGenerationLog();
-    const poRefMap = {};
-    for (const entry of logEntries) {
-      for (const po of (entry.poNumbers || [])) {
-        const key = String(po).trim();
-        if (!poRefMap[key] || new Date(entry.timestamp) > new Date(poRefMap[key].timestamp)) {
-          poRefMap[key] = { bookingRef: entry.bookingRef };
-        }
-      }
-    }
-    const workingRows = masterRows.map(row => {
-      const found = poRefMap[String(row.PO_Number || '').trim()];
-      return found ? { ...row, Booking_Ref: found.bookingRef } : { ...row };
-    });
 
-    function resolveGroupKey(row) {
-      const bg = String(row.Booking_Group || '').trim();
-      if (bg === 'Multiple') return '__ALL__';
-      const m = bg.match(/^Multiple POs-(BK\d+)$/i);
-      if (m) return m[1].toUpperCase();
-      return `PO__${String(row.PO_Number || '').trim()}`;
+    // Build a map: bookingRef → most-recent entry that has masterRows
+    // Match inputs that look like VB refs (VB-...) or PO numbers
+    const matchedByRef = new Map(); // bookingRef → entry
+    for (const entry of logEntries) {
+      if (!entry.masterRows?.length) continue;
+      const ref = String(entry.bookingRef || '');
+      const isNewer = !matchedByRef.has(ref) || new Date(entry.timestamp) > new Date(matchedByRef.get(ref).timestamp);
+      if (!isNewer) continue;
+
+      const matchesVbRef = inputs.some(i => /^VB-/i.test(i.trim()) && i.trim().toUpperCase() === ref.toUpperCase());
+      const matchesPo    = inputs.some(i => !/^VB-/i.test(i.trim()) && (entry.poNumbers || []).map(String).includes(i.trim()));
+      if (matchesVbRef || matchesPo) matchedByRef.set(ref, entry);
     }
-    const groupMap = new Map();
-    for (const row of workingRows) {
-      const g = resolveGroupKey(row);
-      if (!groupMap.has(g)) groupMap.set(g, []);
-      groupMap.get(g).push(row);
+
+    if (!matchedByRef.size) {
+      return res.status(404).json({ error: 'No stored booking records found for the given PO(s) / VB Ref(s). Bookings must have been created with this tool to be cancelled here.' });
     }
 
     const generations = [];
-    for (const [group, groupRows] of groupMap) {
-      const { xml, filename, ctrlNumber, version, bookingRef: vbRef } = await vbkreqBuilder.build(groupRows, '01');
-      const poNums  = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
-      const asnRefs = [...new Set(groupRows.map(r => r.ASN_Ref).filter(Boolean))];
-      const bookingRef = vbRef || groupRows[0]?.Booking_Ref || '';
-      const groupLabel = group === '__ALL__' ? 'Multiple' : group.startsWith('PO__') ? group.replace('PO__', '') : group;
-      bibleBuilder.appendGenerationLog({ timestamp: new Date().toISOString(), bookingRef, poNumbers: poNums, asnRefs, filename, ctrlNumber, group: groupLabel, purposeCd: '01', sftp: null });
+    for (const [bookingRef, entry] of matchedByRef) {
+      const workingRows = entry.masterRows.map(r => ({ ...r, Booking_Ref: bookingRef }));
+      const { xml, filename, ctrlNumber, version } = await vbkreqBuilder.build(workingRows, '01');
+      const poNums  = entry.poNumbers || [];
+      const asnRefs = entry.asnRefs   || [];
+      const groupLabel = entry.group || bookingRef;
+      bibleBuilder.appendGenerationLog({
+        timestamp: new Date().toISOString(), bookingRef, poNumbers: poNums, asnRefs,
+        filename, ctrlNumber, group: groupLabel, purposeCd: '01', sftp: null, masterRows: workingRows
+      });
       generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers: poNums, asnRefs, bookingRef });
     }
     sessionState.lastGenerations = generations;
@@ -719,18 +707,23 @@ app.get('/api/generation-log', async (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/api/lookup-vbref', (req, res) => {
   try {
-    const poList = String(req.query.pos || '').split(',').map(s => s.trim()).filter(Boolean);
-    const entries = readGenerationLog();
-    const result = {};
-    for (const po of poList) {
+    const inputList = String(req.query.pos || '').split(',').map(s => s.trim()).filter(Boolean);
+    const entries   = readGenerationLog();
+    const result    = {};
+    for (const input of inputList) {
+      const isVbRef = /^VB-/i.test(input);
       const matches = entries
-        .filter(e => (e.poNumbers || []).map(String).includes(String(po)))
+        .filter(e => isVbRef
+          ? String(e.bookingRef || '').toUpperCase() === input.toUpperCase()
+          : (e.poNumbers || []).map(String).includes(String(input)))
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
       if (matches.length) {
-        result[po] = {
-          bookingRef: matches[0].bookingRef,
-          timestamp:  matches[0].timestamp,
-          filename:   matches[0].filename
+        result[input] = {
+          bookingRef:    matches[0].bookingRef,
+          poNumbers:     matches[0].poNumbers || [],
+          timestamp:     matches[0].timestamp,
+          filename:      matches[0].filename,
+          hasMasterRows: !!(matches[0].masterRows?.length)
         };
       }
     }

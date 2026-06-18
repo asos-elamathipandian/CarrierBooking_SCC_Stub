@@ -207,27 +207,42 @@ const btnLookupCancel = document.getElementById('btnLookupCancel');
 const btnRunCancel    = document.getElementById('btnRunCancel');
 const cancelPoInput   = document.getElementById('cancelPoInput');
 
-async function renderCancelLookup(pos) {
+async function renderCancelLookup(inputs) {
   const panel = document.getElementById('cancelLookupPanel');
   if (!panel) return;
   panel.style.display = '';
   panel.innerHTML = '<span style="font-size:12px;color:#888">Looking up existing bookings…</span>';
   try {
-    const res  = await fetch(`${API}/lookup-vbref?pos=${encodeURIComponent(pos.join(','))}`);
+    const res  = await fetch(`${API}/lookup-vbref?pos=${encodeURIComponent(inputs.join(','))}`);
     const data = await res.json();
     const refs = data.refs || {};
     const hasAny = Object.keys(refs).length > 0;
     const thS = 'background:#7F1D1D;color:#fff;padding:6px 10px;text-align:left;font-size:12px';
     const tdS = 'padding:6px 10px;border-bottom:1px solid #FEE2E2;font-size:12px';
-    const rows = pos.map(po => {
-      const found = refs[po];
-      const refCell = found
-        ? `<span style="font-family:monospace;font-weight:700;color:#1F4E79">${escapeHtml(found.bookingRef)}</span> <span style="color:#888;font-size:11px">(${new Date(found.timestamp).toLocaleDateString('en-GB')})</span>`
-        : `<span style="color:#B91C1C;font-size:11px">⚠️ No existing booking found</span>`;
-      return `<tr><td style="${tdS}">${escapeHtml(po)}</td><td style="${tdS}">${refCell}</td></tr>`;
+    const rows = inputs.map(input => {
+      const found = refs[input];
+      if (!found) return `<tr><td style="${tdS};font-family:monospace">${escapeHtml(input)}</td><td style="${tdS}" colspan="3"><span style="color:#B91C1C;font-size:11px">⚠️ No booking record found</span></td></tr>`;
+      const isVbRef = /^VB-/i.test(input);
+      const refCell = `<span style="font-family:monospace;font-weight:700;color:#1F4E79">${escapeHtml(found.bookingRef)}</span>`;
+      const posCell = (found.poNumbers || []).map(p => escapeHtml(p)).join(', ') || '—';
+      const dateCell = `<span style="color:#888;font-size:11px">${new Date(found.timestamp).toLocaleDateString('en-GB')}</span>`;
+      const storedBadge = found.hasMasterRows
+        ? '<span style="color:#1B5E20;font-size:10px;font-weight:700">✅ Ready to cancel</span>'
+        : '<span style="color:#B45309;font-size:10px">⚠️ No stored data (re-run booking first)</span>';
+      return `<tr>
+        <td style="${tdS};font-family:monospace">${escapeHtml(input)}</td>
+        <td style="${tdS}">${isVbRef ? posCell : refCell}</td>
+        <td style="${tdS}">${isVbRef ? refCell : posCell}</td>
+        <td style="${tdS}">${dateCell}<br/>${storedBadge}</td>
+      </tr>`;
     }).join('');
     panel.innerHTML = `<table style="width:100%;border-collapse:collapse">
-      <thead><tr><th style="${thS}">PO Number</th><th style="${thS}">VB Ref to Cancel</th></tr></thead>
+      <thead><tr>
+        <th style="${thS}">Input</th>
+        <th style="${thS}">PO Number(s)</th>
+        <th style="${thS}">VB Ref</th>
+        <th style="${thS}">Booked On</th>
+      </tr></thead>
       <tbody>${rows}</tbody></table>`;
     if (btnRunCancel) btnRunCancel.disabled = !hasAny;
   } catch (err) {
@@ -237,23 +252,23 @@ async function renderCancelLookup(pos) {
 
 if (btnLookupCancel) {
   btnLookupCancel.addEventListener('click', async () => {
-    const pos = (cancelPoInput?.value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-    if (!pos.length) return;
-    await renderCancelLookup(pos);
+    const inputs = (cancelPoInput?.value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    if (!inputs.length) return;
+    await renderCancelLookup(inputs);
   });
 }
 
 if (btnRunCancel) {
   btnRunCancel.addEventListener('click', async () => {
-    const pos = (cancelPoInput?.value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-    if (!pos.length) return;
+    const inputs = (cancelPoInput?.value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    if (!inputs.length) return;
     setLoading(btnRunCancel, true);
     psSetResult('cancelStatus', '<span style="font-size:12px;color:#888">⏳ Generating cancellation VBKREQ(s)…</span>');
     try {
       const genRes  = await fetch(`${API}/cancel-booking`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ poNumbers: pos })
+        body: JSON.stringify({ inputs })
       });
       const genData = await genRes.json();
       if (!genRes.ok) throw new Error(genData.error || 'Cancel generation failed');
