@@ -183,8 +183,6 @@ btnParseSupplier.addEventListener('click', async () => {
     const badge = document.getElementById('badgePipeline');
     if (badge) badge.className = 'step-badge active';
     if (btnRunPipeline) btnRunPipeline.disabled = false;
-    wireDateClear('overrideCargoReady',    'clearCargoReady');
-    wireDateClear('overrideBookingReqDate','clearBookingReqDate');
   } catch (err) {
     setStatus(1, 'error', `❌ ${err.message}`);
   } finally {
@@ -202,20 +200,6 @@ function progSet(n, state, text) {
   el.style.fontWeight = state === 'done' || state === 'active' ? '700' : 'normal';
   if (text) el.textContent = text;
 }
-
-function wireDateClear(inputId, clearBtnId) {
-  const input = document.getElementById(inputId);
-  const btn   = document.getElementById(clearBtnId);
-  if (!input || !btn) return;
-  input.addEventListener('change', () => btn.classList.toggle('visible', !!input.value));
-}
-function clearDateField(inputId, clearBtnId) {
-  const input = document.getElementById(inputId);
-  const btn   = document.getElementById(clearBtnId);
-  if (input) input.value = '';
-  if (btn)   btn.classList.remove('visible');
-}
-window.clearDateField = clearDateField;
 
 if (btnRunPipeline) {
   btnRunPipeline.addEventListener('click', async () => {
@@ -236,9 +220,6 @@ if (btnRunPipeline) {
 
     const purposeCd    = document.querySelector('input[name="purposeCd"]:checked')?.value || '13';
     const purposeLabel = { '13': 'Submission', '15': 'Re-Submission', '01': 'Cancellation' }[purposeCd] || purposeCd;
-    const overrideCargoReady     = document.getElementById('overrideCargoReady')?.value    || '';
-    const overrideBookingReqDate = document.getElementById('overrideBookingReqDate')?.value || '';
-
     try {
       // ── 1. Fetch ASN ──────────────────────────────────────────────────────
       progSet(1, 'active', '📡 Fetching ASN…');
@@ -287,7 +268,7 @@ if (btnRunPipeline) {
       const genRes  = await fetch(`${API}/generate-vbkreq`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purposeCd, overrideCargoReady, overrideBookingReqDate })
+        body: JSON.stringify({ purposeCd })
       });
       const genData = await genRes.json();
       if (!genRes.ok) throw new Error(genData.error || 'Generate failed');

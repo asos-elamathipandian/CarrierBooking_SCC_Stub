@@ -204,38 +204,7 @@
     .purpose-option input[type=radio] { accent-color: var(--accent); }
     .purpose-option input[type=radio]:checked ~ span { color: var(--navy); font-weight: 700; }
 
-    /* ── Date override picker ── */
-    .date-override-panel {
-      margin-bottom: 16px; padding: 14px 16px;
-      background: #F8FBFF; border: 1px solid #DDE8F8; border-radius: 10px;
-    }
-    .date-override-label {
-      font-size: 12px; font-weight: 700; color: var(--navy);
-      text-transform: uppercase; letter-spacing: .4px;
-      margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
-    }
-    .date-override-hint { font-size: 11px; color: #888; font-weight: 400; text-transform: none; letter-spacing: 0; }
-    .date-override-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 600px) { .date-override-grid { grid-template-columns: 1fr; } }
-    .date-field-wrap label { display: block; font-size: 12px; font-weight: 600; color: #444; margin-bottom: 4px; }
-    .date-field-wrap .date-badge {
-      display: inline-block; background: #FEF3C7; border: 1px solid #FCD34D;
-      color: #78350F; border-radius: 4px; font-size: 10px; font-weight: 700;
-      padding: 1px 6px; margin-left: 5px; vertical-align: middle;
-    }
-    .date-field-wrap input[type=date] {
-      width: 100%; padding: 8px 10px; border: 1.5px solid #BDD5F5; border-radius: 8px;
-      font-size: 13px; color: var(--text); background: #fff; cursor: pointer;
-      transition: border-color .2s, box-shadow .2s;
-    }
-    .date-field-wrap input[type=date]:hover { border-color: var(--accent); }
-    .date-field-wrap input[type=date]:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(11,30,58,.1); }
-    .date-field-wrap .date-clear-btn {
-      margin-top: 4px; font-size: 11px; color: var(--red);
-      background: none; border: none; cursor: pointer; padding: 0; display: none;
-    }
-    .date-field-wrap .date-clear-btn.visible { display: inline; }
-    .date-field-wrap .date-clear-btn:hover { text-decoration: underline; }
+
 
     /* ── XML preview ── */
     .xml-preview-wrap { margin-top: 12px; display: none; }
@@ -642,23 +611,6 @@
             <input type="radio" name="purposeCd" value="01">
             <span><strong>01 &mdash; Cancellation</strong> <em>(mandatory fields only)</em></span>
           </label>
-        </div>
-      </div>
-
-      <!-- Date overrides -->
-      <div class="date-override-panel" style="margin-bottom:14px">
-        <div class="date-override-label">📅 Date Overrides <span class="date-override-hint">— optional; overrides dates from supplier template</span></div>
-        <div class="date-override-grid">
-          <div class="date-field-wrap">
-            <label>Cargo Ready / Planned Collection Date <span class="date-badge">DateTypeCd 018</span></label>
-            <input type="date" id="overrideCargoReady" />
-            <button class="date-clear-btn" id="clearCargoReady" onclick="clearDateField('overrideCargoReady','clearCargoReady')">&#10006; Clear</button>
-          </div>
-          <div class="date-field-wrap">
-            <label>Carrier Booking Request Date <span class="date-badge">DateTypeCd 081</span></label>
-            <input type="date" id="overrideBookingReqDate" />
-            <button class="date-clear-btn" id="clearBookingReqDate" onclick="clearDateField('overrideBookingReqDate','clearBookingReqDate')">&#10006; Clear</button>
-          </div>
         </div>
       </div>
 
