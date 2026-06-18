@@ -101,7 +101,7 @@ async function buildTemplate() {
     // Booking qty (default from ASN, overridable)
     { header: 'Booking_Qty',     key: 'Booking_Qty',      width: 14, type: 'supplier' },
     // Dropdowns with defaults
-    { header: 'Pack_Type',       key: 'Pack_Type',        width: 14, type: 'dropdown', default: 'Flat' },
+    { header: 'Pack_Type',       key: 'Pack_Type',        width: 14, type: 'dropdown', default: 'Bulk Flat' },
     { header: 'Collection_Type', key: 'Collection_Type',  width: 18, type: 'dropdown', default: 'Delivery' },
     { header: 'Hazardous',       key: 'Hazardous',        width: 20, type: 'dropdown', default: 'N/A' },
     // Optional dates
@@ -150,7 +150,7 @@ async function buildTemplate() {
     const ctCell = row.getCell(cartonTypeColIdx);
     ctCell.value = 'BDCM1';
 
-    row.getCell(cols.findIndex(c => c.key === 'Pack_Type')       + 1).value = 'Flat';
+    row.getCell(cols.findIndex(c => c.key === 'Pack_Type')       + 1).value = 'Bulk Flat';
     row.getCell(cols.findIndex(c => c.key === 'Collection_Type') + 1).value = 'Delivery';
     row.getCell(cols.findIndex(c => c.key === 'Hazardous')       + 1).value = 'N/A';
     row.getCell(cols.findIndex(c => c.key === 'Var_Unit')        + 1).value = 0;

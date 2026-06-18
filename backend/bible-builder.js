@@ -232,7 +232,7 @@ async function build(supplierData, feedData) {
         Volume_M3:       parseFloat(((cL * cW * cH / 1000000) * skuCartons).toFixed(4)),
 
         // Other booking fields from supplier row
-        Pack_Type:       sRow.Pack_Type        || 'Flat',
+        Pack_Type:       sRow.Pack_Type        || 'Bulk Flat',
         Collection_Type: sRow.Collection_Type  || 'Delivery',
         Hazardous:       sRow.Hazardous        || 'N/A',
         Traffic_Mode:    sRow.Traffic_Mode     || '',
@@ -330,7 +330,7 @@ async function build(supplierData, feedData) {
           Net_Weight_KG:     0,
           Volume_M3:         0,
 
-          Pack_Type:       carrierLine.packFormat === 'H' ? 'Hanging' : 'Flat',
+          Pack_Type:       carrierLine.packFormat === 'H' ? 'Hanging' : 'Bulk Flat',
           Collection_Type: 'Delivery',
           Hazardous:       'N/A',
           Traffic_Mode:    po?.lineItems?.[0]?.mode || '',

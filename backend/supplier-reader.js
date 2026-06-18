@@ -2,7 +2,7 @@
 
 const ExcelJS = require('exceljs');
 
-// Required fields that must come from BOOKING_HEADER (or equivalent single-sheet columns)
+// Required fields that must come from PO Header (or equivalent single-sheet columns)
 const REQUIRED_HEADER_COLS = [
   'PO_Number',
   'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date',
@@ -10,7 +10,7 @@ const REQUIRED_HEADER_COLS = [
   'Factory_ID', 'Factory_Name', 'Factory_Street1', 'Factory_City', 'Factory_PostalCd', 'Factory_CountryCd'
 ];
 
-// Required fields that must come from SKU_LINES (or equivalent single-sheet columns)
+// Required fields that must come from PO Lines (or equivalent single-sheet columns)
 const REQUIRED_SKU_COLS = [
   'PO_Number', 'SKU', 'Booking_Qty', 'No_of_Cartons', 'Unit_Weight_KG'
 ];
@@ -66,11 +66,11 @@ function readSheet(sheet, anchorCol) {
   return { rows, headerRowNum };
 }
 
-// ── Two-sheet parser (BOOKING_HEADER + SKU_LINES) ─────────────────────────────
+// ── Two-sheet parser (PO Header + PO Lines) ────────────────────────────────────
 
 function parseTwoSheet(workbook) {
-  const wsHdr = workbook.getWorksheet('BOOKING_HEADER');
-  const wsSku = workbook.getWorksheet('SKU_LINES');
+  const wsHdr = workbook.getWorksheet('PO Header');
+  const wsSku = workbook.getWorksheet('PO Lines');
 
   const { rows: hdrRows } = readSheet(wsHdr, 'PO_Number');
   const { rows: skuRows } = readSheet(wsSku, 'PO_Number');
@@ -105,7 +105,7 @@ function parseTwoSheet(workbook) {
     });
     if (missingHdr.length > 0) {
       validationErrors.push(
-        `SKU_LINES row ${skuRow._rowNum} (PO ${po}): missing header fields: ${missingHdr.join(', ')}`
+        `PO Lines row ${skuRow._rowNum} (PO ${po}): missing header fields: ${missingHdr.join(', ')}`
       );
     }
 
@@ -113,7 +113,7 @@ function parseTwoSheet(workbook) {
     const missingSku = REQUIRED_SKU_COLS.filter(c => !merged[c] || String(merged[c]).trim() === '');
     if (missingSku.length > 0) {
       validationErrors.push(
-        `SKU_LINES row ${skuRow._rowNum}: missing required fields: ${missingSku.join(', ')}`
+        `PO Lines row ${skuRow._rowNum}: missing required fields: ${missingSku.join(', ')}`
       );
     }
 
@@ -121,14 +121,14 @@ function parseTwoSheet(workbook) {
     if (String(merged.Collection_Type || '').trim() === 'Collection' &&
         (!merged.Collection_Time || String(merged.Collection_Time).trim() === '')) {
       validationErrors.push(
-        `SKU_LINES row ${skuRow._rowNum}: Collection_Time is required when Collection_Type is "Collection"`
+        `PO Lines row ${skuRow._rowNum}: Collection_Time is required when Collection_Type is "Collection"`
       );
     }
 
     rows.push(merged);
   }
 
-  return { rows, validationErrors, sheetName: 'BOOKING_HEADER+SKU_LINES', headerRowNum: 3,
+  return { rows, validationErrors, sheetName: 'PO Header+PO Lines', headerRowNum: 3,
     headerPoRefs: [...hdrMap.keys()] };
 }
 
@@ -191,16 +191,16 @@ function parseSingleSheet(sheet) {
 
 /**
  * Parse a supplier Excel buffer.
- * Supports the two-sheet format (BOOKING_HEADER + SKU_LINES) and the legacy
+ * Supports the two-sheet format (PO Header + PO Lines) and the legacy
  * single-sheet format (SUPPLIER_INPUT) for backward compatibility.
  */
 async function parse(buffer) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
 
-  // Two-sheet format takes priority
-  const wsHdr = workbook.getWorksheet('BOOKING_HEADER');
-  const wsSku = workbook.getWorksheet('SKU_LINES');
+  // Two-sheet format takes priority (new names first, legacy names as fallback)
+  const wsHdr = workbook.getWorksheet('PO Header') || workbook.getWorksheet('BOOKING_HEADER');
+  const wsSku = workbook.getWorksheet('PO Lines') || workbook.getWorksheet('SKU_LINES');
   if (wsHdr && wsSku) {
     return parseTwoSheet(workbook);
   }

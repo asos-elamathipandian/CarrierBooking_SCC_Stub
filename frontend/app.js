@@ -142,7 +142,7 @@ btnParseSupplier.addEventListener('click', async () => {
     if ((data.poCount || 0) === 0) {
       setStatus(1, 'error',
         '⚠️ No PO data found in the uploaded file. ' +
-        'Please fill in the <strong>BOOKING_HEADER</strong> sheet with your PO details first, then upload again.'
+        'Please fill in the <strong>PO Header</strong> sheet with your PO details first, then upload again.'
       );
       setLoading(btnParseSupplier, false);
       btnParseSupplier.disabled = false;
@@ -152,8 +152,8 @@ btnParseSupplier.addEventListener('click', async () => {
     // Warn if SKU_LINES is empty but header has POs
     if ((data.rowCount || 0) === 0 && (data.poCount || 0) > 0) {
       setStatus(1, 'info',
-        `ℹ️ Found <strong>${data.poCount}</strong> PO(s) in BOOKING_HEADER, but <strong>SKU_LINES</strong> is empty. ` +
-        'Fill in SKU_LINES before proceeding to fetch feeds and generate bookings.'
+        `ℹ️ Found <strong>${data.poCount}</strong> PO(s) in PO Header, but <strong>PO Lines</strong> is empty. ` +
+        'Fill in PO Lines before proceeding to fetch feeds and generate bookings.'
       );
     }
 
@@ -281,7 +281,7 @@ if (btnFetchFeeds) {
 
       if (carrierAsnFiles.length === 0) {
         // No feeds found — block progression, allow retry
-        btnFetchFeeds.innerHTML = '🔗 Retry Fetch';
+        btnFetchFeeds.innerHTML = '📡 Retry Fetch ASN';
         btnFetchFeeds.disabled = false;
         return;
       }
@@ -293,53 +293,43 @@ if (btnFetchFeeds) {
       psSetInline(1, '❌ Error');
       psSetState(1, 'error');
       psSetResult('psFetchResult', `<div style="color:#922B21;font-size:13px">❌ ${err.message}</div>`);
-      btnFetchFeeds.innerHTML = '🔗 Retry Fetch';
+    btnFetchFeeds.innerHTML = '📡 Retry Fetch ASN';
       btnFetchFeeds.disabled = false;
     }
   });
 }
 
-// ── Pipeline Stage 2: Build Master Workbook (auto-runs after fetch) ──────────
+// ── Pipeline Build (silent — runs automatically after fetch) ─────────────────
 async function pipelineBuild() {
-  psSetState(2, 'active');
-  psShowBody(2);
-  psSetInline(2, '⏳ Building…');
-  psSetResult('psBuildResult', '<span style="font-size:13px;color:#784212">⏳ Building Master Workbook…</span>');
-
   try {
     const res  = await fetch(`${API}/build-bible`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
     state.biblBuilt = true;
-    const dlLink = data.downloadUrl
-      ? `&nbsp;<a class="download-link" href="${data.downloadUrl}" download>⬇ Download Workbook</a>`
-      : '';
-    let html = `<span style="font-size:13px">✅ Master Workbook built — <strong>${data.masterRowCount}</strong> row(s).${dlLink}</span>`;
+
+    // Collect warnings to display at top of Generate stage
+    let warningsHtml = '';
     if (data.warnings?.length) {
-      html += `<br/><div style="margin-top:6px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">
+      warningsHtml += `<div style="margin-bottom:10px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">
         ⚠️ <strong>${data.warnings.length} SKU(s) excluded</strong> — in supplier template but not on carrier ASN:<br/>
         ${data.warnings.map(w => `&nbsp;• ${w}`).join('<br/>')}
       </div>`;
     }
     if (data.extraSkuWarnings?.length) {
-      html += `<br/><div style="margin-top:6px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">
+      warningsHtml += `<div style="margin-bottom:10px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">
         ⚠️ <strong>${data.extraSkuWarnings.length} extra carrier ASN SKU(s)</strong> not in supplier template (Booking_Qty=0 — review):<br/>
         ${data.extraSkuWarnings.map(w => `&nbsp;• ${w}`).join('<br/>')}
       </div>`;
     }
-    psSetResult('psBuildResult', html);
-    psSetInline(2, '✅ Done');
-    psSetState(2, 'done');
+    psSetResult('psBuildWarnings', warningsHtml);
 
-    // Show Proceed button for Stage 3
-    psShowProceed('psProceed2Wrap');
-    document.getElementById('btnProceedGenerate').addEventListener('click', pipelineOpenGenerate, { once: true });
+    // Open Generate stage
+    pipelineOpenGenerate();
 
   } catch (err) {
-    psSetInline(2, '❌ Error');
-    psSetState(2, 'error');
-    psSetResult('psBuildResult', `<div style="color:#922B21;font-size:13px">❌ ${err.message}</div>`);
+    psSetInline(1, '❌ Build failed');
+    psSetResult('psFetchResult', `<div style="color:#922B21;font-size:13px;margin-top:8px">❌ Build failed: ${err.message}</div>`);
   }
 }
 
@@ -462,7 +452,7 @@ function renderSupplierSummary(poCount, bookingCount, skuRowCount) {
   const panel = document.getElementById('supplierParsePanel');
   if (!panel) return;
   const skuNote = skuRowCount === 0
-    ? `<div style="font-size:12px;color:#784212;margin-top:6px">⚠️ SKU_LINES sheet is empty — fill it in before generating bookings.</div>`
+    ? `<div style="font-size:12px;color:#784212;margin-top:6px">⚠️ PO Lines sheet is empty — fill it in before generating bookings.</div>`
     : `<div class="parse-stat-badge" style="font-size:14px;padding:8px 18px">📋 <strong>${skuRowCount}</strong> SKU row${skuRowCount !== 1 ? 's' : ''}</div>`;
   panel.innerHTML = `
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 4px">
@@ -534,27 +524,29 @@ function showTaggedTemplateDownload(generations) {
   if (!panel) return;
   if (!generations || !generations.length) return;
 
+  const thStyle = 'background:#1F4E79;color:#fff;padding:6px 10px;text-align:left;font-size:12px';
+  const tdStyle = 'padding:6px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top;font-size:12px';
+
   const rows = generations.map(gen => {
-    const pos = (gen.poNumbers || []).join(', ') || '—';
-    const vbRef = gen.bookingRef || gen.ctrlNumber || '—';
+    const pos   = (gen.poNumbers || []).map(p => `<div>${escapeHtml(p)}</div>`).join('') || '—';
+    const asns  = (gen.asnRefs   || []).map(a => `<div style="font-family:monospace">${escapeHtml(a)}</div>`).join('') || '<span style="color:#aaa">—</span>';
+    const vbRef = escapeHtml(gen.bookingRef || gen.ctrlNumber || '—');
     return `<tr>
-      <td style="font-size:12px">${escapeHtml(pos)}</td>
-      <td style="font-family:monospace;font-size:12px;font-weight:700;color:#1F4E79">${escapeHtml(vbRef)}</td>
-      <td><span class="badge-ok" style="font-size:10px">${gen.poNumbers?.length || 0} PO(s)</span></td>
+      <td style="${tdStyle}">${pos}</td>
+      <td style="${tdStyle}">${asns}</td>
+      <td style="${tdStyle};font-family:monospace;font-weight:700;color:#1F4E79">${vbRef}</td>
     </tr>`;
   }).join('');
 
   panel.innerHTML = `
-    <div style="margin-bottom:10px">
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr>
-          <th style="background:#1F4E79;color:#fff;padding:6px 10px;text-align:left">PO Number(s)</th>
-          <th style="background:#1F4E79;color:#fff;padding:6px 10px;text-align:left">VBKREQ Ref</th>
-          <th style="background:#1F4E79;color:#fff;padding:6px 10px;text-align:left">Count</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="${thStyle}">PO Number(s)</th>
+        <th style="${thStyle}">ASN/s</th>
+        <th style="${thStyle}">VB Ref</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 async function refreshLog() {} // kept as no-op — log replaced by tagged template

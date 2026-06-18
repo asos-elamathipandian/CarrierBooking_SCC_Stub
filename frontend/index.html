@@ -584,23 +584,23 @@
   <!-- ── Step 1: Upload Supplier Excel ── -->
   <div class="step-card" id="card1">
     <div class="step-header">
-      <div class="step-badge active" id="badge1">📊</div>
+      <div class="step-badge active" id="badge1">1</div>
       <div>
-        <div class="step-title">Upload Supplier Excel</div>
-        <div class="step-desc">Upload the supplier booking request spreadsheet (.xlsx) &mdash; one PO per row</div>
+        <div class="step-title">Upload Supplier Input Excel</div>
+        <div class="step-desc"><strong>Step 1</strong> &mdash; Upload the supplier templates from suppliers and validate the file to fetch right set of POs</div>
       </div>
     </div>
     <div class="step-body">
       <div class="drop-zone" id="dropZone">
-        <div class="drop-zone-icon">�</div>
-        <div id="dropZoneText">Drag &amp; drop your Excel file(s) here</div>
+        <div class="drop-zone-icon">📤</div>
+        <div id="dropZoneText">Drag &amp; drop your supplier PO list here</div>
         <div class="drop-zone-hint">or <u style="cursor:pointer" onclick="document.getElementById('supplierFileInput').click()">browse to choose files</u> (.xlsx / .xls) &mdash; multiple files allowed</div>
       </div>
       <input type="file" id="supplierFileInput" accept=".xlsx,.xls" multiple />
       <ul id="supplierFileList" style="margin-top:8px;padding:0 0 0 4px;list-style:none;font-size:12px;color:#555;display:none"></ul>
       <div style="margin-top:10px;text-align:right">
         <button class="btn btn-primary" id="btnParseSupplier" disabled>
-          ⚡ Parse Supplier Data
+          ⬆ Upload &amp; Retrieve Valid POs
         </button>
       </div>
       <div class="status-box" id="status1"></div>
@@ -615,7 +615,7 @@
       <div class="step-badge" id="badgePipeline">⚡</div>
       <div>
         <div class="step-title">Booking Pipeline</div>
-        <div class="step-desc">📡 Fetch &nbsp;&rarr;&nbsp; 🗂 Build &nbsp;&rarr;&nbsp; ⚡ Generate &nbsp;&rarr;&nbsp; 🚀 Upload</div>
+        <div class="step-desc">📡 Fetch ASN &nbsp;&rarr;&nbsp; ⚡ Generate &nbsp;&rarr;&nbsp; 🚀 Upload</div>
       </div>
     </div>
     <div class="step-body">
@@ -626,7 +626,7 @@
           <div class="ps-header">
             <span class="ps-num" id="psNum1">1</span>
             <span class="ps-stage-icon">📡</span>
-            <span class="ps-title">Fetch Carrier Feeds</span>
+            <span class="ps-title">Fetch ASN Details</span>
             <span class="ps-inline-status" id="psInline1"></span>
           </div>
           <div class="ps-body" id="psBody1">
@@ -648,7 +648,7 @@
               <input type="file" id="asnFeedInput" accept=".xml" style="display:none" />
             </div>
             <div style="margin-top:12px">
-              <button class="btn btn-primary" id="btnFetchFeeds" disabled>📡 Fetch Carrier Feeds</button>
+              <button class="btn btn-primary" id="btnFetchFeeds" disabled>📡 Fetch ASN Details</button>
             </div>
             <div id="psFetchResult" style="margin-top:10px"></div>
           </div>
@@ -657,35 +657,16 @@
         <div class="pipeline-arrow">&#8595;</div>
 
         <!-- ── Stage 2: Build Workbook ── -->
-        <div class="pipeline-stage ps-pending" id="pstage2">
-          <div class="ps-header">
-            <span class="ps-num" id="psNum2">2</span>
-            <span class="ps-stage-icon">🗂</span>
-            <span class="ps-title">Build Master Workbook</span>
-            <span class="ps-inline-status" id="psInline2"></span>
-          </div>
-          <div class="ps-body" id="psBody2" style="display:none">
-            <div id="psBuildResult" style="margin-bottom:10px"></div>
-            <div id="psProceed2Wrap" style="display:none">
-              <div class="proceed-bar">
-                <button class="btn btn-success" id="btnProceedGenerate">▶ Proceed &mdash; Configure &amp; Generate</button>
-                <span class="proceed-note">Review warnings above before proceeding</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="pipeline-arrow">&#8595;</div>
-
-        <!-- ── Stage 3: Generate VBKREQ ── -->
+        <!-- ── Stage 2: Generate VBKREQ (build runs silently before this) ── -->
         <div class="pipeline-stage ps-pending" id="pstage3">
           <div class="ps-header">
-            <span class="ps-num" id="psNum3">3</span>
+            <span class="ps-num" id="psNum3">2</span>
             <span class="ps-stage-icon">⚡</span>
             <span class="ps-title">Generate VBKREQ XML</span>
             <span class="ps-inline-status" id="psInline3"></span>
           </div>
           <div class="ps-body" id="psBody3" style="display:none">
+            <div id="psBuildWarnings"></div>
             <div class="date-override-panel" style="margin-bottom:12px">
               <div class="date-override-label">📅 Date Overrides <span class="date-override-hint">— optional; overrides dates from supplier template</span></div>
               <div class="date-override-grid">
@@ -737,9 +718,9 @@
         <!-- ── Stage 4: Upload SFTP ── -->
         <div class="pipeline-stage ps-pending" id="pstage4">
           <div class="ps-header">
-            <span class="ps-num" id="psNum4">4</span>
+            <span class="ps-num" id="psNum4">3</span>
             <span class="ps-stage-icon">🚀</span>
-            <span class="ps-title">Upload to E2open SFTP</span>
+            <span class="ps-title">Upload to E2open &amp; Carrier</span>
             <span class="ps-inline-status" id="psInline4"></span>
           </div>
           <div class="ps-body" id="psBody4" style="display:none">
@@ -754,10 +735,10 @@
   <!-- ── PO → VBKREQ Map ── -->
   <div class="step-card">
     <div class="step-header">
-      <div class="step-badge" style="background:#475569;font-size:18px">🔗</div>
+      <div class="step-badge" style="background:#475569">2</div>
       <div>
-        <div class="step-title">PO &rarr; VBKREQ Reference Map</div>
-        <div class="step-desc">Generated booking references per PO &mdash; populated after pipeline completes</div>
+        <div class="step-title">Carrier Booking Creation Pipeline</div>
+        <div class="step-desc"><strong>Step 2</strong> &mdash; ASN details from PO carrier feed blob, map and generate booking request messages then upload to E2open/DT SFTP</div>
       </div>
     </div>
     <div class="step-body">
@@ -798,7 +779,7 @@
           <span class="rg-flow-arrow">→</span>
           <div class="rg-flow-step system">🚀 5 · Upload to E2open SFTP</div>
         </div>
-        <p><strong>Step 1 — Supplier Excel (two-sheet template):</strong> The supplier fills in the downloadable template. The template has two data sheets: <strong>BOOKING_HEADER</strong> (one row per PO — mandatory/defaulted booking fields) and <strong>SKU_LINES</strong> (one row per SKU — quantities, weights, carton details). A <strong>FACTORY_LOOKUP</strong> tab lists valid factory codes; selecting a <code>Factory_ID</code> auto-fills name and address via VLOOKUP. Mandatory (pink) columns must be completed; defaulted (green) columns are pre-set and can be changed if needed.</p>
+        <p><strong>Step 1 — Supplier Excel (two-sheet template):</strong> The supplier fills in the downloadable template. The template has two data sheets: <strong>PO Header</strong> (one row per PO — mandatory/defaulted booking fields) and <strong>PO Lines</strong> (one row per SKU — quantities, weights, carton details). A <strong>FACTORY_LOOKUP</strong> tab lists valid factory codes; selecting a <code>Factory_ID</code> auto-fills name and address via VLOOKUP. Mandatory (pink) columns must be completed; defaulted (green) columns are pre-set and can be changed if needed.</p>
         <p><strong>Booking_Group</strong> controls how POs are consolidated into bookings: <em>Single Booking</em> = one VBKREQ per PO; <em>Multiple POs-BK001…BK025</em> = all POs sharing the same code are merged into one VBKREQ; <em>Multiple</em> = all POs in the upload combined into a single VBKREQ.</p>
         <p><strong>Factory_ID 9999 (Dummy Factory):</strong> If a real factory code is not yet known, use <code>9999</code>. Address validation is skipped for this code — the VBKREQ will be generated without a factory address.</p>
         <p><strong>Stage 2 — Carrier Feed:</strong> The DavisTurner carrier ASN XML is fetched automatically from Azure Blob Storage keyed on the PO numbers from the supplier sheet, or uploaded manually. If no carrier ASN is found for any PO the pipeline stops at this stage — a retry or manual upload is required. The feed provides the ASN ID, supplier codes, shipping point, FC destination, country of origin, and line-level SKU quantities.</p>
@@ -835,9 +816,9 @@
       <div class="rg-table-wrap"><table class="rg-table">
         <thead><tr><th>Sheet</th><th>Rows</th><th>Key Columns</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><strong>BOOKING_HEADER</strong></td><td>One row per PO</td><td>PO_Number, Cargo_Ready_Planned_Collection_Date, Carrier_Booking_Request_Date, Traffic_Mode, Mode_Of_Transport, Booking_Group, Factory_ID, Pack_Type, Collection_Type, Hazardous, Factory auto-fill cols, Collection_Time, Remarks</td><td>Mandatory (pink), Defaulted (green), Auto-fill (blue), Optional (grey)</td></tr>
-          <tr><td><strong>SKU_LINES</strong></td><td>One row per SKU</td><td>PO_Number, SKU, Booking_Qty, No_of_Cartons, Unit_Weight_KG, Carton_Type, Carton dimensions &amp; weights</td><td>Must have matching PO_Number to rows in BOOKING_HEADER</td></tr>
-          <tr><td><strong>FACTORY_LOOKUP</strong></td><td>Factory reference</td><td>Factory_ID, Factory_Name, address fields</td><td>Select Factory_ID in BOOKING_HEADER — name &amp; address auto-fill via VLOOKUP</td></tr>
+          <tr><td><strong>PO Header</strong></td><td>One row per PO</td><td>PO_Number, Cargo_Ready_Planned_Collection_Date, Carrier_Booking_Request_Date, Traffic_Mode, Mode_Of_Transport, Booking_Group, Factory_ID, Pack_Type, Collection_Type, Hazardous, Factory auto-fill cols, Collection_Time, Remarks</td><td>Mandatory (pink), Defaulted (green), Auto-fill (blue), Optional (grey)</td></tr>
+          <tr><td><strong>PO Lines</strong></td><td>One row per SKU</td><td>PO_Number, SKU, Booking_Qty, No_of_Cartons, Unit_Weight_KG, Carton_Type, Carton dimensions &amp; weights</td><td>Must have matching PO_Number to rows in PO Header</td></tr>
+          <tr><td><strong>FACTORY_LOOKUP</strong></td><td>Factory reference</td><td>Factory_ID, Factory_Name, address fields</td><td>Select Factory_ID in PO Header — name &amp; address auto-fill via VLOOKUP</td></tr>
         </tbody>
       </table></div>
       <div class="rg-table-wrap" style="margin-top:10px"><table class="rg-table">
@@ -934,7 +915,7 @@
           <tr><td><code>Attribute UA</code> — EAN/Barcode</td><td><code>EAN_Barcode</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional; also populated from carrier feed if available</td></tr>
           <tr><td><code>Attribute CL</code> — Colour</td><td><code>Colour_Code</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional</td></tr>
           <tr><td><code>Attribute IZ</code> — Size</td><td><code>Size_Code</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional</td></tr>
-          <tr><td><code>Reference PAC</code> — Pack Type</td><td><code>Pack_Type</code> (Flat / Bulk Flat / Hanging)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Default: Flat</td></tr>
+          <tr><td><code>Reference PAC</code> — Pack Type</td><td><code>Pack_Type</code> (Flat / Bulk Flat / Hanging)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Default: Bulk Flat</td></tr>
           <tr><td><code>Reference PT</code> — Product Style</td><td><code>Product_Style</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Style code from carrier line</td></tr>
           <tr><td><code>Reference HZ</code> — Hazardous</td><td><code>Hazardous</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Full hazard type string per line</td></tr>
           <tr><td><code>Reference DSC</code> — Description</td><td><code>Description</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Item description from carrier</td></tr>

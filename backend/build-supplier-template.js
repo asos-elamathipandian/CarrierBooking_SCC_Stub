@@ -3,8 +3,8 @@
 /**
  * Generates samples/SupplierInput_template.xlsx
  * Two-sheet design:
- *   BOOKING_HEADER — one row per PO (header-level fields + factory auto-fill)
- *   SKU_LINES      — one row per SKU (qty / weight / carton fields)
+ *   PO Header — one row per PO (header-level fields + factory auto-fill)
+ *   PO Lines  — one row per SKU (qty / weight / carton fields)
  * Run: node backend/build-supplier-template.js
  */
 
@@ -139,6 +139,77 @@ async function build() {
   wb.creator = 'CarrierBookingStub';
   wb.created = new Date();
 
+  // ── HOW TO USE (first visible tab) ───────────────────────────────────────────
+  const wsI = wb.addWorksheet('Instructions to use');
+  wsI.properties.tabColor = { argb: 'FFFFA500' };
+  const iLastCol = 'H';
+
+  const iTitle = wsI.getRow(1);
+  wsI.mergeCells('A1:H1');
+  const iTitleCell = wsI.getCell('A1');
+  iTitleCell.value = '📋  Carrier Booking — VBKREQ Simulator  |  Instructions to Use';
+  iTitleCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+  iTitleCell.font  = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+  iTitleCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  iTitle.height = 22;
+
+  const iLines = [
+    // Point 1
+    { text: '1.  The supplier must complete two sheets — PO Header and PO Lines —', bold: true, indent: 1, bg: 'FFD6E4F0' },
+    { text: '     with the PO Number used as the primary key to link both sheets.', bold: false, indent: 2, bg: 'FFE9F3FB' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Point 2
+    { text: '2.  All mandatory fields must be completed; otherwise, booking creation will fail.', bold: true, indent: 1, bg: 'FFFDE8E8' },
+    { text: '     If a field is unclear or you prefer not to provide a value, leave the default pre-filled value where applicable.', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Point 3
+    { text: '3.  Enter one row per PO in the PO Header sheet. Ensure all mandatory (pink) columns are filled for each PO.', bold: true, indent: 1, bg: 'FFD6E4F0' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Booking_Group rules
+    { text: '     Booking_Group rules:', bold: true, indent: 2, bg: 'FFE9F3FB' },
+    { text: '       "Single Booking"                          →  one PO per booking', bold: false, indent: 3, bg: 'FFE9F3FB' },
+    { text: '       "Multiple POs-BK001" … "Multiple POs-BK025"  →  POs with the same code (BK001, BK002 …) are combined into one booking', bold: false, indent: 3, bg: 'FFE9F3FB' },
+    { text: '       "Multiple"                                →  all POs are combined into a single booking', bold: false, indent: 3, bg: 'FFE9F3FB' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Point 4
+    { text: '4.  Dates must be in DD/MM/YYYY format.', bold: true, indent: 1, bg: 'FFFDE8E8' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Point 5 (Factory)
+    { text: '5.  Factory_ID: select from the dropdown — it is based on the FACTORY_LOOKUP tab (last tab). Factory_Name and address auto-fill when you pick an ID.', bold: false, indent: 1, bg: 'FFE9F3FB' },
+    { text: '     Default Factory_ID is 9999 (Dummy Factory) — no address details are required for this value.', bold: false, indent: 2, bg: 'FFE9F3FB' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Point 6
+    { text: '6.  In the PO Lines sheet, use multiple rows for POs that contain multiple SKU lines.', bold: true, indent: 1, bg: 'FFD6E4F0' },
+    { text: '     Each row must have the same PO_Number as the corresponding header row in PO Header.', bold: false, indent: 2, bg: 'FFE9F3FB' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Colour guide
+    { text: '🎨  Colour guide:', bold: true, indent: 1, bg: 'FFF5F5F5' },
+    { text: '  🔴  Pink / Red  — MANDATORY field (must be filled)', bold: false, indent: 2, bg: 'FFFCE8E8' },
+    { text: '  🟢  Green       — DEFAULTED field (pre-set, editable)', bold: false, indent: 2, bg: 'FFE8F5E9' },
+    { text: '  🔵  Blue        — AUTO-FILLED field (formula / lookup — do not edit)', bold: false, indent: 2, bg: 'FFE3F2FD' },
+    { text: '  ⚪  Grey        — OPTIONAL field (leave blank if not applicable)', bold: false, indent: 2, bg: 'FFF5F5F5' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Footer note
+    { text: '⚠  Do NOT modify or delete column headers on any sheet.', bold: true, indent: 1, bg: 'FFFFF3CD' },
+  ];
+
+  iLines.forEach((line, idx) => {
+    const rNum = idx + 2;
+    wsI.mergeCells(`A${rNum}:H${rNum}`);
+    const cell = wsI.getCell(`A${rNum}`);
+    cell.value = line.text;
+    cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: line.bg } };
+    cell.font  = { bold: line.bold || false, size: 10, color: { argb: 'FF1A1A2E' } };
+    cell.alignment = { wrapText: false, vertical: 'middle', horizontal: 'left', indent: line.indent || 1 };
+    wsI.getRow(rNum).height = line.text === '' ? 6 : 15;
+  });
+
+  // Column widths for the instruction sheet
+  ['A','B','C','D','E','F','G','H'].forEach((col, i) => {
+    wsI.getColumn(i + 1).width = i === 0 ? 120 : 10;
+  });
+  wsI.views = [{ showGridLines: false }];
+
   // CARTON_LOOKUP (hidden)
   const wsC = wb.addWorksheet('CARTON_LOOKUP');
   wsC.state = 'veryHidden';
@@ -151,8 +222,8 @@ async function build() {
   wsL.addRow(['Booking_Group']);
   BOOKING_GROUP_OPTIONS.forEach(opt => wsL.addRow([opt]));
 
-  // ── BOOKING_HEADER ────────────────────────────────────────────────────────────
-  const wsH = wb.addWorksheet('BOOKING_HEADER');
+  // ── PO Header ─────────────────────────────────────────────────────────────────
+  const wsH = wb.addWorksheet('PO Header');
   wsH.properties.tabColor = { argb: 'FF1F4E79' };
   // Columns ordered: Mandatory → Defaulted → Pre-filled (auto) → Optional
   const hCols = [
@@ -180,15 +251,7 @@ async function build() {
     { key: 'Remarks',                             label: 'Remarks',                             width: 30, type: 'optional' },
   ];
   const hLastCol = wsH.getColumn(hCols.length).letter;
-  const hLegendRow  = addReadme(wsH, 'BOOKING HEADER — Instructions', [
-    '⚠  COMPLETE BOTH SHEETS: Fill in this sheet (BOOKING_HEADER) with PO details AND fill in the SKU_LINES tab with SKU, quantity and carton details for every PO.',
-    'One row per PO. Fill all MANDATORY (pink) columns for every PO.',
-    'Booking_Group: "Single Booking" = One PO per booking; "Multiple POs-BK001" \u2026 "Multiple POs-BK025" = POs sharing the same code (BK001, BK002 \u2026) combine into one booking; "Multiple" = all POs into one booking.',
-    'Factory_ID: select from the FACTORY_LOOKUP tab (last tab). Factory_Name and address auto-fill. Default is 9999 (Dummy Factory) — no address required.',
-    'DEFAULTED (green) columns are pre-set — change only if needed.',
-    'Dates must be in DD/MM/YYYY format.',
-    'Do NOT modify or delete column headers.',
-  ], hLastCol);
+  const hLegendRow  = 1;
   const hHeaderRow  = addLegend(wsH, hLegendRow);
   const hFirstDataR = applyHeaderRow(wsH, hCols, hHeaderRow);
   const hIdx = {};
@@ -196,8 +259,10 @@ async function build() {
   const hLet = n => wsH.getColumn(n).letter;
   for (let r = hFirstDataR; r <= hFirstDataR + 49; r++) {
     const row = wsH.getRow(r);
+    row.getCell(hIdx['Traffic_Mode']).value      = 'CFS';
     row.getCell(hIdx['Mode_Of_Transport']).value = 'Road';
-    row.getCell(hIdx['Pack_Type']).value         = 'Flat';
+    row.getCell(hIdx['Booking_Group']).value     = 'Single Booking';
+    row.getCell(hIdx['Pack_Type']).value         = 'Bulk Flat';
     row.getCell(hIdx['Collection_Type']).value   = 'Delivery';
     row.getCell(hIdx['Hazardous']).value         = 'N/A';
     row.getCell(hIdx['Factory_ID']).value        = '9999';
@@ -228,7 +293,8 @@ async function build() {
     ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date'].forEach(k => {
       wsH.getCell(r, hIdx[k]).dataValidation = {
         type: 'date', operator: 'greaterThan', formulae: [new Date(2020, 0, 1)],
-        showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid date', error: 'Enter a valid date (DD/MM/YYYY)'
+        showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid date', error: 'Enter a valid date (DD/MM/YYYY)',
+        showInputMessage: true, promptTitle: 'Date format', prompt: 'DD/MM/YYYY'
       };
     });
     wsH.getCell(r, hIdx['Traffic_Mode']).dataValidation = {
@@ -266,10 +332,23 @@ async function build() {
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Time', error: 'Enter time as HH:MM (e.g. 09:30) or leave blank'
     };
   }
+  // Cross-sheet warning: PO_Number in PO Header has no matching rows in PO Lines → orange
+  const hPoCol = hLet(hIdx['PO_Number']);
+  wsH.addConditionalFormatting({
+    ref: `${hPoCol}${hFirstDataR}:${hPoCol}${hFirstDataR + 49}`,
+    rules: [{
+      type: 'expression',
+      formulae: [`AND($${hPoCol}${hFirstDataR}<>"",COUNTIF('PO Lines'!$${hPoCol}:$${hPoCol},$${hPoCol}${hFirstDataR})=0)`],
+      style: {
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD966' } },
+        font: { color: { argb: 'FF7F6000' }, bold: true }
+      }
+    }]
+  });
   wsH.views = [{ state: 'frozen', ySplit: hFirstDataR - 1, xSplit: 1, showGridLines: true }];
 
-  // ── SKU_LINES ─────────────────────────────────────────────────────────────────
-  const wsS = wb.addWorksheet('SKU_LINES');
+  // ── PO Lines ──────────────────────────────────────────────────────────────────
+  const wsS = wb.addWorksheet('PO Lines');
   wsS.properties.tabColor = { argb: 'FF7B2C2C' };
   // Columns ordered: Mandatory → Defaulted → Pre-filled (auto) → Optional
   const sCols = [
@@ -295,16 +374,7 @@ async function build() {
     { key: 'Size_Code',        label: 'Size_Code',        width: 12, type: 'optional' },
   ];
   const sLastCol = wsS.getColumn(sCols.length).letter;
-  const sLegendRow  = addReadme(wsS, 'SKU LINES — Instructions', [
-    '⚠  COMPLETE BOTH SHEETS: This tab must be filled in alongside the BOOKING_HEADER tab — enter one row per SKU with PO_Number, SKU, quantities and any further optional details (EAN, Colour, Size).',
-    'One row per SKU. PO_Number must exactly match a PO_Number in the BOOKING_HEADER tab.',
-    'Fill all MANDATORY (pink) columns: PO_Number, SKU, Booking_Qty, No_of_Cartons, Unit_Weight_KG.',
-    'Carton_Type defaults to BDCM1 — change only if the carton is different.',
-    'Carton dimensions and weight/volume columns are PRE-FILLED automatically from Carton_Type — do not edit.',
-    'Unit_Weight_KG = weight of one individual item (not the whole carton).',
-    'OPTIONAL columns (EAN_Barcode, Colour_Code, Size_Code) can be left blank.',
-    'Do NOT modify or delete column headers.',
-  ], sLastCol);
+  const sLegendRow  = 1;
   const sHeaderRow  = addLegend(wsS, sLegendRow);
   const sFirstDataR = applyHeaderRow(wsS, sCols, sHeaderRow);
   const sIdx = {};
@@ -361,6 +431,19 @@ async function build() {
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Carton Type', error: 'Select a carton type from the list'
     };
   }
+  // Cross-sheet warning: PO_Number in PO Lines not found in PO Header → red
+  const sPoCol = sLet(sIdx['PO_Number']);
+  wsS.addConditionalFormatting({
+    ref: `${sPoCol}${sFirstDataR}:${sPoCol}${sFirstDataR + 199}`,
+    rules: [{
+      type: 'expression',
+      formulae: [`AND($${sPoCol}${sFirstDataR}<>"",COUNTIF('PO Header'!$${sPoCol}:$${sPoCol},$${sPoCol}${sFirstDataR})=0)`],
+      style: {
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } },
+        font: { color: { argb: 'FF9C0006' }, bold: true }
+      }
+    }]
+  });
   wsS.views = [{ state: 'frozen', ySplit: sFirstDataR - 1, xSplit: 1, showGridLines: true }];
 
   // ── FACTORY_LOOKUP (last tab — visible) ───────────────────────────────────────
@@ -368,7 +451,7 @@ async function build() {
   wsF.properties.tabColor = { argb: 'FF1F6F5F' };
   wsF.mergeCells('A1:G1');
   const fb = wsF.getCell('A1');
-  fb.value = 'FACTORY LOOKUP TABLE — Add one row per factory. Factory_ID appears as a dropdown on BOOKING_HEADER. Name and address auto-fill when you select an ID. Do NOT change column headers.';
+  fb.value = 'FACTORY LOOKUP TABLE — Add one row per factory. Factory_ID appears as a dropdown on PO Header. Name and address auto-fill when you select an ID. Do NOT change column headers.';
   fb.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
   fb.font  = { bold: true, color: { argb: 'FF0B4F2A' }, size: 11 };
   fb.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' };
@@ -393,14 +476,14 @@ async function build() {
 
   await wb.xlsx.writeFile(OUT_FILE);
   console.log('✅  SupplierInput_template.xlsx written to:\n    ' + OUT_FILE);
-  console.log('\nSheets:  BOOKING_HEADER (50 rows)  |  SKU_LINES (200 rows)  |  FACTORY_LOOKUP');
-  console.log('\nBOOKING_HEADER mandatory:', hCols.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
-  console.log('BOOKING_HEADER defaults :', hCols.filter(c => c.type === 'default').map(c => c.label).join(', '));
-  console.log('BOOKING_HEADER auto-fill:', hCols.filter(c => c.type === 'auto').map(c => c.label).join(', '));
-  console.log('\nSKU_LINES mandatory:', sCols.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
-  console.log('SKU_LINES defaults :', sCols.filter(c => c.type === 'default').map(c => c.label).join(', '));
-  console.log('SKU_LINES auto-calc:', sCols.filter(c => c.type === 'auto').map(c => c.label).join(', '));
-  console.log('SKU_LINES optional :', sCols.filter(c => c.type === 'optional').map(c => c.label).join(', '));
+  console.log('\nSheets:  PO Header (50 rows)  |  PO Lines (200 rows)  |  FACTORY_LOOKUP');
+  console.log('\nPO Header mandatory:', hCols.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
+  console.log('PO Header defaults :', hCols.filter(c => c.type === 'default').map(c => c.label).join(', '));
+  console.log('PO Header auto-fill:', hCols.filter(c => c.type === 'auto').map(c => c.label).join(', '));
+  console.log('\nPO Lines mandatory:', sCols.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
+  console.log('PO Lines defaults :', sCols.filter(c => c.type === 'default').map(c => c.label).join(', '));
+  console.log('PO Lines auto-calc:', sCols.filter(c => c.type === 'auto').map(c => c.label).join(', '));
+  console.log('PO Lines optional :', sCols.filter(c => c.type === 'optional').map(c => c.label).join(', '));
 }
 
 build().catch(err => {

@@ -391,6 +391,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
     for (const [group, groupRows] of groupMap) {
       const { xml, filename, ctrlNumber, version, bookingRef: vbRef } = await vbkreqBuilder.build(groupRows, purposeCd);
       const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
+      const asnRefs   = [...new Set(groupRows.map(r => r.ASN_Ref).filter(Boolean))];
       const bookingRef = vbRef || groupRows[0]?.Booking_Ref || '';
       // Human-readable label: strip the internal PO__ prefix used for Single Booking keys
       const groupLabel = group === '__ALL__' ? 'Multiple' : group.startsWith('PO__') ? group.replace('PO__', '') : group;
@@ -403,7 +404,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
         group: groupLabel,
         sftp: null
       });
-      generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers, bookingRef });
+      generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers, asnRefs, bookingRef });
     }
 
     sessionState.lastGenerations  = generations;

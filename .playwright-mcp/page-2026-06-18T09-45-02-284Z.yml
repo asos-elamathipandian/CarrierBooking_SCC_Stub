@@ -1,0 +1,832 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]: 📦
+    - heading "Carrier Booking — VBKREQ Simulator" [level=1] [ref=e5]
+    - generic [ref=e7]: CarrierBookingStub v1.0
+  - main [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: 📊
+        - generic [ref=e12]:
+          - generic [ref=e13]: Upload Supplier Excel
+          - generic [ref=e14]: Upload the supplier booking request spreadsheet (.xlsx) — one PO per row
+      - generic [ref=e15]:
+        - generic [ref=e16] [cursor=pointer]:
+          - generic [ref=e17]: �
+          - generic [ref=e18]: Drag & drop your Excel file(s) here
+          - generic [ref=e19]: or browse to choose files (.xlsx / .xls) — multiple files allowed
+        - button "⚡ Parse Supplier Data" [disabled] [ref=e21]
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - generic [ref=e24]: 🔗
+        - generic [ref=e25]:
+          - generic [ref=e26]: PO → VBKREQ Reference Map
+          - generic [ref=e27]: Generated booking references per PO — populated after pipeline completes
+      - generic [ref=e29]: Complete the pipeline and generate VBKREQs — the mapping will appear here.
+  - button "📖" [ref=e30] [cursor=pointer]
+  - generic: README / Ref Guide
+  - generic [ref=e31]:
+    - generic [ref=e32]:
+      - generic [ref=e33]: 📖
+      - heading "Reference Guide — Field Mapping & Flow" [level=2] [ref=e34]
+      - button "×" [ref=e35] [cursor=pointer]
+    - generic [ref=e36]:
+      - generic [ref=e37]:
+        - heading "📋 How this tool works" [level=3] [ref=e38]
+        - paragraph [ref=e39]:
+          - text: This tool generates a
+          - strong [ref=e40]: VBKREQ XML
+          - text: "(Vendor Booking Request) for submission to E2open TA and DavisTurner. The pipeline runs in four stages:"
+        - generic [ref=e41]:
+          - generic [ref=e42]: 📊 1 · Supplier uploads Excel
+          - generic [ref=e43]: →
+          - generic [ref=e44]: 📡 2 · Fetch Carrier ASN Feeds
+          - generic [ref=e45]: →
+          - generic [ref=e46]: 🗂 3 · Build Master Workbook
+          - generic [ref=e47]: →
+          - generic [ref=e48]: ⚡ 4 · Generate VBKREQ XML
+          - generic [ref=e49]: →
+          - generic [ref=e50]: 🚀 5 · Upload to E2open SFTP
+        - paragraph [ref=e51]:
+          - strong [ref=e52]: "Step 1 — Supplier Excel (two-sheet template):"
+          - text: "The supplier fills in the downloadable template. The template has two data sheets:"
+          - strong [ref=e53]: BOOKING_HEADER
+          - text: (one row per PO — mandatory/defaulted booking fields) and
+          - strong [ref=e54]: SKU_LINES
+          - text: (one row per SKU — quantities, weights, carton details). A
+          - strong [ref=e55]: FACTORY_LOOKUP
+          - text: tab lists valid factory codes; selecting a
+          - code [ref=e56]: Factory_ID
+          - text: auto-fills name and address via VLOOKUP. Mandatory (pink) columns must be completed; defaulted (green) columns are pre-set and can be changed if needed.
+        - paragraph [ref=e57]:
+          - strong [ref=e58]: Booking_Group
+          - text: "controls how POs are consolidated into bookings:"
+          - emphasis [ref=e59]: Single Booking
+          - text: = one VBKREQ per PO;
+          - emphasis [ref=e60]: Multiple POs-BK001…BK025
+          - text: = all POs sharing the same code are merged into one VBKREQ;
+          - emphasis [ref=e61]: Multiple
+          - text: = all POs in the upload combined into a single VBKREQ.
+        - paragraph [ref=e62]:
+          - strong [ref=e63]: "Factory_ID 9999 (Dummy Factory):"
+          - text: If a real factory code is not yet known, use
+          - code [ref=e64]: "9999"
+          - text: . Address validation is skipped for this code — the VBKREQ will be generated without a factory address.
+        - paragraph [ref=e65]:
+          - strong [ref=e66]: "Stage 2 — Carrier Feed:"
+          - text: The DavisTurner carrier ASN XML is fetched automatically from Azure Blob Storage keyed on the PO numbers from the supplier sheet, or uploaded manually. If no carrier ASN is found for any PO the pipeline stops at this stage — a retry or manual upload is required. The feed provides the ASN ID, supplier codes, shipping point, FC destination, country of origin, and line-level SKU quantities.
+        - paragraph [ref=e67]:
+          - strong [ref=e68]: "Stage 3 — Master Workbook:"
+          - text: Supplier and carrier data are merged row-by-row (matched on PO + SKU). A MASTER sheet is produced. SKUs in the supplier template but absent from the carrier feed are flagged as warnings. The workbook is downloadable as an audit trail.
+        - paragraph [ref=e69]:
+          - strong [ref=e70]: "Stage 4 — VBKREQ XML:"
+          - text: The MASTER rows are grouped per
+          - code [ref=e71]: Booking_Group
+          - text: and structured into the E2open VBKREQ schema. The booking reference (
+          - code [ref=e72]: VB-XXXXX
+          - text: ) is shown in the PO → VBKREQ Reference Map after generation. The XML filename follows the pattern
+          - code [ref=e73]: DAVIESTN_E2ASOS_VBKREQ_1.0_<timestamp><ctrl>.xml
+          - text: .
+        - paragraph [ref=e74]:
+          - strong [ref=e75]: "Stage 5 — SFTP upload:"
+          - text: All generated XMLs are pushed to the E2open SFTP server in one batch. Bookings are reflected in E2open TA against the ASN shipments and DavisTurner receives the booking request through E2open.
+      - generic [ref=e76]:
+        - strong [ref=e77]: "Source key:"
+        - generic [ref=e78]: Supplier Template
+        - generic [ref=e79]: Carrier Feed (ASN XML)
+        - generic [ref=e80]: Internal Lookup Table
+        - generic [ref=e81]: System Generated
+        - generic [ref=e82]: User Selection (UI)
+      - generic [ref=e83]: XML Envelope & Transmission
+      - table [ref=e85]:
+        - rowgroup [ref=e86]:
+          - row "XML Element / Attribute Value / Field Source Notes" [ref=e87]:
+            - columnheader "XML Element / Attribute" [ref=e88]
+            - columnheader "Value / Field" [ref=e89]
+            - columnheader "Source" [ref=e90]
+            - columnheader "Notes" [ref=e91]
+        - rowgroup [ref=e92]:
+          - row "XMLTransmission @CtrlNumber Auto-incrementing integer (persisted in ctrl-counter.json) System Generated Unique per generation" [ref=e93]:
+            - cell "XMLTransmission @CtrlNumber" [ref=e94]:
+              - code [ref=e95]: XMLTransmission @CtrlNumber
+            - cell "Auto-incrementing integer (persisted in ctrl-counter.json)" [ref=e96]
+            - cell "System Generated" [ref=e97]:
+              - generic [ref=e98]: System Generated
+            - cell "Unique per generation" [ref=e99]
+          - row "XMLTransmission @Sender DAVIESTN System Generated Hardcoded to DT. ⚠ Intentionally set as Sender — E2open SFTP rejects the message if E2open (E2ASOS) is placed as Sender and DavisTurner as Receiver." [ref=e100]:
+            - cell "XMLTransmission @Sender" [ref=e101]:
+              - code [ref=e102]: XMLTransmission @Sender
+            - cell "DAVIESTN" [ref=e103]:
+              - code [ref=e104]: DAVIESTN
+            - cell "System Generated" [ref=e105]:
+              - generic [ref=e106]: System Generated
+            - cell "Hardcoded to DT. ⚠ Intentionally set as Sender — E2open SFTP rejects the message if E2open (E2ASOS) is placed as Sender and DavisTurner as Receiver." [ref=e107]:
+              - text: Hardcoded to DT. ⚠ Intentionally set as Sender — E2open SFTP rejects the message if E2open (
+              - code [ref=e108]: E2ASOS
+              - text: ) is placed as Sender and DavisTurner as Receiver.
+          - row "XMLTransmission @Receiver E2ASOS System Generated Hardcoded to E2open. ⚠ Intentionally set as Receiver — see Sender note above." [ref=e109]:
+            - cell "XMLTransmission @Receiver" [ref=e110]:
+              - code [ref=e111]: XMLTransmission @Receiver
+            - cell "E2ASOS" [ref=e112]:
+              - code [ref=e113]: E2ASOS
+            - cell "System Generated" [ref=e114]:
+              - generic [ref=e115]: System Generated
+            - cell "Hardcoded to E2open. ⚠ Intentionally set as Receiver — see Sender note above." [ref=e116]
+          - 'row "XMLTransmission @Timestamp Current date/time at generation System Generated Format: YYYYMMDD HH:MM:SS" [ref=e117]':
+            - cell "XMLTransmission @Timestamp" [ref=e118]:
+              - code [ref=e119]: XMLTransmission @Timestamp
+            - cell "Current date/time at generation" [ref=e120]
+            - cell "System Generated" [ref=e121]:
+              - generic [ref=e122]: System Generated
+            - 'cell "Format: YYYYMMDD HH:MM:SS" [ref=e123]'
+          - row "BpMessage @PurposeCd 13 / 15 / 01 User Selection (UI) 13=New, 15=Re-Submission, 01=Cancellation" [ref=e124]:
+            - cell "BpMessage @PurposeCd" [ref=e125]:
+              - code [ref=e126]: BpMessage @PurposeCd
+            - cell "13 / 15 / 01" [ref=e127]
+            - cell "User Selection (UI)" [ref=e128]:
+              - generic [ref=e129]: User Selection (UI)
+            - cell "13=New, 15=Re-Submission, 01=Cancellation" [ref=e130]
+      - generic [ref=e131]: Supplier Template — Sheet Structure & Booking_Group
+      - table [ref=e133]:
+        - rowgroup [ref=e134]:
+          - row "Sheet Rows Key Columns Notes" [ref=e135]:
+            - columnheader "Sheet" [ref=e136]
+            - columnheader "Rows" [ref=e137]
+            - columnheader "Key Columns" [ref=e138]
+            - columnheader "Notes" [ref=e139]
+        - rowgroup [ref=e140]:
+          - row "BOOKING_HEADER One row per PO PO_Number, Cargo_Ready_Planned_Collection_Date, Carrier_Booking_Request_Date, Traffic_Mode, Mode_Of_Transport, Booking_Group, Factory_ID, Pack_Type, Collection_Type, Hazardous, Factory auto-fill cols, Collection_Time, Remarks Mandatory (pink), Defaulted (green), Auto-fill (blue), Optional (grey)" [ref=e141]:
+            - cell "BOOKING_HEADER" [ref=e142]:
+              - strong [ref=e143]: BOOKING_HEADER
+            - cell "One row per PO" [ref=e144]
+            - cell "PO_Number, Cargo_Ready_Planned_Collection_Date, Carrier_Booking_Request_Date, Traffic_Mode, Mode_Of_Transport, Booking_Group, Factory_ID, Pack_Type, Collection_Type, Hazardous, Factory auto-fill cols, Collection_Time, Remarks" [ref=e145]
+            - cell "Mandatory (pink), Defaulted (green), Auto-fill (blue), Optional (grey)" [ref=e146]
+          - row "SKU_LINES One row per SKU PO_Number, SKU, Booking_Qty, No_of_Cartons, Unit_Weight_KG, Carton_Type, Carton dimensions & weights Must have matching PO_Number to rows in BOOKING_HEADER" [ref=e147]:
+            - cell "SKU_LINES" [ref=e148]:
+              - strong [ref=e149]: SKU_LINES
+            - cell "One row per SKU" [ref=e150]
+            - cell "PO_Number, SKU, Booking_Qty, No_of_Cartons, Unit_Weight_KG, Carton_Type, Carton dimensions & weights" [ref=e151]
+            - cell "Must have matching PO_Number to rows in BOOKING_HEADER" [ref=e152]
+          - row "FACTORY_LOOKUP Factory reference Factory_ID, Factory_Name, address fields Select Factory_ID in BOOKING_HEADER — name & address auto-fill via VLOOKUP" [ref=e153]:
+            - cell "FACTORY_LOOKUP" [ref=e154]:
+              - strong [ref=e155]: FACTORY_LOOKUP
+            - cell "Factory reference" [ref=e156]
+            - cell "Factory_ID, Factory_Name, address fields" [ref=e157]
+            - cell "Select Factory_ID in BOOKING_HEADER — name & address auto-fill via VLOOKUP" [ref=e158]
+      - table [ref=e160]:
+        - rowgroup [ref=e161]:
+          - row "Booking_Group value Behaviour Result" [ref=e162]:
+            - columnheader "Booking_Group value" [ref=e163]
+            - columnheader "Behaviour" [ref=e164]
+            - columnheader "Result" [ref=e165]
+        - rowgroup [ref=e166]:
+          - row "Single Booking Each PO generates its own VBKREQ independently N VBKREQs for N POs" [ref=e167]:
+            - cell "Single Booking" [ref=e168]:
+              - code [ref=e169]: Single Booking
+            - cell "Each PO generates its own VBKREQ independently" [ref=e170]
+            - cell "N VBKREQs for N POs" [ref=e171]
+          - row "Multiple POs-BK001 … Multiple POs-BK025 All POs sharing the same BK code are merged into one VBKREQ One VBKREQ per unique BK code" [ref=e172]:
+            - cell "Multiple POs-BK001 … Multiple POs-BK025" [ref=e173]:
+              - code [ref=e174]: Multiple POs-BK001
+              - text: …
+              - code [ref=e175]: Multiple POs-BK025
+            - cell "All POs sharing the same BK code are merged into one VBKREQ" [ref=e176]
+            - cell "One VBKREQ per unique BK code" [ref=e177]
+          - row "Multiple All POs in the upload combined into a single VBKREQ One VBKREQ for the entire upload" [ref=e178]:
+            - cell "Multiple" [ref=e179]:
+              - code [ref=e180]: Multiple
+            - cell "All POs in the upload combined into a single VBKREQ" [ref=e181]
+            - cell "One VBKREQ for the entire upload" [ref=e182]
+      - generic [ref=e183]:
+        - text: ⚠️
+        - strong [ref=e184]: "Factory_ID 9999 (Dummy Factory):"
+        - text: Use when the real factory code is not yet confirmed. Address validation is bypassed — the VBKREQ is generated without factory address fields. Replace with the actual factory code before submission to production.
+      - generic [ref=e185]: Booking Header — References, Mode & Transport
+      - table [ref=e187]:
+        - rowgroup [ref=e188]:
+          - row "XML Element Field in Master / Value Source Notes" [ref=e189]:
+            - columnheader "XML Element" [ref=e190]
+            - columnheader "Field in Master / Value" [ref=e191]
+            - columnheader "Source" [ref=e192]
+            - columnheader "Notes" [ref=e193]
+        - rowgroup [ref=e194]:
+          - row "<Mode> Mode_Of_Transport → mapped to E2 code Supplier Template Mandatory — defaulted to Road. Sea→10, Air→40, Road→30, Rail→50, Eco→70" [ref=e195]:
+            - cell "<Mode>" [ref=e196]:
+              - code [ref=e197]: <Mode>
+            - cell "Mode_Of_Transport → mapped to E2 code" [ref=e198]:
+              - code [ref=e199]: Mode_Of_Transport
+              - text: → mapped to E2 code
+            - cell "Supplier Template" [ref=e200]:
+              - generic [ref=e201]: Supplier Template
+            - cell "Mandatory — defaulted to Road. Sea→10, Air→40, Road→30, Rail→50, Eco→70" [ref=e202]:
+              - strong [ref=e203]: Mandatory — defaulted to Road.
+              - text: Sea→10, Air→40, Road→30, Rail→50, Eco→70
+          - row "Reference QY — Traffic Mode Traffic_Mode (CFS / CY) Supplier Template Mandatory. CFS = container freight station; CY = container yard" [ref=e204]:
+            - cell "Reference QY — Traffic Mode" [ref=e205]:
+              - code [ref=e206]: Reference QY
+              - text: — Traffic Mode
+            - cell "Traffic_Mode (CFS / CY)" [ref=e207]:
+              - code [ref=e208]: Traffic_Mode
+              - text: (CFS / CY)
+            - cell "Supplier Template" [ref=e209]:
+              - generic [ref=e210]: Supplier Template
+            - cell "Mandatory. CFS = container freight station; CY = container yard" [ref=e211]
+          - row "Reference 4B — Country of Origin Country_Of_Origin (from <CountryOfOrigin>) Carrier Feed (ASN XML) Line-level; falls back to Factory_CountryCd if absent from carrier feed" [ref=e212]:
+            - cell "Reference 4B — Country of Origin" [ref=e213]:
+              - code [ref=e214]: Reference 4B
+              - text: — Country of Origin
+            - cell "Country_Of_Origin (from <CountryOfOrigin>)" [ref=e215]:
+              - code [ref=e216]: Country_Of_Origin
+              - text: (from
+              - code [ref=e217]: <CountryOfOrigin>
+              - text: )
+            - cell "Carrier Feed (ASN XML)" [ref=e218]:
+              - generic [ref=e219]: Carrier Feed (ASN XML)
+            - cell "Line-level; falls back to Factory_CountryCd if absent from carrier feed" [ref=e220]
+          - row "Reference BH — Hazardous Hazardous → Y / N Supplier Template N/A and blank → N; any hazard type string → Y. Defaulted to N/A." [ref=e221]:
+            - cell "Reference BH — Hazardous" [ref=e222]:
+              - code [ref=e223]: Reference BH
+              - text: — Hazardous
+            - cell "Hazardous → Y / N" [ref=e224]:
+              - code [ref=e225]: Hazardous
+              - text: → Y / N
+            - cell "Supplier Template" [ref=e226]:
+              - generic [ref=e227]: Supplier Template
+            - cell "N/A and blank → N; any hazard type string → Y. Defaulted to N/A." [ref=e228]
+          - row "Reference CC — Cargo Category Green System Generated Hardcoded — ASOS standard" [ref=e229]:
+            - cell "Reference CC — Cargo Category" [ref=e230]:
+              - code [ref=e231]: Reference CC
+              - text: — Cargo Category
+            - cell "Green" [ref=e232]:
+              - code [ref=e233]: Green
+            - cell "System Generated" [ref=e234]:
+              - generic [ref=e235]: System Generated
+            - cell "Hardcoded — ASOS standard" [ref=e236]
+          - 'row "Reference CD — Collection/Delivery Collection_Type Supplier Template Dropdown: Collection or Delivery. Defaulted to Delivery." [ref=e237]':
+            - cell "Reference CD — Collection/Delivery" [ref=e238]:
+              - code [ref=e239]: Reference CD
+              - text: — Collection/Delivery
+            - cell "Collection_Type" [ref=e240]:
+              - code [ref=e241]: Collection_Type
+            - cell "Supplier Template" [ref=e242]:
+              - generic [ref=e243]: Supplier Template
+            - 'cell "Dropdown: Collection or Delivery. Defaulted to Delivery." [ref=e244]'
+          - row "Reference CT — Collection Time Collection_Time Supplier Template Only emitted when Collection_Type = Collection or time is provided (HH:MM)" [ref=e245]:
+            - cell "Reference CT — Collection Time" [ref=e246]:
+              - code [ref=e247]: Reference CT
+              - text: — Collection Time
+            - cell "Collection_Time" [ref=e248]:
+              - code [ref=e249]: Collection_Time
+            - cell "Supplier Template" [ref=e250]:
+              - generic [ref=e251]: Supplier Template
+            - cell "Only emitted when Collection_Type = Collection or time is provided (HH:MM)" [ref=e252]
+          - row "Reference WK — Intake Week ASOS_Intake_Week Supplier Template Not used — ignored in current schema version" [ref=e253]:
+            - cell "Reference WK — Intake Week" [ref=e254]:
+              - code [ref=e255]: Reference WK
+              - text: — Intake Week
+            - cell "ASOS_Intake_Week" [ref=e256]:
+              - code [ref=e257]: ASOS_Intake_Week
+            - cell "Supplier Template" [ref=e258]:
+              - generic [ref=e259]: Supplier Template
+            - cell "Not used — ignored in current schema version" [ref=e260]
+          - row "Remark BRC — Booking Comments Remarks Supplier Template Optional — only emitted if provided" [ref=e261]:
+            - cell "Remark BRC — Booking Comments" [ref=e262]:
+              - code [ref=e263]: Remark BRC
+              - text: — Booking Comments
+            - cell "Remarks" [ref=e264]:
+              - code [ref=e265]: Remarks
+            - cell "Supplier Template" [ref=e266]:
+              - generic [ref=e267]: Supplier Template
+            - cell "Optional — only emitted if provided" [ref=e268]
+      - generic [ref=e269]: Trade Partners
+      - table [ref=e271]:
+        - rowgroup [ref=e272]:
+          - row "Role XML Element Field / Value Source Notes" [ref=e273]:
+            - columnheader "Role" [ref=e274]
+            - columnheader "XML Element" [ref=e275]
+            - columnheader "Field / Value" [ref=e276]
+            - columnheader "Source" [ref=e277]
+            - columnheader "Notes" [ref=e278]
+        - rowgroup [ref=e279]:
+          - row "SU — Supplier TradePartnerName Supplier_Name Carrier Feed From <SupplierName> in carrier PO" [ref=e280]:
+            - cell "SU — Supplier" [ref=e281]:
+              - strong [ref=e282]: SU
+              - text: — Supplier
+            - cell "TradePartnerName" [ref=e283]:
+              - code [ref=e284]: TradePartnerName
+            - cell "Supplier_Name" [ref=e285]:
+              - code [ref=e286]: Supplier_Name
+            - cell "Carrier Feed" [ref=e287]:
+              - generic [ref=e288]: Carrier Feed
+            - cell "From <SupplierName> in carrier PO" [ref=e289]:
+              - text: From
+              - code [ref=e290]: <SupplierName>
+              - text: in carrier PO
+          - row "SU — Supplier TradePartnerID Supplier_ID Carrier Feed From <SupplierCode> in carrier PO" [ref=e291]:
+            - cell "SU — Supplier" [ref=e292]:
+              - strong [ref=e293]: SU
+              - text: — Supplier
+            - cell "TradePartnerID" [ref=e294]:
+              - code [ref=e295]: TradePartnerID
+            - cell "Supplier_ID" [ref=e296]:
+              - code [ref=e297]: Supplier_ID
+            - cell "Carrier Feed" [ref=e298]:
+              - generic [ref=e299]: Carrier Feed
+            - cell "From <SupplierCode> in carrier PO" [ref=e300]:
+              - text: From
+              - code [ref=e301]: <SupplierCode>
+              - text: in carrier PO
+          - row "FA — Factory TradePartnerName Factory_Name Supplier Template Auto-filled via VLOOKUP from FACTORY_LOOKUP tab when Factory_ID is selected" [ref=e302]:
+            - cell "FA — Factory" [ref=e303]:
+              - strong [ref=e304]: FA
+              - text: — Factory
+            - cell "TradePartnerName" [ref=e305]:
+              - code [ref=e306]: TradePartnerName
+            - cell "Factory_Name" [ref=e307]:
+              - code [ref=e308]: Factory_Name
+            - cell "Supplier Template" [ref=e309]:
+              - generic [ref=e310]: Supplier Template
+            - cell "Auto-filled via VLOOKUP from FACTORY_LOOKUP tab when Factory_ID is selected" [ref=e311]
+          - row "FA — Factory TradePartnerID Factory_ID Supplier Template Mandatory. Use 9999 (Dummy Factory) if real code not yet known — address fields are omitted" [ref=e312]:
+            - cell "FA — Factory" [ref=e313]:
+              - strong [ref=e314]: FA
+              - text: — Factory
+            - cell "TradePartnerID" [ref=e315]:
+              - code [ref=e316]: TradePartnerID
+            - cell "Factory_ID" [ref=e317]:
+              - code [ref=e318]: Factory_ID
+            - cell "Supplier Template" [ref=e319]:
+              - generic [ref=e320]: Supplier Template
+            - cell "Mandatory. Use 9999 (Dummy Factory) if real code not yet known — address fields are omitted" [ref=e321]:
+              - text: Mandatory. Use
+              - code [ref=e322]: "9999"
+              - text: (Dummy Factory) if real code not yet known — address fields are omitted
+          - row "FA — Factory TradePartnerAddress Factory_Street1/2, City, PostalCd, CountryCd Supplier Template Auto-filled from FACTORY_LOOKUP. Street2 optional. Omitted entirely for Factory_ID 9999." [ref=e323]:
+            - cell "FA — Factory" [ref=e324]:
+              - strong [ref=e325]: FA
+              - text: — Factory
+            - cell "TradePartnerAddress" [ref=e326]:
+              - code [ref=e327]: TradePartnerAddress
+            - cell "Factory_Street1/2, City, PostalCd, CountryCd" [ref=e328]:
+              - code [ref=e329]: Factory_Street1/2, City, PostalCd, CountryCd
+            - cell "Supplier Template" [ref=e330]:
+              - generic [ref=e331]: Supplier Template
+            - cell "Auto-filled from FACTORY_LOOKUP. Street2 optional. Omitted entirely for Factory_ID 9999." [ref=e332]
+          - row "FD — FC Destination TradePartnerName FC_Name (from FC_MASTER) Internal Lookup FC_MASTER table keyed on FC_ID (e.g. FC01 = ASOS Barnsley)" [ref=e333]:
+            - cell "FD — FC Destination" [ref=e334]:
+              - strong [ref=e335]: FD
+              - text: — FC Destination
+            - cell "TradePartnerName" [ref=e336]:
+              - code [ref=e337]: TradePartnerName
+            - cell "FC_Name (from FC_MASTER)" [ref=e338]:
+              - code [ref=e339]: FC_Name
+              - text: (from FC_MASTER)
+            - cell "Internal Lookup" [ref=e340]:
+              - generic [ref=e341]: Internal Lookup
+            - cell "FC_MASTER table keyed on FC_ID (e.g. FC01 = ASOS Barnsley)" [ref=e342]
+          - row "FD — FC Destination TradePartnerID FC_ID Carrier Feed From <POFC> or <FinalDestination> in carrier PO" [ref=e343]:
+            - cell "FD — FC Destination" [ref=e344]:
+              - strong [ref=e345]: FD
+              - text: — FC Destination
+            - cell "TradePartnerID" [ref=e346]:
+              - code [ref=e347]: TradePartnerID
+            - cell "FC_ID" [ref=e348]:
+              - code [ref=e349]: FC_ID
+            - cell "Carrier Feed" [ref=e350]:
+              - generic [ref=e351]: Carrier Feed
+            - cell "From <POFC> or <FinalDestination> in carrier PO" [ref=e352]:
+              - text: From
+              - code [ref=e353]: <POFC>
+              - text: or
+              - code [ref=e354]: <FinalDestination>
+              - text: in carrier PO
+          - row "FD — FC Destination TradePartnerAddress FC street/city/postal/country Internal Lookup FC_MASTER table in bible-builder.js — verify addresses are correct" [ref=e355]:
+            - cell "FD — FC Destination" [ref=e356]:
+              - strong [ref=e357]: FD
+              - text: — FC Destination
+            - cell "TradePartnerAddress" [ref=e358]:
+              - code [ref=e359]: TradePartnerAddress
+            - cell "FC street/city/postal/country" [ref=e360]
+            - cell "Internal Lookup" [ref=e361]:
+              - generic [ref=e362]: Internal Lookup
+            - cell "FC_MASTER table in bible-builder.js — verify addresses are correct" [ref=e363]
+          - row "CA — Carrier TradePartnerID 3 System Generated Hardcoded DavisTurner carrier ID in E2open" [ref=e364]:
+            - cell "CA — Carrier" [ref=e365]:
+              - strong [ref=e366]: CA
+              - text: — Carrier
+            - cell "TradePartnerID" [ref=e367]:
+              - code [ref=e368]: TradePartnerID
+            - cell "3" [ref=e369]:
+              - code [ref=e370]: "3"
+            - cell "System Generated" [ref=e371]:
+              - generic [ref=e372]: System Generated
+            - cell "Hardcoded DavisTurner carrier ID in E2open" [ref=e373]
+          - row "SL — Loading Port TradePartnerID Loading_Port_LOCODE Carrier Feed From <ShippingPoint> UN/LOCODE in carrier PO" [ref=e374]:
+            - cell "SL — Loading Port" [ref=e375]:
+              - strong [ref=e376]: SL
+              - text: — Loading Port
+            - cell "TradePartnerID" [ref=e377]:
+              - code [ref=e378]: TradePartnerID
+            - cell "Loading_Port_LOCODE" [ref=e379]:
+              - code [ref=e380]: Loading_Port_LOCODE
+            - cell "Carrier Feed" [ref=e381]:
+              - generic [ref=e382]: Carrier Feed
+            - cell "From <ShippingPoint> UN/LOCODE in carrier PO" [ref=e383]:
+              - text: From
+              - code [ref=e384]: <ShippingPoint>
+              - text: UN/LOCODE in carrier PO
+      - generic [ref=e385]: Status — Dates & Locations
+      - table [ref=e387]:
+        - rowgroup [ref=e388]:
+          - row "Status Element Field / Value Source Notes" [ref=e389]:
+            - columnheader "Status Element" [ref=e390]
+            - columnheader "Field / Value" [ref=e391]
+            - columnheader "Source" [ref=e392]
+            - columnheader "Notes" [ref=e393]
+        - rowgroup [ref=e394]:
+          - row "Date 018 — Cargo Ready Cargo_Ready_Planned_Collection_Date Supplier Template DD/MM/YYYY → YYYYMMDD" [ref=e395]:
+            - cell "Date 018 — Cargo Ready" [ref=e396]:
+              - code [ref=e397]: Date 018
+              - text: — Cargo Ready
+            - cell "Cargo_Ready_Planned_Collection_Date" [ref=e398]:
+              - code [ref=e399]: Cargo_Ready_Planned_Collection_Date
+            - cell "Supplier Template" [ref=e400]:
+              - generic [ref=e401]: Supplier Template
+            - cell "DD/MM/YYYY → YYYYMMDD" [ref=e402]
+          - row "Date 081 — Booking Request Carrier_Booking_Request_Date Supplier Template DD/MM/YYYY → YYYYMMDD" [ref=e403]:
+            - cell "Date 081 — Booking Request" [ref=e404]:
+              - code [ref=e405]: Date 081
+              - text: — Booking Request
+            - cell "Carrier_Booking_Request_Date" [ref=e406]:
+              - code [ref=e407]: Carrier_Booking_Request_Date
+            - cell "Supplier Template" [ref=e408]:
+              - generic [ref=e409]: Supplier Template
+            - cell "DD/MM/YYYY → YYYYMMDD" [ref=e410]
+          - row "Location L — Loading Port Loading_Port_LOCODE Carrier Feed UN/LOCODE from <ShippingPoint>" [ref=e411]:
+            - cell "Location L — Loading Port" [ref=e412]:
+              - code [ref=e413]: Location L
+              - text: — Loading Port
+            - cell "Loading_Port_LOCODE" [ref=e414]:
+              - code [ref=e415]: Loading_Port_LOCODE
+            - cell "Carrier Feed" [ref=e416]:
+              - generic [ref=e417]: Carrier Feed
+            - cell "UN/LOCODE from <ShippingPoint>" [ref=e418]:
+              - text: UN/LOCODE from
+              - code [ref=e419]: <ShippingPoint>
+          - row "Location E — Export Port FC_LOCODE lookup by FC_ID Internal Lookup FC01/FC02 → GBBSY; update FC_LOCODE table if needed" [ref=e420]:
+            - cell "Location E — Export Port" [ref=e421]:
+              - code [ref=e422]: Location E
+              - text: — Export Port
+            - cell "FC_LOCODE lookup by FC_ID" [ref=e423]
+            - cell "Internal Lookup" [ref=e424]:
+              - generic [ref=e425]: Internal Lookup
+            - cell "FC01/FC02 → GBBSY; update FC_LOCODE table if needed" [ref=e426]
+          - row "Location D — Destination FC_LOCODE lookup by FC_ID Internal Lookup Same as Location E — port of destination" [ref=e427]:
+            - cell "Location D — Destination" [ref=e428]:
+              - code [ref=e429]: Location D
+              - text: — Destination
+            - cell "FC_LOCODE lookup by FC_ID" [ref=e430]
+            - cell "Internal Lookup" [ref=e431]:
+              - generic [ref=e432]: Internal Lookup
+            - cell "Same as Location E — port of destination" [ref=e433]
+          - 'row "Date 211 — Booking Req DateTime Current timestamp at generation System Generated Format: YYYYMMDD HH:MM:SS" [ref=e434]':
+            - cell "Date 211 — Booking Req DateTime" [ref=e435]:
+              - code [ref=e436]: Date 211
+              - text: — Booking Req DateTime
+            - cell "Current timestamp at generation" [ref=e437]
+            - cell "System Generated" [ref=e438]:
+              - generic [ref=e439]: System Generated
+            - 'cell "Format: YYYYMMDD HH:MM:SS" [ref=e440]'
+          - 'row "Date OSBT Current timestamp at generation System Generated Format: YYYYMMDD HH:MM:SS" [ref=e441]':
+            - cell "Date OSBT" [ref=e442]:
+              - code [ref=e443]: Date OSBT
+            - cell "Current timestamp at generation" [ref=e444]
+            - cell "System Generated" [ref=e445]:
+              - generic [ref=e446]: System Generated
+            - 'cell "Format: YYYYMMDD HH:MM:SS" [ref=e447]'
+          - row "Date 065 — Expected Delivery Expected_Delivery_Date Supplier Template Optional — only emitted if provided" [ref=e448]:
+            - cell "Date 065 — Expected Delivery" [ref=e449]:
+              - code [ref=e450]: Date 065
+              - text: — Expected Delivery
+            - cell "Expected_Delivery_Date" [ref=e451]:
+              - code [ref=e452]: Expected_Delivery_Date
+            - cell "Supplier Template" [ref=e453]:
+              - generic [ref=e454]: Supplier Template
+            - cell "Optional — only emitted if provided" [ref=e455]
+          - row "Date OSBK — Booking Confirmed Current timestamp at generation System Generated System time when XML is built" [ref=e456]:
+            - cell "Date OSBK — Booking Confirmed" [ref=e457]:
+              - code [ref=e458]: Date OSBK
+              - text: — Booking Confirmed
+            - cell "Current timestamp at generation" [ref=e459]
+            - cell "System Generated" [ref=e460]:
+              - generic [ref=e461]: System Generated
+            - cell "System time when XML is built" [ref=e462]
+          - row "Date SBK Current timestamp at generation System Generated Same as OSBK" [ref=e463]:
+            - cell "Date SBK" [ref=e464]:
+              - code [ref=e465]: Date SBK
+            - cell "Current timestamp at generation" [ref=e466]
+            - cell "System Generated" [ref=e467]:
+              - generic [ref=e468]: System Generated
+            - cell "Same as OSBK" [ref=e469]
+      - generic [ref=e470]: Document — Booking Summary (one per ASN)
+      - table [ref=e472]:
+        - rowgroup [ref=e473]:
+          - row "XML Element Field / Value Source Notes" [ref=e474]:
+            - columnheader "XML Element" [ref=e475]
+            - columnheader "Field / Value" [ref=e476]
+            - columnheader "Source" [ref=e477]
+            - columnheader "Notes" [ref=e478]
+        - rowgroup [ref=e479]:
+          - row "Document @Key Booking_Ref (e.g. VB-1000000001) System Generated Auto-incrementing booking reference" [ref=e480]:
+            - cell "Document @Key" [ref=e481]:
+              - code [ref=e482]: Document @Key
+            - cell "Booking_Ref (e.g. VB-1000000001)" [ref=e483]:
+              - code [ref=e484]: Booking_Ref
+              - text: (e.g. VB-1000000001)
+            - cell "System Generated" [ref=e485]:
+              - generic [ref=e486]: System Generated
+            - cell "Auto-incrementing booking reference" [ref=e487]
+          - row "Reference ACE — Booking Ref Booking_Ref System Generated Same as Document Key" [ref=e488]:
+            - cell "Reference ACE — Booking Ref" [ref=e489]:
+              - code [ref=e490]: Reference ACE
+              - text: — Booking Ref
+            - cell "Booking_Ref" [ref=e491]:
+              - code [ref=e492]: Booking_Ref
+            - cell "System Generated" [ref=e493]:
+              - generic [ref=e494]: System Generated
+            - cell "Same as Document Key" [ref=e495]
+          - row "Reference V0 — Version 1.0 (new) / increments on PurposeCd 15 System Generated Version history stored in ctrl-counter.json" [ref=e496]:
+            - cell "Reference V0 — Version" [ref=e497]:
+              - code [ref=e498]: Reference V0
+              - text: — Version
+            - cell "1.0 (new) / increments on PurposeCd 15" [ref=e499]
+            - cell "System Generated" [ref=e500]:
+              - generic [ref=e501]: System Generated
+            - cell "Version history stored in ctrl-counter.json" [ref=e502]
+          - row "Measure N — Net Weight (KG) Sum of Unit_Weight_KG per line Supplier Template Summed per ASN" [ref=e503]:
+            - cell "Measure N — Net Weight (KG)" [ref=e504]:
+              - code [ref=e505]: Measure N
+              - text: — Net Weight (KG)
+            - cell "Sum of Unit_Weight_KG per line" [ref=e506]:
+              - text: Sum of
+              - code [ref=e507]: Unit_Weight_KG
+              - text: per line
+            - cell "Supplier Template" [ref=e508]:
+              - generic [ref=e509]: Supplier Template
+            - cell "Summed per ASN" [ref=e510]
+          - row "Measure G — Gross Weight (KG) Sum of Carton_Weight_KG × No_of_Cartons Supplier Template / Carton lookup Carton weight from CARTON_TYPES if not in sheet" [ref=e511]:
+            - cell "Measure G — Gross Weight (KG)" [ref=e512]:
+              - code [ref=e513]: Measure G
+              - text: — Gross Weight (KG)
+            - cell "Sum of Carton_Weight_KG × No_of_Cartons" [ref=e514]:
+              - text: Sum of
+              - code [ref=e515]: Carton_Weight_KG × No_of_Cartons
+            - cell "Supplier Template / Carton lookup" [ref=e516]:
+              - generic [ref=e517]: Supplier Template
+              - text: /
+              - generic [ref=e518]: Carton lookup
+            - cell "Carton weight from CARTON_TYPES if not in sheet" [ref=e519]
+          - row "Measure VOL — Volume (M³) Sum of (L×W×H ÷ 1,000,000) × No_of_Cartons Supplier Template / Carton lookup Dimensions from CARTON_TYPES lookup by Carton_Type" [ref=e520]:
+            - cell "Measure VOL — Volume (M³)" [ref=e521]:
+              - code [ref=e522]: Measure VOL
+              - text: — Volume (M³)
+            - cell "Sum of (L×W×H ÷ 1,000,000) × No_of_Cartons" [ref=e523]:
+              - text: Sum of
+              - code [ref=e524]: (L×W×H ÷ 1,000,000) × No_of_Cartons
+            - cell "Supplier Template / Carton lookup" [ref=e525]:
+              - generic [ref=e526]: Supplier Template
+              - text: /
+              - generic [ref=e527]: Carton lookup
+            - cell "Dimensions from CARTON_TYPES lookup by Carton_Type" [ref=e528]
+          - row "Measure QUR — Carton Qty Sum of No_of_Cartons Supplier Template Summed per ASN" [ref=e529]:
+            - cell "Measure QUR — Carton Qty" [ref=e530]:
+              - code [ref=e531]: Measure QUR
+              - text: — Carton Qty
+            - cell "Sum of No_of_Cartons" [ref=e532]:
+              - text: Sum of
+              - code [ref=e533]: No_of_Cartons
+            - cell "Supplier Template" [ref=e534]:
+              - generic [ref=e535]: Supplier Template
+            - cell "Summed per ASN" [ref=e536]
+          - row "Measure BKQ — Booking Qty (units) Sum of Booking_Qty Supplier Template Summed per ASN" [ref=e537]:
+            - cell "Measure BKQ — Booking Qty (units)" [ref=e538]:
+              - code [ref=e539]: Measure BKQ
+              - text: — Booking Qty (units)
+            - cell "Sum of Booking_Qty" [ref=e540]:
+              - text: Sum of
+              - code [ref=e541]: Booking_Qty
+            - cell "Supplier Template" [ref=e542]:
+              - generic [ref=e543]: Supplier Template
+            - cell "Summed per ASN" [ref=e544]
+          - row "Order @Key / OrderID PO_Number Supplier Template One Order element per PO within the ASN" [ref=e545]:
+            - cell "Order @Key / OrderID" [ref=e546]:
+              - code [ref=e547]: Order @Key / OrderID
+            - cell "PO_Number" [ref=e548]:
+              - code [ref=e549]: PO_Number
+            - cell "Supplier Template" [ref=e550]:
+              - generic [ref=e551]: Supplier Template
+            - cell "One Order element per PO within the ASN" [ref=e552]
+      - generic [ref=e553]: Line Item — SKU Level (one per SKU per PO)
+      - table [ref=e555]:
+        - rowgroup [ref=e556]:
+          - row "XML Element Field / Value Source Notes" [ref=e557]:
+            - columnheader "XML Element" [ref=e558]
+            - columnheader "Field / Value" [ref=e559]
+            - columnheader "Source" [ref=e560]
+            - columnheader "Notes" [ref=e561]
+        - rowgroup [ref=e562]:
+          - row "LineItem @Key PO_Number + \"_\" + SKU + \"_\" + ASN_Ref Carrier Feed + Supplier Template Composite key" [ref=e563]:
+            - cell "LineItem @Key" [ref=e564]:
+              - code [ref=e565]: LineItem @Key
+            - cell "PO_Number + \"_\" + SKU + \"_\" + ASN_Ref" [ref=e566]:
+              - code [ref=e567]: PO_Number + "_" + SKU + "_" + ASN_Ref
+            - cell "Carrier Feed + Supplier Template" [ref=e568]:
+              - generic [ref=e569]: Carrier Feed
+              - text: +
+              - generic [ref=e570]: Supplier Template
+            - cell "Composite key" [ref=e571]
+          - 'row "LineItemDescription Description / Product_Style / \"SKU {sku}\" Carrier Feed Falls back through available description fields" [ref=e572]':
+            - cell "LineItemDescription" [ref=e573]:
+              - code [ref=e574]: LineItemDescription
+            - 'cell "Description / Product_Style / \"SKU {sku}\"" [ref=e575]':
+              - code [ref=e576]: Description
+              - text: "/ Product_Style / \"SKU {sku}\""
+            - cell "Carrier Feed" [ref=e577]:
+              - generic [ref=e578]: Carrier Feed
+            - cell "Falls back through available description fields" [ref=e579]
+          - row "Attribute SI — ASN Ref ASN_Ref (carrier ASN ID) Carrier Feed Carrier's shipment advice number" [ref=e580]:
+            - cell "Attribute SI — ASN Ref" [ref=e581]:
+              - code [ref=e582]: Attribute SI
+              - text: — ASN Ref
+            - cell "ASN_Ref (carrier ASN ID)" [ref=e583]:
+              - code [ref=e584]: ASN_Ref
+              - text: (carrier ASN ID)
+            - cell "Carrier Feed" [ref=e585]:
+              - generic [ref=e586]: Carrier Feed
+            - cell "Carrier's shipment advice number" [ref=e587]
+          - row "Attribute SK — SKU SKU Supplier Template ASOS product SKU" [ref=e588]:
+            - cell "Attribute SK — SKU" [ref=e589]:
+              - code [ref=e590]: Attribute SK
+              - text: — SKU
+            - cell "SKU" [ref=e591]:
+              - code [ref=e592]: SKU
+            - cell "Supplier Template" [ref=e593]:
+              - generic [ref=e594]: Supplier Template
+            - cell "ASOS product SKU" [ref=e595]
+          - row "Attribute UA — EAN/Barcode EAN_Barcode Supplier Template Optional; also populated from carrier feed if available" [ref=e596]:
+            - cell "Attribute UA — EAN/Barcode" [ref=e597]:
+              - code [ref=e598]: Attribute UA
+              - text: — EAN/Barcode
+            - cell "EAN_Barcode" [ref=e599]:
+              - code [ref=e600]: EAN_Barcode
+            - cell "Supplier Template" [ref=e601]:
+              - generic [ref=e602]: Supplier Template
+            - cell "Optional; also populated from carrier feed if available" [ref=e603]
+          - row "Attribute CL — Colour Colour_Code Supplier Template Optional" [ref=e604]:
+            - cell "Attribute CL — Colour" [ref=e605]:
+              - code [ref=e606]: Attribute CL
+              - text: — Colour
+            - cell "Colour_Code" [ref=e607]:
+              - code [ref=e608]: Colour_Code
+            - cell "Supplier Template" [ref=e609]:
+              - generic [ref=e610]: Supplier Template
+            - cell "Optional" [ref=e611]
+          - row "Attribute IZ — Size Size_Code Supplier Template Optional" [ref=e612]:
+            - cell "Attribute IZ — Size" [ref=e613]:
+              - code [ref=e614]: Attribute IZ
+              - text: — Size
+            - cell "Size_Code" [ref=e615]:
+              - code [ref=e616]: Size_Code
+            - cell "Supplier Template" [ref=e617]:
+              - generic [ref=e618]: Supplier Template
+            - cell "Optional" [ref=e619]
+          - 'row "Reference PAC — Pack Type Pack_Type (Flat / Bulk Flat / Hanging) Supplier Template Default: Flat" [ref=e620]':
+            - cell "Reference PAC — Pack Type" [ref=e621]:
+              - code [ref=e622]: Reference PAC
+              - text: — Pack Type
+            - cell "Pack_Type (Flat / Bulk Flat / Hanging)" [ref=e623]:
+              - code [ref=e624]: Pack_Type
+              - text: (Flat / Bulk Flat / Hanging)
+            - cell "Supplier Template" [ref=e625]:
+              - generic [ref=e626]: Supplier Template
+            - 'cell "Default: Flat" [ref=e627]'
+          - row "Reference PT — Product Style Product_Style Carrier Feed Style code from carrier line" [ref=e628]:
+            - cell "Reference PT — Product Style" [ref=e629]:
+              - code [ref=e630]: Reference PT
+              - text: — Product Style
+            - cell "Product_Style" [ref=e631]:
+              - code [ref=e632]: Product_Style
+            - cell "Carrier Feed" [ref=e633]:
+              - generic [ref=e634]: Carrier Feed
+            - cell "Style code from carrier line" [ref=e635]
+          - row "Reference HZ — Hazardous Hazardous Supplier Template Full hazard type string per line" [ref=e636]:
+            - cell "Reference HZ — Hazardous" [ref=e637]:
+              - code [ref=e638]: Reference HZ
+              - text: — Hazardous
+            - cell "Hazardous" [ref=e639]:
+              - code [ref=e640]: Hazardous
+            - cell "Supplier Template" [ref=e641]:
+              - generic [ref=e642]: Supplier Template
+            - cell "Full hazard type string per line" [ref=e643]
+          - row "Reference DSC — Description Description Carrier Feed Item description from carrier" [ref=e644]:
+            - cell "Reference DSC — Description" [ref=e645]:
+              - code [ref=e646]: Reference DSC
+              - text: — Description
+            - cell "Description" [ref=e647]:
+              - code [ref=e648]: Description
+            - cell "Carrier Feed" [ref=e649]:
+              - generic [ref=e650]: Carrier Feed
+            - cell "Item description from carrier" [ref=e651]
+          - 'row "Reference 98 — Carton Type Carton_Type Supplier Template Default: BDCM1; drives dimension lookup" [ref=e652]':
+            - cell "Reference 98 — Carton Type" [ref=e653]:
+              - code [ref=e654]: Reference 98
+              - text: — Carton Type
+            - cell "Carton_Type" [ref=e655]:
+              - code [ref=e656]: Carton_Type
+            - cell "Supplier Template" [ref=e657]:
+              - generic [ref=e658]: Supplier Template
+            - 'cell "Default: BDCM1; drives dimension lookup" [ref=e659]'
+          - row "Reference LN/WD/HT — Dimensions Carton_Length/Width/Height_cm Carton Lookup Auto-filled via VLOOKUP from CARTON_TYPES table; supplier can override" [ref=e660]:
+            - cell "Reference LN/WD/HT — Dimensions" [ref=e661]:
+              - code [ref=e662]: Reference LN/WD/HT
+              - text: — Dimensions
+            - cell "Carton_Length/Width/Height_cm" [ref=e663]:
+              - code [ref=e664]: Carton_Length/Width/Height_cm
+            - cell "Carton Lookup" [ref=e665]:
+              - generic [ref=e666]: Carton Lookup
+            - cell "Auto-filled via VLOOKUP from CARTON_TYPES table; supplier can override" [ref=e667]
+          - row "Measure BKQ — Booking Qty Booking_Qty Supplier Template Units being shipped" [ref=e668]:
+            - cell "Measure BKQ — Booking Qty" [ref=e669]:
+              - code [ref=e670]: Measure BKQ
+              - text: — Booking Qty
+            - cell "Booking_Qty" [ref=e671]:
+              - code [ref=e672]: Booking_Qty
+            - cell "Supplier Template" [ref=e673]:
+              - generic [ref=e674]: Supplier Template
+            - cell "Units being shipped" [ref=e675]
+          - row "Measure G — Gross Weight Carton_Weight_KG × No_of_Cartons Supplier Template / Carton lookup Per-line value" [ref=e676]:
+            - cell "Measure G — Gross Weight" [ref=e677]:
+              - code [ref=e678]: Measure G
+              - text: — Gross Weight
+            - cell "Carton_Weight_KG × No_of_Cartons" [ref=e679]:
+              - code [ref=e680]: Carton_Weight_KG × No_of_Cartons
+            - cell "Supplier Template / Carton lookup" [ref=e681]:
+              - generic [ref=e682]: Supplier Template
+              - text: /
+              - generic [ref=e683]: Carton lookup
+            - cell "Per-line value" [ref=e684]
+          - row "Measure N — Net Weight Unit_Weight_KG Supplier Template Per-unit weight; one value per line" [ref=e685]:
+            - cell "Measure N — Net Weight" [ref=e686]:
+              - code [ref=e687]: Measure N
+              - text: — Net Weight
+            - cell "Unit_Weight_KG" [ref=e688]:
+              - code [ref=e689]: Unit_Weight_KG
+            - cell "Supplier Template" [ref=e690]:
+              - generic [ref=e691]: Supplier Template
+            - cell "Per-unit weight; one value per line" [ref=e692]
+          - row "Measure VOL — Volume (L×W×H ÷ 1,000,000) × No_of_Cartons Supplier Template / Carton lookup Per-line value in M³" [ref=e693]:
+            - cell "Measure VOL — Volume" [ref=e694]:
+              - code [ref=e695]: Measure VOL
+              - text: — Volume
+            - cell "(L×W×H ÷ 1,000,000) × No_of_Cartons" [ref=e696]:
+              - code [ref=e697]: (L×W×H ÷ 1,000,000) × No_of_Cartons
+            - cell "Supplier Template / Carton lookup" [ref=e698]:
+              - generic [ref=e699]: Supplier Template
+              - text: /
+              - generic [ref=e700]: Carton lookup
+            - cell "Per-line value in M³" [ref=e701]
+          - row "Measure QUR — Carton Qty No_of_Cartons Supplier Template Per-line carton count" [ref=e702]:
+            - cell "Measure QUR — Carton Qty" [ref=e703]:
+              - code [ref=e704]: Measure QUR
+              - text: — Carton Qty
+            - cell "No_of_Cartons" [ref=e705]:
+              - code [ref=e706]: No_of_Cartons
+            - cell "Supplier Template" [ref=e707]:
+              - generic [ref=e708]: Supplier Template
+            - cell "Per-line carton count" [ref=e709]
+          - row "TradePartner FS — Final Store/FC F1_ID (= FC_ID from carrier) Carrier Feed ASOS fulfilment centre ID per line; from <POFC>" [ref=e710]:
+            - cell "TradePartner FS — Final Store/FC" [ref=e711]:
+              - code [ref=e712]: TradePartner FS
+              - text: — Final Store/FC
+            - cell "F1_ID (= FC_ID from carrier)" [ref=e713]:
+              - code [ref=e714]: F1_ID
+              - text: (= FC_ID from carrier)
+            - cell "Carrier Feed" [ref=e715]:
+              - generic [ref=e716]: Carrier Feed
+            - cell "ASOS fulfilment centre ID per line; from <POFC>" [ref=e717]:
+              - text: ASOS fulfilment centre ID per line; from
+              - code [ref=e718]: <POFC>
+      - generic [ref=e719]:
+        - text: ⚠
+        - strong [ref=e720]: "Addresses to verify:"
+        - text: The FC_MASTER table in
+        - code [ref=e721]: backend/bible-builder.js
+        - text: contains placeholder FC addresses for FC01–FC05. These must be confirmed against the actual ASOS FC address data before going live.
+        - text: ⚠
+        - strong [ref=e722]: "FC_LOCODE table:"
+        - text: The destination port LOCODE lookup in
+        - code [ref=e723]: backend/vbkreq-builder.js
+        - text: currently maps FC01/FC02/P005 →
+        - code [ref=e724]: GBBSY
+        - text: . Update this table if additional FC codes need mapping.
+  - contentinfo [ref=e725]: 📦 CarrierBookingStub v1.0
