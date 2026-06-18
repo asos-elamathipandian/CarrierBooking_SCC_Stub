@@ -550,6 +550,15 @@
 
 <main>
 
+  <!-- ── Booking Group ── -->
+  <div style="margin-bottom:8px;display:flex;align-items:center;gap:14px">
+    <div style="flex:1;height:1px;background:linear-gradient(90deg,#BFDBFE,transparent)"></div>
+    <span style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#1565C0;padding:4px 14px;border:1.5px solid #BFDBFE;border-radius:20px;background:#EFF6FF">Booking</span>
+    <div style="flex:1;height:1px;background:linear-gradient(270deg,#BFDBFE,transparent)"></div>
+  </div>
+
+  <div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:14px;padding:12px 12px 4px;margin-bottom:8px">
+
   <!-- ── Step 1: Upload Supplier Excel ── -->
   <div class="step-card" id="card1">
     <div class="step-header">
@@ -637,8 +646,36 @@
     </div><!-- /.step-body -->
   </div><!-- /#pipelineCard -->
 
-  <!-- ── Cancel Booking ── -->
+  <!-- ── Recent Bookings History ── -->
   <div class="step-card">
+    <details id="historyDetails">
+      <summary class="step-header" style="cursor:pointer;list-style:none;display:flex;align-items:center">
+        <div class="step-badge" style="background:#374151">🕑</div>
+        <div style="flex:1">
+          <div class="step-title">Recent Booking History</div>
+          <div class="step-desc">VBKREQs generated in the last 3 days — click to expand</div>
+        </div>
+        <span style="font-size:16px;color:#94a3b8;margin-left:8px">&#9658;</span>
+      </summary>
+      <div class="step-body">
+        <div id="historyPanel">
+          <span style="font-size:12px;color:#aaa">Loading history…</span>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  </div><!-- /booking group -->
+
+  <!-- ── Section divider: Cancellation ── -->
+  <div style="margin:28px 0 16px;display:flex;align-items:center;gap:14px">
+    <div style="flex:1;height:1px;background:linear-gradient(90deg,#FECACA,transparent)"></div>
+    <span style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#B91C1C;padding:4px 14px;border:1.5px solid #FECACA;border-radius:20px;background:#FFF5F5">Cancellation</span>
+    <div style="flex:1;height:1px;background:linear-gradient(270deg,#FECACA,transparent)"></div>
+  </div>
+
+  <!-- ── Cancel Booking ── -->
+  <div class="step-card" style="border-top:3px solid #B91C1C">
     <div class="step-header">
       <div class="step-badge" style="background:#7F1D1D">✕</div>
       <div>
@@ -660,25 +697,6 @@
     </div>
   </div>
 
-  <!-- ── Recent Bookings History ── -->
-  <div class="step-card">
-    <details id="historyDetails">
-      <summary class="step-header" style="cursor:pointer;list-style:none;display:flex;align-items:center">
-        <div class="step-badge" style="background:#374151">🕑</div>
-        <div style="flex:1">
-          <div class="step-title">Recent Booking History</div>
-          <div class="step-desc">VBKREQs generated in the last 3 days — click to expand</div>
-        </div>
-        <span style="font-size:16px;color:#94a3b8;margin-left:8px">&#9658;</span>
-      </summary>
-      <div class="step-body">
-        <div id="historyPanel">
-          <span style="font-size:12px;color:#aaa">Loading history…</span>
-        </div>
-      </div>
-    </details>
-  </div>
-
 </main>
 
 <!-- ── README Floating Button ── -->
@@ -698,11 +716,13 @@
       <!-- How it works -->
       <div class="rg-summary">
         <h3>📋 How this tool works</h3>
-        <p>This tool generates a <strong>VBKREQ XML</strong> (Vendor Booking Request) for submission to E2open TA and DavisTurner. The pipeline runs in four stages:</p>
+        <p>This tool generates a <strong>VBKREQ XML</strong> (Vendor Booking Request) for submission to E2open TA and DavisTurner. The UI is split into two independent sections:</p>
+
+        <p style="font-size:12px;font-weight:700;color:#1565C0;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.06em">📦 Booking — Steps 1 &amp; 2</p>
         <div class="rg-flow">
-          <div class="rg-flow-step">📊 1 · Supplier uploads Excel</div>
+          <div class="rg-flow-step">📊 1 · Upload Supplier Excel</div>
           <span class="rg-flow-arrow">→</span>
-          <div class="rg-flow-step carrier">📡 2 · Fetch Carrier ASN Feeds</div>
+          <div class="rg-flow-step carrier">📡 2 · Fetch Carrier ASN Feed</div>
           <span class="rg-flow-arrow">→</span>
           <div class="rg-flow-step">🗂 3 · Build Master Workbook</div>
           <span class="rg-flow-arrow">→</span>
@@ -710,13 +730,24 @@
           <span class="rg-flow-arrow">→</span>
           <div class="rg-flow-step system">🚀 5 · Upload to E2open SFTP</div>
         </div>
-        <p><strong>Step 1 — Supplier Excel (two-sheet template):</strong> The supplier fills in the downloadable template. The template has two data sheets: <strong>PO Header</strong> (one row per PO — mandatory/defaulted booking fields) and <strong>PO Lines</strong> (one row per SKU — quantities, weights, carton details). A <strong>FACTORY_LOOKUP</strong> tab lists valid factory codes; selecting a <code>Factory_ID</code> auto-fills name and address via VLOOKUP. Mandatory (pink) columns must be completed; defaulted (green) columns are pre-set and can be changed if needed.</p>
+        <p style="font-size:12px;font-weight:700;color:#B91C1C;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.06em">✕ Cancellation — standalone, no re-upload needed</p>
+        <div class="rg-flow">
+          <div class="rg-flow-step">🔍 Enter PO or VB Ref</div>
+          <span class="rg-flow-arrow">→</span>
+          <div class="rg-flow-step carrier">📂 Look up stored booking data</div>
+          <span class="rg-flow-arrow">→</span>
+          <div class="rg-flow-step">⚡ Build cancellation VBKREQ (01 + 177)</div>
+          <span class="rg-flow-arrow">→</span>
+          <div class="rg-flow-step system">🚀 Upload to E2open SFTP</div>
+        </div>
+
+        <p><strong>Step 1 — Supplier Excel (two-sheet template):</strong> The supplier fills in the downloadable template. The template has two data sheets: <strong>PO Header</strong> (one row per PO — mandatory/defaulted booking fields) and <strong>PO Lines</strong> (one row per SKU — quantities, weights, carton details). A <strong>FACTORY_LOOKUP</strong> tab lists valid factory codes; selecting a <code>Factory_ID</code> auto-fills name and address via VLOOKUP. Mandatory (pink) columns must be completed; defaulted (green) columns are pre-set and can be changed if needed. The PO Header sheet pre-fills <code>Traffic_Mode = CFS</code> and <code>Booking_Group = Single Booking</code> as defaults.</p>
         <p><strong>Booking_Group</strong> controls how POs are consolidated into bookings: <em>Single Booking</em> = one VBKREQ per PO; <em>Multiple POs-BK001…BK025</em> = all POs sharing the same code are merged into one VBKREQ; <em>Multiple</em> = all POs in the upload combined into a single VBKREQ.</p>
         <p><strong>Factory_ID 9999 (Dummy Factory):</strong> If a real factory code is not yet known, use <code>9999</code>. Address validation is skipped for this code — the VBKREQ will be generated without a factory address.</p>
-        <p><strong>Stage 2 — Carrier Feed:</strong> The DavisTurner carrier ASN XML is fetched automatically from Azure Blob Storage keyed on the PO numbers from the supplier sheet, or uploaded manually. If no carrier ASN is found for any PO the pipeline stops at this stage — a retry or manual upload is required. The feed provides the ASN ID, supplier codes, shipping point, FC destination, country of origin, and line-level SKU quantities.</p>
-        <p><strong>Stage 3 — Master Workbook:</strong> Supplier and carrier data are merged row-by-row (matched on PO + SKU). A MASTER sheet is produced. SKUs in the supplier template but absent from the carrier feed are flagged as warnings. The workbook is downloadable as an audit trail.</p>
-        <p><strong>Stage 4 — VBKREQ XML:</strong> The MASTER rows are grouped per <code>Booking_Group</code> and structured into the E2open VBKREQ schema. The booking reference (<code>VB-XXXXX</code>) is shown in the PO → VBKREQ Reference Map after generation. The XML filename follows the pattern <code>DAVIESTN_E2ASOS_VBKREQ_1.0_&lt;timestamp&gt;&lt;ctrl&gt;.xml</code>.</p>
-        <p><strong>Stage 5 — SFTP upload:</strong> All generated XMLs are pushed to the E2open SFTP server in one batch. Bookings are reflected in E2open TA against the ASN shipments and DavisTurner receives the booking request through E2open.</p>
+        <p><strong>Step 2 — Booking Pipeline (single button):</strong> Step 2 is always visible but locked/dimmed until Step 1 completes successfully. Select Purpose Code (13 = New Submission, 15 = Re-Submission) then click <strong>⚡ Build VB &amp; Upload to SFTP</strong>. All four stages (Fetch ASN → Build → Generate → Upload) run automatically and results appear in a single table: PO | ASN Ref(s) | VB Ref | VBKREQ File download. A tagged supplier template with prefilled booking refs is also available for download per result row.</p>
+        <p><strong>Recent Booking History:</strong> The collapsible 🕑 panel below Step 2 shows all VBKREQs generated in the last 3 days, loaded automatically after each pipeline run. Click to expand.</p>
+        <p><strong>Cancel Booking (standalone):</strong> Enter one or more PO numbers or VB Refs (e.g. <code>500034236929</code> or <code>VB-1000000025</code>) in the Cancel Booking card at the bottom. Click <strong>Look Up Existing Bookings</strong> to verify the records exist in the generation log and confirm ✅ Ready to cancel status. Then click <strong>Cancel &amp; Upload to SFTP</strong> — the system builds a VBKREQ with <code>PurposeCd=01</code>, reuses the original VB Ref, injects <code>DateTypeCd=177</code> (cancellation status date), and uploads. No supplier template re-upload is required.</p>
+        <div class="rg-note">⚠ <strong>Legacy bookings:</strong> Bookings created before the current version of the tool will show <em>⚠ No stored data (re-run booking first)</em> in the lookup panel. To enable cancellation for these, re-run the pipeline with the original supplier template once to refresh the stored master row data in the generation log.</div>
       </div>
 
       <!-- Legend -->
@@ -738,7 +769,7 @@
           <tr><td><code>XMLTransmission @Sender</code></td><td><code>DAVIESTN</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded to DT. ⚠ Intentionally set as Sender — E2open SFTP rejects the message if E2open (<code>E2ASOS</code>) is placed as Sender and DavisTurner as Receiver.</td></tr>
           <tr><td><code>XMLTransmission @Receiver</code></td><td><code>E2ASOS</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded to E2open. ⚠ Intentionally set as Receiver — see Sender note above.</td></tr>
           <tr><td><code>XMLTransmission @Timestamp</code></td><td>Current date/time at generation</td><td><span class="src-badge src-system">System Generated</span></td><td>Format: YYYYMMDD HH:MM:SS</td></tr>
-          <tr><td><code>BpMessage @PurposeCd</code></td><td>13 / 15 / 01</td><td><span class="src-badge src-ui">User Selection (UI)</span></td><td>13=New, 15=Re-Submission, 01=Cancellation</td></tr>
+          <tr><td><code>BpMessage @PurposeCd</code></td><td>13 / 15 / 01</td><td><span class="src-badge src-ui">User Selection (UI)</span></td><td><strong>13</strong> = New Submission (Step 2 pipeline); <strong>15</strong> = Re-Submission — increments version (Step 2 pipeline); <strong>01</strong> = Cancellation — generated only via the Cancel Booking card, never from Step 2</td></tr>
         </tbody>
       </table></div>
 
@@ -747,7 +778,7 @@
       <div class="rg-table-wrap"><table class="rg-table">
         <thead><tr><th>Sheet</th><th>Rows</th><th>Key Columns</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><strong>PO Header</strong></td><td>One row per PO</td><td>PO_Number, Cargo_Ready_Planned_Collection_Date, Carrier_Booking_Request_Date, Traffic_Mode, Mode_Of_Transport, Booking_Group, Factory_ID, Pack_Type, Collection_Type, Hazardous, Factory auto-fill cols, Collection_Time, Remarks</td><td>Mandatory (pink), Defaulted (green), Auto-fill (blue), Optional (grey)</td></tr>
+          <tr><td><strong>PO Header</strong></td><td>One row per PO</td><td>PO_Number, Cargo_Ready_Planned_Collection_Date, Carrier_Booking_Request_Date, Traffic_Mode, Mode_Of_Transport, Booking_Group, Factory_ID, Pack_Type, Collection_Type, Hazardous, Factory auto-fill cols, Collection_Time, Remarks</td><td>Mandatory (pink), Defaulted (green), Auto-fill (blue), Optional (grey). Pre-filled defaults: Traffic_Mode=CFS, Booking_Group=Single Booking, Pack_Type=Bulk Flat</td></tr>
           <tr><td><strong>PO Lines</strong></td><td>One row per SKU</td><td>PO_Number, SKU, Booking_Qty, No_of_Cartons, Unit_Weight_KG, Carton_Type, Carton dimensions &amp; weights</td><td>Must have matching PO_Number to rows in PO Header</td></tr>
           <tr><td><strong>FACTORY_LOOKUP</strong></td><td>Factory reference</td><td>Factory_ID, Factory_Name, address fields</td><td>Select Factory_ID in PO Header — name &amp; address auto-fill via VLOOKUP</td></tr>
         </tbody>
@@ -770,7 +801,7 @@
         <thead><tr><th>XML Element</th><th>Field in Master / Value</th><th>Source</th><th>Notes</th></tr></thead>
         <tbody>
           <tr><td><code>&lt;Mode&gt;</code></td><td><code>Mode_Of_Transport</code> → mapped to E2 code</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td><strong>Mandatory — defaulted to Road.</strong> Sea→10, Air→40, Road→30, Rail→50, Eco→70</td></tr>
-          <tr><td><code>Reference QY</code> — Traffic Mode</td><td><code>Traffic_Mode</code> (CFS / CY)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Mandatory. CFS = container freight station; CY = container yard</td></tr>
+          <tr><td><code>Reference QY</code> — Traffic Mode</td><td><code>Traffic_Mode</code> (CFS / CY)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Mandatory. Default: CFS. CFS = container freight station; CY = container yard</td></tr>
           <tr><td><code>Reference 4B</code> — Country of Origin</td><td><code>Country_Of_Origin</code> (from <code>&lt;CountryOfOrigin&gt;</code>)</td><td><span class="src-badge src-carrier">Carrier Feed (ASN XML)</span></td><td>Line-level; falls back to Factory_CountryCd if absent from carrier feed</td></tr>
           <tr><td><code>Reference BH</code> — Hazardous</td><td><code>Hazardous</code> → Y / N</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>N/A and blank → N; any hazard type string → Y. Defaulted to N/A.</td></tr>
           <tr><td><code>Reference CC</code> — Cargo Category</td><td><code>Green</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded — ASOS standard</td></tr>
@@ -814,6 +845,7 @@
           <tr><td><code>Date 065</code> — Expected Delivery</td><td><code>Expected_Delivery_Date</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional — only emitted if provided</td></tr>
           <tr><td><code>Date OSBK</code> — Booking Confirmed</td><td>Current timestamp at generation</td><td><span class="src-badge src-system">System Generated</span></td><td>System time when XML is built</td></tr>
           <tr><td><code>Date SBK</code></td><td>Current timestamp at generation</td><td><span class="src-badge src-system">System Generated</span></td><td>Same as OSBK</td></tr>
+          <tr style="background:#FFF5F5"><td><code>Date 177</code> — Cancellation Date</td><td>Current timestamp at cancellation</td><td><span class="src-badge src-system">System Generated</span></td><td><strong>Only emitted for PurposeCd=01 (Cancel Booking).</strong> Injected immediately after the SBK status date. Signals the effective cancellation datetime to E2open.</td></tr>
         </tbody>
       </table></div>
 
@@ -822,7 +854,7 @@
       <div class="rg-table-wrap"><table class="rg-table">
         <thead><tr><th>XML Element</th><th>Field / Value</th><th>Source</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><code>Document @Key</code></td><td><code>Booking_Ref</code> (e.g. VB-1000000001)</td><td><span class="src-badge src-system">System Generated</span></td><td>Auto-incrementing booking reference</td></tr>
+          <tr><td><code>Document @Key</code></td><td><code>Booking_Ref</code> (e.g. VB-1000000001)</td><td><span class="src-badge src-system">System Generated</span></td><td>Auto-incrementing booking reference. On cancellation (PurposeCd=01) the <em>original</em> VB Ref from the generation log is reused — no new ref is created.</td></tr>
           <tr><td><code>Reference ACE</code> — Booking Ref</td><td><code>Booking_Ref</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Same as Document Key</td></tr>
           <tr><td><code>Reference V0</code> — Version</td><td>1.0 (new) / increments on PurposeCd 15</td><td><span class="src-badge src-system">System Generated</span></td><td>Version history stored in ctrl-counter.json</td></tr>
           <tr><td><code>Measure N</code> — Net Weight (KG)</td><td>Sum of <code>Unit_Weight_KG</code> per line</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Summed per ASN</td></tr>
@@ -831,6 +863,18 @@
           <tr><td><code>Measure QUR</code> — Carton Qty</td><td>Sum of <code>No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Summed per ASN</td></tr>
           <tr><td><code>Measure BKQ</code> — Booking Qty (units)</td><td>Sum of <code>Booking_Qty</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Summed per ASN</td></tr>
           <tr><td><code>Order @Key / OrderID</code></td><td><code>PO_Number</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>One Order element per PO within the ASN</td></tr>
+        </tbody>
+      </table></div>
+
+      <!-- Section: Cancel Booking -->
+      <div class="rg-section-title" style="background:linear-gradient(90deg,#7F1D1D,#991B1B);color:#fff">✕ Cancel Booking — Standalone Cancellation Flow</div>
+      <div class="rg-table-wrap"><table class="rg-table">
+        <thead><tr><th>Step</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td><strong>1 · Enter input</strong></td><td>Type one or more PO numbers (e.g. <code>500034236929</code>) or VB Refs (e.g. <code>VB-1000000025</code>) — comma or newline separated. Both types can be mixed in one lookup.</td></tr>
+          <tr><td><strong>2 · Look Up</strong></td><td>Fetches matching entries from the generation log (<code>bible/generation-log.json</code>). Displays: Input | PO Number(s) | VB Ref | Booked On. A ✅ <em>Ready to cancel</em> badge confirms stored master row data is present; ⚠ <em>No stored data</em> means the booking predates the current version — re-run the pipeline first to refresh.</td></tr>
+          <tr><td><strong>3 · Cancel &amp; Upload</strong></td><td>Builds a VBKREQ XML with <code>PurposeCd=01</code>, reuses the original <code>Booking_Ref</code> (VB-XXXXX) from the log, injects <code>DateTypeCd=177</code> (cancellation status date) immediately after the SBK date, and uploads to E2open SFTP. No supplier template re-upload required.</td></tr>
+          <tr><td><strong>Generation Log</strong></td><td>Every successful pipeline run saves the full master row data alongside the VB Ref and timestamp in <code>bible/generation-log.json</code>. This makes cancellation fully self-contained — the Cancel Booking card is independent of the current session state.</td></tr>
         </tbody>
       </table></div>
 
@@ -846,7 +890,7 @@
           <tr><td><code>Attribute UA</code> — EAN/Barcode</td><td><code>EAN_Barcode</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional; also populated from carrier feed if available</td></tr>
           <tr><td><code>Attribute CL</code> — Colour</td><td><code>Colour_Code</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional</td></tr>
           <tr><td><code>Attribute IZ</code> — Size</td><td><code>Size_Code</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional</td></tr>
-          <tr><td><code>Reference PAC</code> — Pack Type</td><td><code>Pack_Type</code> (Flat / Bulk Flat / Hanging)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Default: Bulk Flat</td></tr>
+          <tr><td><code>Reference PAC</code> — Pack Type</td><td><code>Pack_Type</code> (Flat / Bulk Flat / Hanging)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Default: <strong>Bulk Flat</strong></td></tr>
           <tr><td><code>Reference PT</code> — Product Style</td><td><code>Product_Style</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Style code from carrier line</td></tr>
           <tr><td><code>Reference HZ</code> — Hazardous</td><td><code>Hazardous</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Full hazard type string per line</td></tr>
           <tr><td><code>Reference DSC</code> — Description</td><td><code>Description</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Item description from carrier</td></tr>
