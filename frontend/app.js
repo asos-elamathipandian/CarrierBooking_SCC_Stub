@@ -20,14 +20,9 @@ const supplierFileInput  = document.getElementById('supplierFileInput');
 const dropZone           = document.getElementById('dropZone');
 const dropZoneText       = document.getElementById('dropZoneText');
 const btnParseSupplier   = document.getElementById('btnParseSupplier');
-const btnFetchFeeds      = document.getElementById('btnFetchFeeds');
-const btnGenerateVbkreq  = document.getElementById('btnGenerateVbkreq');
+const btnRunPipeline     = document.getElementById('btnRunPipeline');
 const xmlPreviewWrap     = document.getElementById('xmlPreviewWrap');
 const refsPreview        = document.getElementById('refsPreview');
-
-// Pipeline feed tab elements
-const asnFeedInput   = document.getElementById('asnFeedInput');
-const asnDropZone    = document.getElementById('asnDropZone');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function setStatus(step, type, html) {
@@ -187,8 +182,9 @@ btnParseSupplier.addEventListener('click', async () => {
     document.getElementById('pipelineCard').style.display = '';
     const badge = document.getElementById('badgePipeline');
     if (badge) badge.className = 'step-badge active';
-    psSetState(1, 'active');
-    if (btnFetchFeeds) btnFetchFeeds.disabled = false;
+    if (btnRunPipeline) btnRunPipeline.disabled = false;
+    wireDateClear('overrideCargoReady',    'clearCargoReady');
+    wireDateClear('overrideBookingReqDate','clearBookingReqDate');
   } catch (err) {
     setStatus(1, 'error', `❌ ${err.message}`);
   } finally {
@@ -197,152 +193,14 @@ btnParseSupplier.addEventListener('click', async () => {
   }
 });
 
-// ── Pipeline: Feed tab switch (exposed for onclick in HTML) ──────────────────
-function switchFeedTab(tab) {
-  document.getElementById('tabBtnUpload').classList.toggle('active', tab === 'upload');
-  document.getElementById('tabBtnBlob').classList.toggle('active', tab === 'blob');
-  document.getElementById('panelUploadFeeds').classList.toggle('active', tab === 'upload');
-  document.getElementById('panelFetchBlob').classList.toggle('active', tab === 'blob');
-}
-window.switchFeedTab = switchFeedTab;
-
-// Carrier ASN XML drop zone (upload tab in pipeline stage 1)
-if (asnDropZone) {
-  asnDropZone.addEventListener('click', () => asnFeedInput.click());
-  asnDropZone.addEventListener('dragover', e => { e.preventDefault(); asnDropZone.classList.add('drag-over'); });
-  asnDropZone.addEventListener('dragleave', () => asnDropZone.classList.remove('drag-over'));
-  asnDropZone.addEventListener('drop', e => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file && /\.xml$/i.test(file.name)) {
-      const dt = new DataTransfer(); dt.items.add(file); asnFeedInput.files = dt.files;
-      asnDropZone.classList.add('has-file');
-      document.getElementById('asnDropZoneText').textContent = '✓ ' + file.name;
-    }
-  });
-}
-if (asnFeedInput) {
-  asnFeedInput.addEventListener('change', () => {
-    const file = asnFeedInput.files[0];
-    if (file) { asnDropZone.classList.add('has-file'); document.getElementById('asnDropZoneText').textContent = '✓ ' + file.name; }
-  });
-}
-
-// ── Pipeline Stage 1: Fetch Carrier Feeds ────────────────────────────────────
-if (btnFetchFeeds) {
-  btnFetchFeeds.addEventListener('click', async () => {
-    psSetState(1, 'active');
-    psSetInline(1, '⏳ Fetching…');
-    btnFetchFeeds.disabled = true;
-    btnFetchFeeds.innerHTML = '<span class="spinner"></span> Fetching…';
-
-    try {
-      let data;
-      const isUploadTab = document.getElementById('tabBtnUpload')?.classList.contains('active');
-
-      if (isUploadTab && asnFeedInput.files[0]) {
-        const fd = new FormData();
-        fd.append('asnFeedFile', asnFeedInput.files[0]);
-        const res = await fetch(`${API}/upload-feeds`, { method: 'POST', body: fd });
-        data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Unknown error');
-      } else {
-        const res = await fetch(`${API}/fetch-feeds`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ poRefs: state.poRefs, asnRefs: [] })
-        });
-        data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Unknown error');
-      }
-
-      state.feedsFetched = true;
-      const carrierAsnFiles = data.carrierAsnFiles || [];
-
-      // Build per-PO ASN status grid
-      const foundPOs = new Set(carrierAsnFiles.map(f => f.poRef).filter(Boolean));
-      const asnGridRows = state.poRefs.map(po => {
-        const found = foundPOs.has(po);
-        return `<div class="asn-status-row ${found ? 'found' : 'not-found'}">
-          ${found ? '✅' : '⚠️'} <strong>PO ${po}</strong> — ${found ? 'ASN found' : 'No ASN found in carrier feed'}
-        </div>`;
-      }).join('');
-
-      const notFoundCount = state.poRefs.filter(po => !foundPOs.has(po)).length;
-      const summaryLine = carrierAsnFiles.length === 0
-        ? `<span style="color:#784212">⚠️ No carrier ASN files found for any PO.</span>`
-        : `✅ <strong>${carrierAsnFiles.length}</strong> carrier ASN file(s) fetched.` +
-          (notFoundCount ? ` &nbsp;<span style="color:#784212">⚠️ ${notFoundCount} PO(s) have no ASN.</span>` : '');
-
-      psSetResult('psFetchResult', `
-        <div style="margin-bottom:8px;font-size:13px">${summaryLine}</div>
-        <div class="asn-status-grid">${asnGridRows}</div>
-      `);
-      psSetInline(1, carrierAsnFiles.length > 0 ? '✅ Done' : '⚠️ No ASNs');
-      psSetState(1, carrierAsnFiles.length > 0 ? 'done' : 'error');
-
-      if (carrierAsnFiles.length === 0) {
-        // No feeds found — block progression, allow retry
-        btnFetchFeeds.innerHTML = '📡 Retry Fetch ASN';
-        btnFetchFeeds.disabled = false;
-        return;
-      }
-
-      // Auto-run Stage 2 (Build)
-      pipelineBuild();
-
-    } catch (err) {
-      psSetInline(1, '❌ Error');
-      psSetState(1, 'error');
-      psSetResult('psFetchResult', `<div style="color:#922B21;font-size:13px">❌ ${err.message}</div>`);
-    btnFetchFeeds.innerHTML = '📡 Retry Fetch ASN';
-      btnFetchFeeds.disabled = false;
-    }
-  });
-}
-
-// ── Pipeline Build (silent — runs automatically after fetch) ─────────────────
-async function pipelineBuild() {
-  try {
-    const res  = await fetch(`${API}/build-bible`, { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Unknown error');
-
-    state.biblBuilt = true;
-
-    // Collect warnings to display at top of Generate stage
-    let warningsHtml = '';
-    if (data.warnings?.length) {
-      warningsHtml += `<div style="margin-bottom:10px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">
-        ⚠️ <strong>${data.warnings.length} SKU(s) excluded</strong> — in supplier template but not on carrier ASN:<br/>
-        ${data.warnings.map(w => `&nbsp;• ${w}`).join('<br/>')}
-      </div>`;
-    }
-    if (data.extraSkuWarnings?.length) {
-      warningsHtml += `<div style="margin-bottom:10px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">
-        ⚠️ <strong>${data.extraSkuWarnings.length} extra carrier ASN SKU(s)</strong> not in supplier template (Booking_Qty=0 — review):<br/>
-        ${data.extraSkuWarnings.map(w => `&nbsp;• ${w}`).join('<br/>')}
-      </div>`;
-    }
-    psSetResult('psBuildWarnings', warningsHtml);
-
-    // Open Generate stage
-    pipelineOpenGenerate();
-
-  } catch (err) {
-    psSetInline(1, '❌ Build failed');
-    psSetResult('psFetchResult', `<div style="color:#922B21;font-size:13px;margin-top:8px">❌ Build failed: ${err.message}</div>`);
-  }
-}
-
-// ── Pipeline Stage 3: Open Generate panel (user approves, configures, clicks Generate) ──
-function pipelineOpenGenerate() {
-  psSetState(3, 'active');
-  psShowBody(3);
-  psSetInline(3, 'Configure & generate…');
-  document.getElementById('psBody3').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  wireDateClear('overrideCargoReady',    'clearCargoReady');
-  wireDateClear('overrideBookingReqDate','clearBookingReqDate');
+// ── Pipeline: single Run button ───────────────────────────────────────────────
+function progSet(n, state, text) {
+  const el = document.getElementById('prog' + n);
+  if (!el) return;
+  const colours = { pending: '#94a3b8', active: '#1D4ED8', done: '#15803D', error: '#B91C1C' };
+  el.style.color      = colours[state] || colours.pending;
+  el.style.fontWeight = state === 'done' || state === 'active' ? '700' : 'normal';
+  if (text) el.textContent = text;
 }
 
 function wireDateClear(inputId, clearBtnId) {
@@ -359,98 +217,134 @@ function clearDateField(inputId, clearBtnId) {
 }
 window.clearDateField = clearDateField;
 
-if (btnGenerateVbkreq) {
-  btnGenerateVbkreq.addEventListener('click', async () => {
-    setLoading(btnGenerateVbkreq, true);
-    const purposeCd    = document.querySelector('input[name="purposeCd"]:checked')?.value || '13';
-    const purposeLabel = { '13': 'Request', '15': 'Re-Submission', '01': 'Cancellation' }[purposeCd] || purposeCd;
-    psSetInline(3, '⏳ Generating…');
+if (btnRunPipeline) {
+  btnRunPipeline.addEventListener('click', async () => {
+    setLoading(btnRunPipeline, true);
+    psSetResult('psFetchResult', '');
+    psSetResult('psBuildWarnings', '');
     psSetResult('psGenResult', '');
+    psSetResult('psUploadResult', '');
+    document.getElementById('generationsContainer').innerHTML = '';
+    if (xmlPreviewWrap) xmlPreviewWrap.classList.remove('visible');
 
+    const progress = document.getElementById('pipelineProgress');
+    if (progress) progress.style.display = '';
+    progSet(1, 'pending', '📡 Fetch ASN');
+    progSet(2, 'pending', '🗂 Build');
+    progSet(3, 'pending', '⚡ Generate');
+    progSet(4, 'pending', '🚀 Upload');
+
+    const purposeCd    = document.querySelector('input[name="purposeCd"]:checked')?.value || '13';
+    const purposeLabel = { '13': 'Submission', '15': 'Re-Submission', '01': 'Cancellation' }[purposeCd] || purposeCd;
     const overrideCargoReady     = document.getElementById('overrideCargoReady')?.value    || '';
     const overrideBookingReqDate = document.getElementById('overrideBookingReqDate')?.value || '';
 
     try {
-      const res  = await fetch(`${API}/generate-vbkreq`, {
+      // ── 1. Fetch ASN ──────────────────────────────────────────────────────
+      progSet(1, 'active', '📡 Fetching ASN…');
+      const fetchRes  = await fetch(`${API}/fetch-feeds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ poRefs: state.poRefs, asnRefs: [] })
+      });
+      const fetchData = await fetchRes.json();
+      if (!fetchRes.ok) throw new Error(fetchData.error || 'Fetch failed');
+
+      const carrierAsnFiles = fetchData.carrierAsnFiles || [];
+      const foundPOs        = new Set(carrierAsnFiles.map(f => f.poRef).filter(Boolean));
+      const notFoundCount   = state.poRefs.filter(po => !foundPOs.has(po)).length;
+      const asnGridRows     = state.poRefs.map(po => {
+        const found = foundPOs.has(po);
+        return `<div class="asn-status-row ${found ? 'found' : 'not-found'}">${found ? '✅' : '⚠️'} <strong>PO ${po}</strong> — ${found ? 'ASN found' : 'No ASN found'}</div>`;
+      }).join('');
+      psSetResult('psFetchResult', `<div style="font-size:12px;margin-bottom:6px">✅ <strong>${carrierAsnFiles.length}</strong> carrier ASN file(s) fetched${notFoundCount ? ` &nbsp;⚠️ ${notFoundCount} PO(s) with no ASN` : ''}.</div><div class="asn-status-grid">${asnGridRows}</div>`);
+
+      if (carrierAsnFiles.length === 0) {
+        progSet(1, 'error', '📡 No ASN found');
+        throw new Error('No carrier ASN files found for any PO. Cannot proceed.');
+      }
+      progSet(1, 'done', '📡 ASN ✅');
+      state.feedsFetched = true;
+
+      // ── 2. Build ──────────────────────────────────────────────────────────
+      progSet(2, 'active', '🗂 Building…');
+      const buildRes  = await fetch(`${API}/build-bible`, { method: 'POST' });
+      const buildData = await buildRes.json();
+      if (!buildRes.ok) throw new Error(buildData.error || 'Build failed');
+      state.biblBuilt = true;
+      let warningsHtml = '';
+      if (buildData.warnings?.length) {
+        warningsHtml += `<div style="margin-bottom:8px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">⚠️ <strong>${buildData.warnings.length} SKU(s) excluded</strong> — not on carrier ASN:<br/>${buildData.warnings.map(w => `&nbsp;• ${w}`).join('<br/>')}</div>`;
+      }
+      if (buildData.extraSkuWarnings?.length) {
+        warningsHtml += `<div style="margin-bottom:8px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">⚠️ <strong>${buildData.extraSkuWarnings.length} extra carrier ASN SKU(s)</strong> not in supplier template (Booking_Qty=0):<br/>${buildData.extraSkuWarnings.map(w => `&nbsp;• ${w}`).join('<br/>')}</div>`;
+      }
+      psSetResult('psBuildWarnings', warningsHtml);
+      progSet(2, 'done', '🗂 Built ✅');
+
+      // ── 3. Generate ───────────────────────────────────────────────────────
+      progSet(3, 'active', '⚡ Generating…');
+      const genRes  = await fetch(`${API}/generate-vbkreq`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ purposeCd, overrideCargoReady, overrideBookingReqDate })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Unknown error');
+      const genData = await genRes.json();
+      if (!genRes.ok) throw new Error(genData.error || 'Generate failed');
 
-      state.generations  = data.generations || [];
+      state.generations  = genData.generations || [];
       state.lastXml      = state.generations[0]?.xml      || null;
       state.lastFilename = state.generations[0]?.filename || null;
-
       const count = state.generations.length;
-      const dateNote = [];
-      if (overrideCargoReady)     dateNote.push(`Cargo Ready: <strong>${overrideCargoReady}</strong>`);
-      if (overrideBookingReqDate) dateNote.push(`Booking Req: <strong>${overrideBookingReqDate}</strong>`);
-      const dateStr = dateNote.length ? ` &nbsp;|&nbsp; 📅 ${dateNote.join(' &nbsp;|&nbsp; ')}` : '';
-      psSetResult('psGenResult', `<div style="font-size:13px;color:#1E8449">✅ <strong>${count}</strong> VBKREQ${count > 1 ? 's' : ''} generated — PurposeCd: ${purposeCd} (${purposeLabel})${dateStr}</div>`);
-      psSetInline(3, `✅ ${count} generated`);
-      psSetState(3, 'done');
-
+      psSetResult('psGenResult', `<div style="font-size:13px;color:#1E8449">✅ <strong>${count}</strong> VBKREQ${count > 1 ? 's' : ''} generated — ${purposeLabel}</div>`);
       renderGenerations(state.generations);
       if (xmlPreviewWrap) xmlPreviewWrap.classList.add('visible');
+      progSet(3, 'done', '⚡ Generated ✅');
 
-      // Show Upload approval button
-      psShowProceed('psProceed3Wrap');
-      document.getElementById('btnProceedUpload').addEventListener('click', pipelineUpload, { once: true });
-      showTaggedTemplateDownload(data.generations || []);
+      // ── 4. Upload ─────────────────────────────────────────────────────────
+      progSet(4, 'active', '🚀 Uploading…');
+      psSetResult('psUploadResult', `<span style="font-size:12px;color:#784212">⏳ Uploading ${count} VBKREQ(s)…</span>`);
+      const results = [];
+      for (let i = 0; i < state.generations.length; i++) {
+        const gen = state.generations[i];
+        try {
+          const upRes  = await fetch(`${API}/upload-sftp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml })
+          });
+          const upData = await upRes.json();
+          if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
+          results.push({ filename: gen.filename, ok: true, remotePath: upData.remotePath, localMode: upData.localMode });
+          const btn = document.querySelector(`.gen-upload-btn[data-idx="${i}"]`);
+          if (btn) { btn.textContent = '✅ Uploaded'; btn.style.background = '#27AE60'; btn.disabled = true; }
+        } catch (err) {
+          results.push({ filename: gen.filename, ok: false, error: err.message });
+        }
+      }
+      const ok   = results.filter(r => r.ok);
+      const fail = results.filter(r => !r.ok);
+      let upHtml = `<div style="font-size:13px">✅ <strong>${ok.length}</strong> of <strong>${results.length}</strong> uploaded to SFTP.</div>`;
+      if (ok.length)   upHtml += '<div style="font-size:12px;margin-top:4px">' + ok.map(r => `&nbsp;• ${r.filename} → ${r.localMode ? 'local output/' : r.remotePath}`).join('<br/>') + '</div>';
+      if (fail.length) upHtml += `<div style="font-size:12px;color:#922B21;margin-top:4px">❌ ${fail.length} failed:<br/>` + fail.map(r => `&nbsp;• ${r.filename}: ${r.error}`).join('<br/>') + '</div>';
+      psSetResult('psUploadResult', upHtml);
+      progSet(4, fail.length === 0 ? 'done' : 'error', fail.length === 0 ? '🚀 Uploaded ✅' : '🚀 Upload ⚠️');
+
+      const badge = document.getElementById('badgePipeline');
+      if (badge) { badge.className = 'step-badge ' + (fail.length === 0 ? 'done' : 'active'); if (fail.length === 0) badge.textContent = '✓'; }
+      showTaggedTemplateDownload(state.generations || []);
+      loadHistory();
+
     } catch (err) {
-      psSetInline(3, '❌ Error');
-      psSetState(3, 'error');
-      psSetResult('psGenResult', `<div style="color:#922B21;font-size:13px">❌ ${err.message}</div>`);
+      psSetResult('psFetchResult', (document.getElementById('psFetchResult').innerHTML || '') +
+        `<div style="color:#922B21;font-size:13px;margin-top:6px">❌ ${err.message}</div>`);
     } finally {
-      setLoading(btnGenerateVbkreq, false);
+      setLoading(btnRunPipeline, false);
     }
   });
 }
 
-// ── Pipeline Stage 4: Upload to SFTP (user approves) ─────────────────────────
-async function pipelineUpload() {
-  if (!state.generations || state.generations.length === 0) return;
-  psSetState(4, 'active');
-  psShowBody(4);
-  psSetInline(4, '⏳ Uploading…');
-  psSetResult('psUploadResult', `<span style="font-size:13px;color:#784212">⏳ Uploading ${state.generations.length} VBKREQ(s) to E2open SFTP…</span>`);
-
-  const results = [];
-  for (let i = 0; i < state.generations.length; i++) {
-    const gen = state.generations[i];
-    try {
-      const res = await fetch(`${API}/upload-sftp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
-      results.push({ filename: gen.filename, ok: true, remotePath: data.remotePath, localMode: data.localMode });
-      const btn = document.querySelector(`.gen-upload-btn[data-idx="${i}"]`);
-      if (btn) { btn.textContent = '✅ Uploaded'; btn.style.background = '#27AE60'; btn.disabled = true; }
-    } catch (err) {
-      results.push({ filename: gen.filename, ok: false, error: err.message });
-    }
-  }
-
-  const ok   = results.filter(r => r.ok);
-  const fail = results.filter(r => !r.ok);
-  let html = `<div style="font-size:13px">✅ <strong>${ok.length}</strong> of <strong>${results.length}</strong> uploaded to SFTP.</div>`;
-  if (ok.length)   html += '<div style="font-size:12px;margin-top:4px">' + ok.map(r => `&nbsp;• ${r.filename} → ${r.localMode ? 'local output/' : r.remotePath}`).join('<br/>') + '</div>';
-  if (fail.length) html += `<div style="font-size:12px;color:#922B21;margin-top:4px">❌ ${fail.length} failed:<br/>` + fail.map(r => `&nbsp;• ${r.filename}: ${r.error}`).join('<br/>') + '</div>';
-
-  psSetResult('psUploadResult', html);
-  psSetInline(4, fail.length === 0 ? '✅ Done' : `⚠️ ${fail.length} failed`);
-  psSetState(4, fail.length === 0 ? 'done' : 'error');
-
-  const badge = document.getElementById('badgePipeline');
-  if (badge) { badge.className = 'step-badge ' + (fail.length === 0 ? 'done' : 'active'); if (fail.length === 0) badge.textContent = '✓'; }
-  showTaggedTemplateDownload(state.generations || []);
-  loadHistory(); // refresh history table after upload
-}(poCount, bookingCount, skuRowCount) {
+function renderSupplierSummary(poCount, bookingCount, skuRowCount) {
   const panel = document.getElementById('supplierParsePanel');
   if (!panel) return;
   const skuNote = skuRowCount === 0
