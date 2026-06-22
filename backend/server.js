@@ -734,6 +734,25 @@ app.get('/api/lookup-vbref', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// GET /api/health — simple liveness check
+// ─────────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true });
+});
+
+// ─────────────────────────────────────────────
+// GET /api/download-template
+// Serve the blank supplier Excel template
+// ─────────────────────────────────────────────
+app.get('/api/download-template', (req, res) => {
+  const templatePath = path.join(__dirname, '..', 'samples', 'SupplierInput_template.xlsx');
+  if (!fs.existsSync(templatePath)) {
+    return res.status(404).json({ error: 'Template not found. Run: node backend/build-supplier-template.js' });
+  }
+  res.download(templatePath, 'SupplierInput_template.xlsx');
+});
+
+// ─────────────────────────────────────────────
 // Serve frontend for all other routes
 // ─────────────────────────────────────────────
 app.get('*', (req, res) => {

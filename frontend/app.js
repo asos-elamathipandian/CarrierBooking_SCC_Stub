@@ -184,11 +184,17 @@ btnParseSupplier.addEventListener('click', async () => {
     if (badge) badge.className = 'step-badge active';
     if (btnRunPipeline) btnRunPipeline.disabled = false;
   } catch (err) {
-    setStatus(1, 'error', `❌ ${err.message}`);
-  } finally {
+    const msg = err.message === 'Failed to fetch'
+      ? '❌ Cannot reach the server. Please ensure the server is running (<code>npm start</code>) then try again.'
+      : `❌ ${err.message}`;
+    setStatus(1, 'error', msg);
+    // Re-enable button so user can retry
     setLoading(btnParseSupplier, false);
-    btnParseSupplier.disabled = true;
+    btnParseSupplier.disabled = false;
+    return;
   }
+  setLoading(btnParseSupplier, false);
+  btnParseSupplier.disabled = true;
 });
 
 // ── Pipeline: single Run button ───────────────────────────────────────────────
