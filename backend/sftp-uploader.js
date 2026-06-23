@@ -80,6 +80,9 @@ async function upload(filename, xmlContent) {
     const buffer = Buffer.from(xmlContent, 'utf8');
     await sftp.put(buffer, remotePath);
 
+    // Always save a local copy so history download links work
+    saveLocally(filename, xmlContent);
+
     return {
       remotePath,
       filename,

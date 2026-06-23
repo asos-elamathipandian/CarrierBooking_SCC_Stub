@@ -256,17 +256,26 @@ async function build(supplierData, feedData) {
   // Track which (poNum, sku) combos were covered by supplier rows
   const coveredKeys = new Set(masterRows.map(r => `${r.PO_Number}_${r.SKU}`));
 
+  // Build a PO-level header lookup from already-built master rows so that
+  // carrier-only SKUs inherit the same Booking_Group, dates, and factory data
+  // as the other rows for the same PO (fixes mis-grouping of BK002, BK008 etc.)
+  const poHeaderByPO = {};
+  for (const r of masterRows) {
+    if (!poHeaderByPO[r.PO_Number]) poHeaderByPO[r.PO_Number] = r;
+  }
+
   if (hasCarrierData) {
     for (const [poNum, skuMap] of Object.entries(carrierAsnIndex)) {
       const po = poByOrderId[poNum];
+      const poHdr = poHeaderByPO[poNum] || {};
       for (const [sku, carrierLine] of Object.entries(skuMap)) {
         if (coveredKeys.has(`${poNum}_${sku}`)) continue; // already in master rows
         // SKU is on carrier feed but supplier didn't include it — add with Booking_Qty=0
         const poLine = poByLinesku[`${poNum}_${sku}`];
         const ct = CARTON_TYPES['BDCM1'];
         masterRows.push({
-          Booking_Ref:   '',
-          Booking_Group: '',
+          Booking_Ref:   poHdr.Booking_Ref   || '',
+          Booking_Group: poHdr.Booking_Group || '',
           PO_Number:     poNum,
           ASN_Ref:       carrierLine.asnId,
           _missingFromSupplier: true,   // flag for Excel highlighting
@@ -274,15 +283,15 @@ async function build(supplierData, feedData) {
           Supplier_Name:      carrierPoMeta[poNum]?.supplier     || '',
           Supplier_ID:        carrierPoMeta[poNum]?.supplierCode || '',
 
-          // Factory — not available (SKU missing from supplier template)
-          Factory_Name:       '',
-          Factory_ID:         '',
-          Factory_Street1:    '',
-          Factory_Street2:    '',
-          Factory_Street3:    '',
-          Factory_City:       '',
-          Factory_PostalCd:   '',
-          Factory_CountryCd:  '',
+          // Factory — inherit from supplier rows for this PO if available
+          Factory_Name:       poHdr.Factory_Name      || '',
+          Factory_ID:         poHdr.Factory_ID        || '',
+          Factory_Street1:    poHdr.Factory_Street1   || '',
+          Factory_Street2:    poHdr.Factory_Street2   || '',
+          Factory_Street3:    poHdr.Factory_Street3   || '',
+          Factory_City:       poHdr.Factory_City      || '',
+          Factory_PostalCd:   poHdr.Factory_PostalCd  || '',
+          Factory_CountryCd:  poHdr.Factory_CountryCd || '',
           Country_Of_Origin:   carrierLine.country || '',
 
           // FC — resolved from FC_MASTER by FinalDestination (TradePartner FD)
@@ -330,12 +339,12 @@ async function build(supplierData, feedData) {
           Net_Weight_KG:     0,
           Volume_M3:         0,
 
-          Pack_Type:       carrierLine.packFormat === 'H' ? 'Hanging' : 'Bulk Flat',
-          Collection_Type: 'Delivery',
-          Hazardous:       'N/A',
-          Traffic_Mode:    po?.lineItems?.[0]?.mode || '',
-          Cargo_Ready_Planned_Collection_Date: '',
-          Carrier_Booking_Request_Date:        '',
+          Pack_Type:       carrierLine.packFormat === 'H' ? 'Hanging' : (poHdr.Pack_Type || 'Bulk Flat'),
+          Collection_Type: poHdr.Collection_Type || 'Delivery',
+          Hazardous:       poHdr.Hazardous       || 'N/A',
+          Traffic_Mode:    poHdr.Traffic_Mode    || po?.lineItems?.[0]?.mode || '',
+          Cargo_Ready_Planned_Collection_Date: poHdr.Cargo_Ready_Planned_Collection_Date || '',
+          Carrier_Booking_Request_Date:        poHdr.Carrier_Booking_Request_Date        || '',
           Ship_Date:                           carrierLine.shipDate || '',
           Expected_Delivery_Date:              carrierLine.expectedDeliveryDate || '',
           ASN_Delivery_Date:                   '',

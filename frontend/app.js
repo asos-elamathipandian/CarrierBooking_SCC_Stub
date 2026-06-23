@@ -336,9 +336,22 @@ function renderCancelResult(generations, uploadResults) {
     </table>`);
 }
 
+const btnStopPipeline = document.getElementById('btnStopPipeline');
+let _pipelineAbort = null;
+
+if (btnStopPipeline) {
+  btnStopPipeline.addEventListener('click', () => {
+    if (_pipelineAbort) _pipelineAbort.abort();
+  });
+}
+
 if (btnRunPipeline) {
   btnRunPipeline.addEventListener('click', async () => {
+    _pipelineAbort = new AbortController();
+    const signal = _pipelineAbort.signal;
+
     setLoading(btnRunPipeline, true);
+    if (btnStopPipeline) btnStopPipeline.style.display = '';
     psSetResult('psFetchResult', '');
     psSetResult('psBuildWarnings', '');
     psSetResult('resultPanel', '');
@@ -351,13 +364,15 @@ if (btnRunPipeline) {
     progSet(4, 'pending', '🚀 Upload');
 
     const purposeCd = document.querySelector('input[name="purposeCd"]:checked')?.value || '13';
+    const pipelineStart = Date.now();
     try {
       // ── 1. Fetch ASN ──────────────────────────────────────────────────────
       progSet(1, 'active', '📡 Fetching ASN…');
       const fetchRes  = await fetch(`${API}/fetch-feeds`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ poRefs: state.poRefs, asnRefs: [] })
+        body: JSON.stringify({ poRefs: state.poRefs, asnRefs: [] }),
+        signal
       });
       const fetchData = await fetchRes.json();
       if (!fetchRes.ok) throw new Error(fetchData.error || 'Fetch failed');
@@ -369,7 +384,13 @@ if (btnRunPipeline) {
         const found = foundPOs.has(po);
         return `<div class="asn-status-row ${found ? 'found' : 'not-found'}">${found ? '✅' : '⚠️'} <strong>PO ${po}</strong> — ${found ? 'ASN found' : 'No ASN found'}</div>`;
       }).join('');
-      psSetResult('psFetchResult', `<div style="font-size:12px;margin-bottom:6px">✅ <strong>${carrierAsnFiles.length}</strong> carrier ASN file(s) fetched${notFoundCount ? ` &nbsp;⚠️ ${notFoundCount} PO(s) with no ASN` : ''}.</div><div class="asn-status-grid">${asnGridRows}</div>`);
+      psSetResult('psFetchResult', `<details style="font-size:12px">
+        <summary style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px;padding:2px 0">
+          <span style="font-size:10px;color:#888">▶</span>
+          ✅ <strong>${carrierAsnFiles.length}</strong> carrier ASN file(s) fetched${notFoundCount ? ` &nbsp;⚠️ ${notFoundCount} PO(s) with no ASN` : ''} <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
+        </summary>
+        <div class="asn-status-grid" style="margin-top:8px">${asnGridRows}</div>
+      </details>`);
 
       if (carrierAsnFiles.length === 0) {
         progSet(1, 'error', '📡 No ASN found');
@@ -380,7 +401,7 @@ if (btnRunPipeline) {
 
       // ── 2. Build ──────────────────────────────────────────────────────────
       progSet(2, 'active', '🗂 Building…');
-      const buildRes  = await fetch(`${API}/build-bible`, { method: 'POST' });
+      const buildRes  = await fetch(`${API}/build-bible`, { method: 'POST', signal });
       const buildData = await buildRes.json();
       if (!buildRes.ok) throw new Error(buildData.error || 'Build failed');
       state.biblBuilt = true;
@@ -389,7 +410,14 @@ if (btnRunPipeline) {
         warningsHtml += `<div style="margin-bottom:8px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">⚠️ <strong>${buildData.warnings.length} SKU(s) excluded</strong> — not on carrier ASN:<br/>${buildData.warnings.map(w => `&nbsp;• ${w}`).join('<br/>')}</div>`;
       }
       if (buildData.extraSkuWarnings?.length) {
-        warningsHtml += `<div style="margin-bottom:8px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">⚠️ <strong>${buildData.extraSkuWarnings.length} extra carrier ASN SKU(s)</strong> not in supplier template (Booking_Qty=0):<br/>${buildData.extraSkuWarnings.map(w => `&nbsp;• ${w}`).join('<br/>')}</div>`;
+        warningsHtml += `<details style="margin-bottom:8px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px">
+          <summary style="font-size:12px;cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px">
+            <span style="font-size:10px;color:#888">▶</span>
+            ⚠️ <strong>${buildData.extraSkuWarnings.length} extra carrier ASN SKU(s)</strong> not in supplier template (Booking_Qty=0)
+            <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
+          </summary>
+          <div style="font-size:12px;margin-top:6px;padding-top:6px;border-top:1px solid #F9E4B7">${buildData.extraSkuWarnings.map(w => `&nbsp;• ${escapeHtml(w)}`).join('<br/>')}</div>
+        </details>`;
       }
       psSetResult('psBuildWarnings', warningsHtml);
       progSet(2, 'done', '🗂 Built ✅');
@@ -399,7 +427,8 @@ if (btnRunPipeline) {
       const genRes  = await fetch(`${API}/generate-vbkreq`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purposeCd })
+        body: JSON.stringify({ purposeCd }),
+        signal
       });
       const genData = await genRes.json();
       if (!genRes.ok) throw new Error(genData.error || 'Generate failed');
@@ -412,35 +441,49 @@ if (btnRunPipeline) {
 
       // ── 4. Upload ─────────────────────────────────────────────────────────
       progSet(4, 'active', '🚀 Uploading…');
-      const results = [];
-      for (let i = 0; i < state.generations.length; i++) {
-        const gen = state.generations[i];
-        try {
-          const upRes  = await fetch(`${API}/upload-sftp`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml })
-          });
-          const upData = await upRes.json();
-          if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
-          results.push({ filename: gen.filename, ok: true, remotePath: upData.remotePath, localMode: upData.localMode });
-        } catch (err) {
-          results.push({ filename: gen.filename, ok: false, error: err.message });
-        }
-      }
+      const results = await Promise.all(
+        state.generations.map(async gen => {
+          try {
+            const upRes  = await fetch(`${API}/upload-sftp`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml }),
+              signal
+            });
+            const upData = await upRes.json();
+            if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
+            return { filename: gen.filename, ok: true, remotePath: upData.remotePath, localMode: upData.localMode };
+          } catch (err) {
+            if (err.name === 'AbortError') throw err; // bubble up so outer catch handles it
+            return { filename: gen.filename, ok: false, error: err.message };
+          }
+        })
+      );
       const ok   = results.filter(r => r.ok);
       const fail = results.filter(r => !r.ok);
       progSet(4, fail.length === 0 ? 'done' : 'error', fail.length === 0 ? '🚀 Uploaded ✅' : '🚀 Upload ⚠️');
 
       const badge = document.getElementById('badgePipeline');
       if (badge) { badge.className = 'step-badge ' + (fail.length === 0 ? 'done' : 'active'); if (fail.length === 0) badge.textContent = '✓'; }
-      renderResult(state.generations, results);
+      renderResult(state.generations, results, Date.now() - pipelineStart);
       loadHistory();
 
     } catch (err) {
-      psSetResult('psFetchResult', (document.getElementById('psFetchResult').innerHTML || '') +
-        `<div style="color:#922B21;font-size:13px;margin-top:6px">❌ ${err.message}</div>`);
+      if (err.name === 'AbortError') {
+        const stageNames = ['📡 Fetch ASN', '🗂 Build', '⚡ Generate', '🚀 Upload'];
+        for (let i = 1; i <= 4; i++) {
+          const el = document.getElementById('prog' + i);
+          if (el && el.style.color === 'rgb(29, 78, 216)') progSet(i, 'error', stageNames[i-1] + ' ⏹');
+        }
+        psSetResult('psFetchResult', (document.getElementById('psFetchResult').innerHTML || '') +
+          `<div style="color:#6B7280;font-size:13px;margin-top:6px">⏹ Pipeline stopped by user.</div>`);
+      } else {
+        psSetResult('psFetchResult', (document.getElementById('psFetchResult').innerHTML || '') +
+          `<div style="color:#922B21;font-size:13px;margin-top:6px">❌ ${err.message}</div>`);
+      }
     } finally {
+      if (btnStopPipeline) btnStopPipeline.style.display = 'none';
+      _pipelineAbort = null;
       setLoading(btnRunPipeline, false);
     }
   });
@@ -467,13 +510,26 @@ function escapeHtml(s) {
 }
 
 // ── Pipeline result table ─────────────────────────────────────────────────────
-function renderResult(generations, uploadResults) {
+function renderResult(generations, uploadResults, elapsedMs) {
   const panel = document.getElementById('resultPanel');
   if (!panel || !generations?.length) return;
 
   const thStyle = 'background:#1F4E79;color:#fff;padding:7px 10px;text-align:left;font-size:12px;white-space:nowrap';
   const tdStyle = 'padding:7px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top;font-size:12px';
   const upMap   = Object.fromEntries((uploadResults || []).map(r => [r.filename, r]));
+
+  const bookedPOs = new Set(generations.flatMap(g => g.poNumbers || []));
+  const totalPOs  = (state.poRefs || []).length;
+  const allBooked = totalPOs > 0 && bookedPOs.size >= totalPOs;
+  const elapsed   = elapsedMs != null
+    ? (elapsedMs < 60000
+        ? `${(elapsedMs / 1000).toFixed(1)}s`
+        : `${Math.floor(elapsedMs / 60000)}m ${Math.round((elapsedMs % 60000) / 1000)}s`)
+    : null;
+  const timeTag   = elapsed ? ` <span style="font-weight:400;opacity:.7">(${elapsed})</span>` : '';
+  const summaryBanner = allBooked
+    ? `<div style="margin-bottom:10px;padding:8px 14px;background:#ECFDF5;border-left:3px solid #059669;border-radius:4px;font-size:12px;color:#065F46">✅ All <strong>${totalPOs}</strong> PO${totalPOs !== 1 ? 's' : ''} are booked.${timeTag}</div>`
+    : `<div style="margin-bottom:10px;padding:8px 14px;background:#FEF9E7;border-left:3px solid #D97706;border-radius:4px;font-size:12px;color:#92400E">⚠️ <strong>${bookedPOs.size}</strong> of <strong>${totalPOs}</strong> PO${totalPOs !== 1 ? 's' : ''} booked.${timeTag}</div>`;
 
   const rows = generations.map(gen => {
     const pos    = (gen.poNumbers || []).map(p => `<div>${escapeHtml(p)}</div>`).join('') || '—';
@@ -503,17 +559,26 @@ function renderResult(generations, uploadResults) {
       }).join('')
     : '';
 
+  const genCount = generations.length;
   panel.innerHTML = `
-    <table style="width:100%;border-collapse:collapse;margin-bottom:${taggedLinks ? '10' : '0'}px">
-      <thead><tr>
-        <th style="${thStyle}">PO Number(s)</th>
-        <th style="${thStyle}">ASN Ref(s)</th>
-        <th style="${thStyle}">VB Ref</th>
-        <th style="${thStyle}">VBKREQ File</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    ${taggedLinks ? `<div style="font-size:12px"><strong>Tagged supplier template(s) with VB Ref:</strong><div style="margin-top:6px">${taggedLinks}</div></div>` : ''}`;
+    <details>
+      <summary style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;margin-bottom:6px">
+        <span style="font-size:10px;color:#888">▶</span>
+        <strong>${genCount}</strong> carrier booking message${genCount !== 1 ? 's' : ''} generated
+        <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
+      </summary>
+      ${summaryBanner}
+      <table style="width:100%;border-collapse:collapse;margin-top:8px;margin-bottom:${taggedLinks ? '10' : '0'}px">
+        <thead><tr>
+          <th style="${thStyle}">PO Number(s)</th>
+          <th style="${thStyle}">ASN Ref(s)</th>
+          <th style="${thStyle}">VB Ref</th>
+          <th style="${thStyle}">VBKREQ File</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${taggedLinks ? `<div style="font-size:12px"><strong>Tagged supplier template(s) with VB Ref:</strong><div style="margin-top:6px">${taggedLinks}</div></div>` : ''}
+    </details>`;
 }
 
 async function refreshLog() {} // no-op
