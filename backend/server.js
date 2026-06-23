@@ -8,20 +8,21 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-const supplierReader = require('./supplier-reader');
-const blobClient = require('./blob-client');
-const bibleBuilder = require('./bible-builder');
-const vbkreqBuilder = require('./vbkreq-builder');
-const sftpUploader = require('./sftp-uploader');
-const poParser  = require('./po-parser');
-const asnParser = require('./asn-parser');
-const carrierAsnParser = require('./carrier-asn-parser');
+const supplierReader       = require('./supplier-reader');
+const blobClient           = require('./blob-client');
+const databricksAsnReader  = require('./databricks-asn-reader');
+const bibleBuilder         = require('./bible-builder');
+const vbkreqBuilder        = require('./vbkreq-builder');
+const sftpUploader         = require('./sftp-uploader');
+const poParser             = require('./po-parser');
+const asnParser            = require('./asn-parser');
+const carrierAsnParser     = require('./carrier-asn-parser');
 
 const app = express();
 const PORT = 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 // Serve generated bible downloads
@@ -160,7 +161,10 @@ app.post('/api/fetch-feeds', async (req, res) => {
     const { poRefs, asnRefs } = req.body;
     if (!poRefs) return res.status(400).json({ error: 'poRefs required' });
 
-    const feedData = await blobClient.fetchCarrierFeedsOnly(poRefs);
+    const useDb = (process.env.ASN_SOURCE || '').toLowerCase() === 'databricks';
+    const feedData = useDb
+      ? await databricksAsnReader.fetchAsnsByPoRefs(poRefs)
+      : await blobClient.fetchCarrierFeedsOnly(poRefs);
     sessionState.feedData = feedData;
 
     res.json({

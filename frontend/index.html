@@ -523,11 +523,13 @@
     .rg-table tbody tr:hover td { background: #F8FAFC; }
     .rg-table code { font-family: monospace; font-size: 11px; background: #EFF6FF; padding: 1px 5px; border-radius: 4px; color: #1E3A5F; }
     .src-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; white-space: nowrap; }
-    .src-supplier { background: #DC2626; color: #fff; }
-    .src-carrier  { background: #14532D; color: #fff; }
-    .src-system   { background: #475569; color: #fff; }
-    .src-lookup   { background: #6D28D9; color: #fff; }
-    .src-ui       { background: #D97706; color: #fff; }
+    .src-supplier    { background: #DC2626; color: #fff; }
+    .src-carrier     { background: #14532D; color: #fff; }
+    .src-system      { background: #475569; color: #fff; }
+    .src-lookup      { background: #6D28D9; color: #fff; }
+    .src-ui          { background: #D97706; color: #fff; }
+    .src-db-shipment { background: #0C4A6E; color: #fff; }
+    .src-db-po       { background: #065f46; color: #fff; }
     .rg-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; font-size: 11px; align-items: center; }
     .rg-note {
       font-size: 12px; color: #555; background: #FFFDE7;
@@ -596,7 +598,7 @@
       <div class="step-badge" id="badgePipeline">2</div>
       <div>
         <div class="step-title">Booking Pipeline</div>
-        <div class="step-desc">Fetch ASN from carrier feed, build, generate &amp; upload VBKREQ to E2open/DT SFTP &mdash; runs automatically on click</div>
+        <div class="step-desc">Fetch ASN from Databricks, build, generate &amp; upload carrier booking request to E2open/DT SFTP &mdash; runs automatically on click</div>
       </div>
     </div>
     <div class="step-body">
@@ -726,7 +728,7 @@
         <div class="rg-flow">
           <div class="rg-flow-step">📊 1 · Upload Supplier Excel</div>
           <span class="rg-flow-arrow">→</span>
-          <div class="rg-flow-step carrier">📡 2 · Fetch Carrier ASN Feed</div>
+          <div class="rg-flow-step carrier">📡 2 · Fetch Databricks ASN</div>
           <span class="rg-flow-arrow">→</span>
           <div class="rg-flow-step">🗂 3 · Build Master Workbook</div>
           <span class="rg-flow-arrow">→</span>
@@ -758,7 +760,8 @@
       <div class="rg-legend">
         <strong style="font-size:11px;color:#444">Source key:</strong>
         <span class="src-badge src-supplier">Supplier Template</span>
-        <span class="src-badge src-carrier">Carrier Feed (ASN XML)</span>
+        <span class="src-badge src-db-shipment" title="supplychain.conformed.aim_shipment_detail_v1">Databricks-aim_shipment_detail_v1</span>
+        <span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span>
         <span class="src-badge src-lookup">Internal Lookup Table</span>
         <span class="src-badge src-system">System Generated</span>
         <span class="src-badge src-ui">User Selection (UI)</span>
@@ -806,7 +809,7 @@
         <tbody>
           <tr><td><code>&lt;Mode&gt;</code></td><td><code>Mode_Of_Transport</code> → mapped to E2 code</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td><strong>Mandatory — defaulted to Road.</strong> Sea→10, Air→40, Road→30, Rail→50, Eco→70</td></tr>
           <tr><td><code>Reference QY</code> — Traffic Mode</td><td><code>Traffic_Mode</code> (CFS / CY)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Mandatory. Default: CFS. CFS = container freight station; CY = container yard</td></tr>
-          <tr><td><code>Reference 4B</code> — Country of Origin</td><td><code>Country_Of_Origin</code> (from <code>&lt;CountryOfOrigin&gt;</code>)</td><td><span class="src-badge src-carrier">Carrier Feed (ASN XML)</span></td><td>Line-level; falls back to Factory_CountryCd if absent from carrier feed</td></tr>
+          <tr><td><code>Reference 4B</code> — Country of Origin</td><td><code>Country_Of_Origin</code> (from <code>&lt;CountryOfOrigin&gt;</code>)</td><td><span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>Line-level; falls back to Factory_CountryCd if absent</td></tr>
           <tr><td><code>Reference BH</code> — Hazardous</td><td><code>Hazardous</code> → Y / N</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>N/A and blank → N; any hazard type string → Y. Defaulted to N/A.</td></tr>
           <tr><td><code>Reference CC</code> — Cargo Category</td><td><code>Green</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded — ASOS standard</td></tr>
           <tr><td><code>Reference CD</code> — Collection/Delivery</td><td><code>Collection_Type</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Dropdown: Collection or Delivery. Defaulted to Delivery.</td></tr>
@@ -821,16 +824,16 @@
       <div class="rg-table-wrap"><table class="rg-table">
         <thead><tr><th>Role</th><th>XML Element</th><th>Field / Value</th><th>Source</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><strong>SU</strong> — Supplier</td><td><code>TradePartnerName</code></td><td><code>Supplier_Name</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;SupplierName&gt;</code> in carrier PO</td></tr>
-          <tr><td><strong>SU</strong> — Supplier</td><td><code>TradePartnerID</code></td><td><code>Supplier_ID</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;SupplierCode&gt;</code> in carrier PO</td></tr>
+          <tr><td><strong>SU</strong> — Supplier</td><td><code>TradePartnerName</code></td><td><code>Supplier_Name</code></td><td><span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>From <code>SupplierName</code> in PO table</td></tr>
+          <tr><td><strong>SU</strong> — Supplier</td><td><code>TradePartnerID</code></td><td><code>Supplier_ID</code></td><td><span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>From <code>SupplierID</code> in PO table</td></tr>
           <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerName</code></td><td><code>Factory_Name</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Auto-filled via VLOOKUP from FACTORY_LOOKUP tab when Factory_ID is selected</td></tr>
           <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerID</code></td><td><code>Factory_ID</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Mandatory. Use <code>9999</code> (Dummy Factory) if real code not yet known — address fields are omitted</td></tr>
           <tr><td><strong>FA</strong> — Factory</td><td><code>TradePartnerAddress</code></td><td><code>Factory_Street1/2, City, PostalCd, CountryCd</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Auto-filled from FACTORY_LOOKUP. Street2 optional. Omitted entirely for Factory_ID 9999.</td></tr>
           <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerName</code></td><td><code>FC_Name</code> (from FC_MASTER)</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>FC_MASTER table keyed on FC_ID (e.g. FC01 = ASOS Barnsley)</td></tr>
-          <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerID</code></td><td><code>FC_ID</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;POFC&gt;</code> or <code>&lt;FinalDestination&gt;</code> in carrier PO</td></tr>
+          <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerID</code></td><td><code>FC_ID</code></td><td><span class="src-badge src-db-shipment" title="supplychain.conformed.aim_shipment_detail_v1">Databricks-aim_shipment_detail_v1</span></td><td>From <code>finalDestination</code> / <code>firstDestination</code> in shipment table</td></tr>
           <tr><td><strong>FD</strong> — FC Destination</td><td><code>TradePartnerAddress</code></td><td>FC street/city/postal/country</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>FC_MASTER table in bible-builder.js — verify addresses are correct</td></tr>
           <tr><td><strong>CA</strong> — Carrier</td><td><code>TradePartnerID</code></td><td><code>3</code></td><td><span class="src-badge src-system">System Generated</span></td><td>Hardcoded DavisTurner carrier ID in E2open</td></tr>
-          <tr><td><strong>SL</strong> — Loading Port</td><td><code>TradePartnerID</code></td><td><code>Loading_Port_LOCODE</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>From <code>&lt;ShippingPoint&gt;</code> UN/LOCODE in carrier PO</td></tr>
+          <tr><td><strong>SL</strong> — Loading Port</td><td><code>TradePartnerID</code></td><td><code>Loading_Port_LOCODE</code></td><td><span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>From <code>LadingPort</code> UN/LOCODE in PO table</td></tr>
         </tbody>
       </table></div>
 
@@ -841,7 +844,7 @@
         <tbody>
           <tr><td><code>Date 018</code> — Cargo Ready</td><td><code>Cargo_Ready_Planned_Collection_Date</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>DD/MM/YYYY → YYYYMMDD</td></tr>
           <tr><td><code>Date 081</code> — Booking Request</td><td><code>Carrier_Booking_Request_Date</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>DD/MM/YYYY → YYYYMMDD</td></tr>
-          <tr><td><code>Location L</code> — Loading Port</td><td><code>Loading_Port_LOCODE</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>UN/LOCODE from <code>&lt;ShippingPoint&gt;</code></td></tr>
+          <tr><td><code>Location L</code> — Loading Port</td><td><code>Loading_Port_LOCODE</code></td><td><span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>UN/LOCODE from <code>LadingPort</code></td></tr>
           <tr><td><code>Location E</code> — Export Port</td><td>FC_LOCODE lookup by FC_ID</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>FC01/FC02 → GBBSY; update FC_LOCODE table if needed</td></tr>
           <tr><td><code>Location D</code> — Destination</td><td>FC_LOCODE lookup by FC_ID</td><td><span class="src-badge src-lookup">Internal Lookup</span></td><td>Same as Location E — port of destination</td></tr>
           <tr><td><code>Date 211</code> — Booking Req DateTime</td><td>Current timestamp at generation</td><td><span class="src-badge src-system">System Generated</span></td><td>Format: YYYYMMDD HH:MM:SS</td></tr>
@@ -887,17 +890,17 @@
       <div class="rg-table-wrap"><table class="rg-table">
         <thead><tr><th>XML Element</th><th>Field / Value</th><th>Source</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><code>LineItem @Key</code></td><td><code>PO_Number + "_" + SKU + "_" + ASN_Ref</code></td><td><span class="src-badge src-carrier">Carrier Feed</span> + <span class="src-badge src-supplier">Supplier Template</span></td><td>Composite key</td></tr>
-          <tr><td><code>LineItemDescription</code></td><td><code>Description</code> / Product_Style / "SKU {sku}"</td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Falls back through available description fields</td></tr>
-          <tr><td><code>Attribute SI</code> — ASN Ref</td><td><code>ASN_Ref</code> (carrier ASN ID)</td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Carrier's shipment advice number</td></tr>
+          <tr><td><code>LineItem @Key</code></td><td><code>PO_Number + "_" + SKU + "_" + ASN_Ref</code></td><td><span class="src-badge src-db-shipment" title="supplychain.conformed.aim_shipment_detail_v1">Databricks-aim_shipment_detail_v1</span> + <span class="src-badge src-supplier">Supplier Template</span></td><td>Composite key</td></tr>
+          <tr><td><code>LineItemDescription</code></td><td><code>Description</code> / Product_Style / "SKU {sku}"</td><td><span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>Falls back through available description fields</td></tr>
+          <tr><td><code>Attribute SI</code> — ASN Ref</td><td><code>ASN_Ref</code> (<code>asnId</code>)</td><td><span class="src-badge src-db-shipment" title="supplychain.conformed.aim_shipment_detail_v1">Databricks-aim_shipment_detail_v1</span></td><td>Shipment advice ID</td></tr>
           <tr><td><code>Attribute SK</code> — SKU</td><td><code>SKU</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>ASOS product SKU</td></tr>
-          <tr><td><code>Attribute UA</code> — EAN/Barcode</td><td><code>EAN_Barcode</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional; also populated from carrier feed if available</td></tr>
+          <tr><td><code>Attribute UA</code> — EAN/Barcode</td><td><code>EAN_Barcode</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional; also from <span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span> (<code>EANItemID</code>) if available</td></tr>
           <tr><td><code>Attribute CL</code> — Colour</td><td><code>Colour_Code</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional</td></tr>
           <tr><td><code>Attribute IZ</code> — Size</td><td><code>Size_Code</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Optional</td></tr>
           <tr><td><code>Reference PAC</code> — Pack Type</td><td><code>Pack_Type</code> (Flat / Bulk Flat / Hanging)</td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Default: <strong>Bulk Flat</strong></td></tr>
-          <tr><td><code>Reference PT</code> — Product Style</td><td><code>Product_Style</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Style code from carrier line</td></tr>
+          <tr><td><code>Reference PT</code> — Product Style</td><td><code>Product_Style</code> (<code>OptionItemID</code>)</td><td><span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>Style code from PO SKU detail</td></tr>
           <tr><td><code>Reference HZ</code> — Hazardous</td><td><code>Hazardous</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Full hazard type string per line</td></tr>
-          <tr><td><code>Reference DSC</code> — Description</td><td><code>Description</code></td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>Item description from carrier</td></tr>
+          <tr><td><code>Reference DSC</code> — Description</td><td><code>Description</code> (<code>OptionDescription</code>)</td><td><span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>Item description from PO SKU detail</td></tr>
           <tr><td><code>Reference 98</code> — Carton Type</td><td><code>Carton_Type</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Default: BDCM1; drives dimension lookup</td></tr>
           <tr><td><code>Reference LN/WD/HT</code> — Dimensions</td><td><code>Carton_Length/Width/Height_cm</code></td><td><span class="src-badge src-lookup">Carton Lookup</span></td><td>Auto-filled via VLOOKUP from CARTON_TYPES table; supplier can override</td></tr>
           <tr><td><code>Measure BKQ</code> — Booking Qty</td><td><code>Booking_Qty</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Units being shipped</td></tr>
@@ -905,7 +908,7 @@
           <tr><td><code>Measure N</code> — Net Weight</td><td><code>Unit_Weight_KG</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Per-unit weight; one value per line</td></tr>
           <tr><td><code>Measure VOL</code> — Volume</td><td><code>(L×W×H ÷ 1,000,000) × No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span> / <span class="src-badge src-lookup">Carton lookup</span></td><td>Per-line value in M³</td></tr>
           <tr><td><code>Measure QUR</code> — Carton Qty</td><td><code>No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Per-line carton count</td></tr>
-          <tr><td><code>TradePartner FS</code> — Final Store/FC</td><td><code>F1_ID</code> (= FC_ID from carrier)</td><td><span class="src-badge src-carrier">Carrier Feed</span></td><td>ASOS fulfilment centre ID per line; from <code>&lt;POFC&gt;</code></td></tr>
+          <tr><td><code>TradePartner FS</code> — Final Store/FC</td><td><code>F1_ID</code> (<code>firstDestination</code>)</td><td><span class="src-badge src-db-shipment" title="supplychain.conformed.aim_shipment_detail_v1">Databricks-aim_shipment_detail_v1</span></td><td>ASOS fulfilment centre ID per line</td></tr>
         </tbody>
       </table></div>
 

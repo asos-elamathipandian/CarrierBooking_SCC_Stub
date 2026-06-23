@@ -48,7 +48,7 @@ async function build(supplierData, feedData) {
   if (!fs.existsSync(BIBLE_DIR)) fs.mkdirSync(BIBLE_DIR, { recursive: true });
 
   const { rows: supplierRows } = supplierData;
-  const { poFeeds, asnFeeds, carrierAsnFiles = [] } = feedData;
+  const { poFeeds = [], asnFeeds = [], carrierAsnFiles = [] } = feedData;
 
   // Index feeds by their key fields
   const poByOrderId = {};
@@ -87,7 +87,11 @@ async function build(supplierData, feedData) {
         shippingPoint:    asnGroup.shippingPoint    || '',
         shippingTerms:    asnGroup.shippingTerms    || '',
         pofc:             asnGroup.pofc             || '',
-        finalDestination: asnGroup.finalDestination || ''
+        finalDestination: asnGroup.finalDestination || '',
+        mode:             asnGroup.mode             || '',
+        carrier:          asnGroup.carrier          || '',
+        factoryCode:      asnGroup.factoryCode      || '',
+        factoryName:      asnGroup.factoryName      || ''
       };
       for (const line of asnGroup.lines) {
         // Files sorted oldest→newest so every write overwrites with a later file's data
@@ -165,9 +169,10 @@ async function build(supplierData, feedData) {
         PO_Number:     poNum,
         ASN_Ref:       asnRef,  // carrier ASNID when available
 
-        // Supplier — from carrier feed
-        Supplier_Name:     carrierPoMeta[poNum]?.supplier     || '',
-        Supplier_ID:       carrierPoMeta[poNum]?.supplierCode || '',
+        // Supplier — carrier feed takes priority; fall back to supplier template columns
+        // When using Databricks source, supplier is the ID code (name not available in ADE table)
+        Supplier_Name:     carrierPoMeta[poNum]?.supplier     || sRow.Supplier_Name || carrierPoMeta[poNum]?.supplierCode || sRow.Supplier_ID || '',
+        Supplier_ID:       carrierPoMeta[poNum]?.supplierCode || sRow.Supplier_ID   || '',
 
         // Factory — mandatory from supplier template
         // Factory_ID 9999 = Dummy Factory: name defaults to "Dummy Factory", address intentionally blank
@@ -248,7 +253,7 @@ async function build(supplierData, feedData) {
         ASOS_Intake_Week:    sRow.ASOS_Intake_Week || '',
         Collection_Time:     sRow.Collection_Time  || '',
         Incoterms:           carrierPoMeta[poNum]?.shippingTerms || '',
-        Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || '30'
+        Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || carrierPoMeta[poNum]?.mode || '30'
       });
   }
 
@@ -354,7 +359,7 @@ async function build(supplierData, feedData) {
           ASOS_Intake_Week:    '',
           Collection_Time:     '',
           Incoterms:           carrierPoMeta[poNum]?.shippingTerms || '',
-          Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || '30'
+          Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || carrierPoMeta[poNum]?.mode || '30'
         });
       }
     }
@@ -367,7 +372,7 @@ async function build(supplierData, feedData) {
       for (const sku of Object.keys(skuMap)) {
         if (!coveredKeys.has(`${poNum}_${sku}`)) {
           const c = carrierAsnIndex[poNum][sku];
-          extraSkuWarnings.push(`PO ${poNum} — SKU ${sku} (${c.description || c.colour || ''} / ${c.size || ''}) is on the carrier ASN but was NOT in your supplier template — included in VBKREQ with Booking_Qty=0`);
+          extraSkuWarnings.push(`PO ${poNum} — SKU ${sku} is on the PO/ASN but was NOT in the supplier template — included in VBKREQ with Booking_Qty=0`);
         }
       }
     }

@@ -89,7 +89,8 @@ function applyFilesToZone(files) {
 }
 
 // Click on zone triggers file browser
-dropZone.addEventListener('click', () => supplierFileInput.click());
+// Reset value first so selecting the same file again still fires the change event
+dropZone.addEventListener('click', () => { supplierFileInput.value = ''; supplierFileInput.click(); });
 
 // Drag events
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -382,19 +383,19 @@ if (btnRunPipeline) {
       const notFoundCount   = state.poRefs.filter(po => !foundPOs.has(po)).length;
       const asnGridRows     = state.poRefs.map(po => {
         const found = foundPOs.has(po);
-        return `<div class="asn-status-row ${found ? 'found' : 'not-found'}">${found ? '✅' : '⚠️'} <strong>PO ${po}</strong> — ${found ? 'ASN found' : 'No ASN found'}</div>`;
+        return `<div class="asn-status-row ${found ? 'found' : 'not-found'}">${found ? '✅' : '⚠️'} <strong>PO ${po}</strong> — ${found ? 'ASN found in Databricks' : 'No ASN found in Databricks'}</div>`;
       }).join('');
       psSetResult('psFetchResult', `<details style="font-size:12px">
         <summary style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px;padding:2px 0">
           <span style="font-size:10px;color:#888">▶</span>
-          ✅ <strong>${carrierAsnFiles.length}</strong> carrier ASN file(s) fetched${notFoundCount ? ` &nbsp;⚠️ ${notFoundCount} PO(s) with no ASN` : ''} <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
+          ✅ <strong>${carrierAsnFiles.length}</strong> Databricks ASN record(s) fetched${notFoundCount ? ` &nbsp;⚠️ ${notFoundCount} PO(s) with no ASN in Databricks` : ''} <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
         </summary>
         <div class="asn-status-grid" style="margin-top:8px">${asnGridRows}</div>
       </details>`);
 
       if (carrierAsnFiles.length === 0) {
         progSet(1, 'error', '📡 No ASN found');
-        throw new Error('No carrier ASN files found for any PO. Cannot proceed.');
+        throw new Error('No ASN records found in Databricks for any of the submitted POs. Cannot proceed.');
       }
       progSet(1, 'done', '📡 ASN ✅');
       state.feedsFetched = true;
