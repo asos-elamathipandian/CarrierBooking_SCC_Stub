@@ -258,6 +258,7 @@ async function build() {
     ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date'].forEach(k => {
       row.getCell(hIdx[k]).numFmt = 'DD/MM/YYYY';
     });
+    row.getCell(hIdx['PO_Number']).numFmt = '@'; // cell-level: forces Excel to respect text format on paste
     row.commit();
   }
   for (let r = hFirstDataR; r <= hFirstDataR + 499; r++) {
@@ -371,6 +372,7 @@ async function build() {
     ['Carton_Length_cm','Carton_Width_cm','Carton_Height_cm'].forEach(k => (row.getCell(sIdx[k]).numFmt = '0.00'));
     ['Carton_Weight_KG','Gross_Weight_KG','Net_Weight_KG','Unit_Weight_KG'].forEach(k => (row.getCell(sIdx[k]).numFmt = '0.0000'));
     row.getCell(sIdx['Volume_M3']).numFmt = '0.0000';
+    row.getCell(sIdx['PO_Number']).numFmt = '@'; // cell-level: forces Excel to respect text format on paste
     row.commit();
   }
   for (let r = sFirstDataR; r <= sFirstDataR + 9999; r++) {

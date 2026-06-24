@@ -36,7 +36,9 @@ async function fetchAsnsByPoRefs(poRefs) {
   }
 
   // Only numeric PO refs — prevents SQL injection from template data
+  console.log(`[Databricks ASN] fetchAsnsByPoRefs called with: ${JSON.stringify(poRefs)}`);
   const safePOs = poRefs.map(p => String(p).trim()).filter(p => /^\d+$/.test(p));
+  console.log(`[Databricks ASN] safePOs after filter: ${JSON.stringify(safePOs)}`);
   if (safePOs.length === 0) {
     return { poFeeds: [], asnFeeds: [], carrierAsnFiles: [], errors: ['No valid numeric PO references provided'] };
   }
@@ -100,42 +102,38 @@ async function fetchAsnsByPoRefs(poRefs) {
         OrderNo,
         CAST(SupplierID AS STRING)        AS SupplierID,
         SupplierName,
-        LadingPort,
-        FreightTermsDescription           AS Incoterms,
-        PODtl[0].OriginCountryID          AS FirstCountry,
-        SupplierAddress1                  AS SupplierStreet1,
-        SupplierCity,
-        SupplierPostCode,
-        SupplierCountryCode,
-        FactoryID,
-        FactoryName,
-        FactoryAddress1                   AS FactoryStreet1,
-        FactoryCity,
-        FactoryPostCode,
-        FactoryCountryCode,
+        TRY(LadingPort)                   AS LadingPort,
+        TRY(FreightTermsDescription)      AS Incoterms,
+        TRY(PODtl[0].OriginCountryID)     AS FirstCountry,
         ROW_NUMBER() OVER (PARTITION BY OrderNo ORDER BY _IngestedDate DESC) AS _rn
       FROM sourcingandbuying.conformed.bam033j_purchase_order_v1
       WHERE OrderNo IN (${poList})
     `;
+    console.log(`[Databricks PO] querying bam033j for POs: ${poList}`);
     const poRows = await db.query(poSql);
+    console.log(`[Databricks PO] bam033j returned ${(poRows || []).length} row(s)`);
+    if (poRows && poRows.length > 0) {
+      console.log(`[Databricks PO] sample OrderNo values: ${[...new Set(poRows.slice(0,5).map(r => r.OrderNo))].join(', ')}`);
+      console.log(`[Databricks PO] sample SupplierName: ${poRows[0].SupplierName}, LadingPort: ${poRows[0].LadingPort}, FactoryName: ${poRows[0].FactoryName}`);
+    }
     for (const r of (poRows || [])) {
-      if (r._rn === 1 || !poEnrichMap[r.OrderNo]) {
+      if (Number(r._rn) === 1 || !poEnrichMap[r.OrderNo]) {
         poEnrichMap[r.OrderNo] = {
           supplierID:      r.SupplierID          || '',
           supplierName:    r.SupplierName        || '',
           ladingPort:      r.LadingPort          || '',
           incoterms:       r.Incoterms           || '',
           country:         r.FirstCountry        || '',
-          supplierStreet1: r.SupplierStreet1     || '',
-          supplierCity:    r.SupplierCity        || '',
-          supplierPostal:  r.SupplierPostCode    || '',
-          supplierCountry: r.SupplierCountryCode || '',
-          factoryID:       r.FactoryID           ? String(r.FactoryID) : '',
-          factoryName:     r.FactoryName         || '',
-          factoryStreet1:  r.FactoryStreet1      || '',
-          factoryCity:     r.FactoryCity         || '',
-          factoryPostal:   r.FactoryPostCode     || '',
-          factoryCountry:  r.FactoryCountryCode  || ''
+          supplierStreet1: '',
+          supplierCity:    '',
+          supplierPostal:  '',
+          supplierCountry: '',
+          factoryID:       '',
+          factoryName:     '',
+          factoryStreet1:  '',
+          factoryCity:     '',
+          factoryPostal:   '',
+          factoryCountry:  ''
         };
       }
     }
