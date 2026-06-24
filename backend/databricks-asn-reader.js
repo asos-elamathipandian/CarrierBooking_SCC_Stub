@@ -81,7 +81,6 @@ async function fetchAsnsByPoRefs(poRefs) {
       s.asnLoadingType,
       ol.orderId                         AS poId,
       ol.sku,
-      get_json_object(to_json(ol), '$.optionId') AS optionId,
       TRY_CAST(ol.bookedQty AS DOUBLE)   AS bookedQty
     FROM latest s
     LATERAL VIEW EXPLODE(orderLineItems) AS ol
@@ -118,7 +117,8 @@ async function fetchAsnsByPoRefs(poRefs) {
         SupplierName,
         LadingPort,
         FreightTermsDescription                                            AS Incoterms,
-        CASE WHEN size(PODtl) > 0 THEN PODtl[0].OriginCountryID ELSE NULL END AS FirstCountry,
+        CASE WHEN size(PODtl) > 0 THEN PODtl[0].OriginCountryID ELSE NULL END        AS FirstCountry,
+        CASE WHEN size(PODtl) > 0 THEN CAST(PODtl[0].OptionItemID AS STRING) ELSE NULL END AS OptionItemID,
         CAST(Factory AS STRING)                                            AS FactoryID,
         FactoryDesc                                                        AS FactoryName,
         ExFactoryDate,
@@ -147,6 +147,7 @@ async function fetchAsnsByPoRefs(poRefs) {
           ladingPort:           r.LadingPort          || '',
           incoterms:            r.Incoterms           || '',
           country:              r.FirstCountry        || '',
+          optionID:             r.OptionItemID        || '',
           factoryID:            r.FactoryID           || '',
           factoryName:          r.FactoryName         || '',
           expectedShipmentDate: bam033jDate(r.ExFactoryDate || r.ExpectedShipmentDate || ''),
@@ -209,7 +210,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       description: '',
       size:        '',
       colour:      '',
-      style:       row.optionId || '',
+      style:       enrich.optionID || '',
       packFormat:  row.asnLoadingType === 'H' ? 'H' : 'F',
       country:     row.countryOfManufacture || enrich.country || '',
       quantity:    row.bookedQty            || 0,

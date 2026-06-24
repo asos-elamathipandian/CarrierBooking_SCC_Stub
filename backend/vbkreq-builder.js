@@ -228,8 +228,8 @@ async function build(masterRows, purposeCd) {
 
   // Header
   bpMsg.ele('Mode').txt(transportModeCode);
-  bpMsg.ele('Reference', { RefTypeCd: 'QY',  SourceRefTypeCd: '128' }).txt(trafficMode);
-  bpMsg.ele('Reference', { RefTypeCd: '4B',  SourceRefTypeCd: '128' }).txt(originCountry);
+  if (trafficMode)    bpMsg.ele('Reference', { RefTypeCd: 'QY',  SourceRefTypeCd: '128' }).txt(trafficMode);
+  if (originCountry)  bpMsg.ele('Reference', { RefTypeCd: '4B',  SourceRefTypeCd: '128' }).txt(originCountry);
   bpMsg.ele('Reference', { RefTypeCd: 'BH',  SourceRefTypeCd: '128' }).txt(hazCode);
   bpMsg.ele('Reference', { RefTypeCd: 'CC',  SourceRefTypeCd: '128' }).txt('Green');
   bpMsg.ele('Reference', { RefTypeCd: 'CD',  SourceRefTypeCd: '128' }).txt(collectionType);
@@ -247,29 +247,33 @@ async function build(masterRows, purposeCd) {
   }
 
   // TradePartner: SU
-  const tpSU = bpMsg.ele('TradePartner', { RoleCd: 'SU' });
-  tpSU.ele('TradePartnerName').txt(first.Supplier_Name || '');
-  tpSU.ele('TradePartnerID', { Qualifier: '93' }).txt(first.Supplier_ID || '');
-  if (first.Supplier_Street1 || first.Supplier_City || first.Supplier_PostalCd || first.Supplier_CountryCd) {
-    const addrSU = tpSU.ele('TradePartnerAddress');
-    if (first.Supplier_Street1)   addrSU.ele('Street').txt(first.Supplier_Street1);
-    if (first.Supplier_City)      addrSU.ele('City').txt(first.Supplier_City);
-    if (first.Supplier_PostalCd)  addrSU.ele('PostalCd').txt(first.Supplier_PostalCd);
-    if (first.Supplier_CountryCd) addrSU.ele('CountryCd').txt(first.Supplier_CountryCd);
+  if (first.Supplier_Name || first.Supplier_ID) {
+    const tpSU = bpMsg.ele('TradePartner', { RoleCd: 'SU' });
+    if (first.Supplier_Name) tpSU.ele('TradePartnerName').txt(first.Supplier_Name);
+    if (first.Supplier_ID)   tpSU.ele('TradePartnerID', { Qualifier: '93' }).txt(first.Supplier_ID);
+    if (first.Supplier_Street1 || first.Supplier_City || first.Supplier_PostalCd || first.Supplier_CountryCd) {
+      const addrSU = tpSU.ele('TradePartnerAddress');
+      if (first.Supplier_Street1)   addrSU.ele('Street').txt(first.Supplier_Street1);
+      if (first.Supplier_City)      addrSU.ele('City').txt(first.Supplier_City);
+      if (first.Supplier_PostalCd)  addrSU.ele('PostalCd').txt(first.Supplier_PostalCd);
+      if (first.Supplier_CountryCd) addrSU.ele('CountryCd').txt(first.Supplier_CountryCd);
+    }
   }
 
   // TradePartner: FA (Factory — from address)
-  const tpFA = bpMsg.ele('TradePartner', { RoleCd: 'FA' });
-  tpFA.ele('TradePartnerName').txt(first.Factory_Name || '');
-  tpFA.ele('TradePartnerID', { Qualifier: '93' }).txt(first.Factory_ID || '');
-  const streets = [first.Factory_Street1, first.Factory_Street2, first.Factory_Street3].filter(Boolean);
-  const hasFactoryAddress = streets.length > 0 || first.Factory_City || first.Factory_PostalCd || first.Factory_CountryCd;
-  if (hasFactoryAddress) {
-    const addrFA = tpFA.ele('TradePartnerAddress');
-    streets.forEach(s => addrFA.ele('Street').txt(s));
-    if (first.Factory_City) addrFA.ele('City').txt(first.Factory_City);
-    if (first.Factory_PostalCd) addrFA.ele('PostalCd').txt(first.Factory_PostalCd);
-    if (first.Factory_CountryCd) addrFA.ele('CountryCd').txt(first.Factory_CountryCd);
+  if (first.Factory_Name || first.Factory_ID) {
+    const tpFA = bpMsg.ele('TradePartner', { RoleCd: 'FA' });
+    if (first.Factory_Name) tpFA.ele('TradePartnerName').txt(first.Factory_Name);
+    if (first.Factory_ID)   tpFA.ele('TradePartnerID', { Qualifier: '93' }).txt(first.Factory_ID);
+    const streets = [first.Factory_Street1, first.Factory_Street2, first.Factory_Street3].filter(Boolean);
+    const hasFactoryAddress = streets.length > 0 || first.Factory_City || first.Factory_PostalCd || first.Factory_CountryCd;
+    if (hasFactoryAddress) {
+      const addrFA = tpFA.ele('TradePartnerAddress');
+      streets.forEach(s => addrFA.ele('Street').txt(s));
+      if (first.Factory_City) addrFA.ele('City').txt(first.Factory_City);
+      if (first.Factory_PostalCd) addrFA.ele('PostalCd').txt(first.Factory_PostalCd);
+      if (first.Factory_CountryCd) addrFA.ele('CountryCd').txt(first.Factory_CountryCd);
+    }
   }
 
   // TradePartner: FD — Final Destination (from <FinalDestination> in carrier feed, FC address lookup)
@@ -308,15 +312,19 @@ async function build(masterRows, purposeCd) {
   tpCA.ele('TradePartnerID', { Qualifier: '93' }).txt(first.Carrier_ID || '3');
 
   // TradePartner: SL
-  const tpSL = bpMsg.ele('TradePartner', { RoleCd: 'SL' });
-  tpSL.ele('TradePartnerID', { Qualifier: '93' }).txt(loadingPortLocode);
+  if (loadingPortLocode && loadingPortLocode !== 'XXXX') {
+    const tpSL = bpMsg.ele('TradePartner', { RoleCd: 'SL' });
+    tpSL.ele('TradePartnerID', { Qualifier: '93' }).txt(loadingPortLocode);
+  }
 
   // Status elements
-  bpMsg.ele('Status').ele('Date', { DateTypeCd: '018', TimeZone: 'LT' }).txt(cargoReadyDate);
-  bpMsg.ele('Status').ele('Date', { DateTypeCd: '081', TimeZone: 'LT' }).txt(bookingReqDate);
+  if (cargoReadyDate)  bpMsg.ele('Status').ele('Date', { DateTypeCd: '018', TimeZone: 'LT' }).txt(cargoReadyDate);
+  if (bookingReqDate)  bpMsg.ele('Status').ele('Date', { DateTypeCd: '081', TimeZone: 'LT' }).txt(bookingReqDate);
 
-  const stL = bpMsg.ele('Status');
-  stL.ele('Location', { LocTypeCd: 'L' }).ele('LocationID', { Qualifier: 'UN' }).txt(loadingPortLocode);
+  if (loadingPortLocode && loadingPortLocode !== 'XXXX') {
+    const stL = bpMsg.ele('Status');
+    stL.ele('Location', { LocTypeCd: 'L' }).ele('LocationID', { Qualifier: 'UN' }).txt(loadingPortLocode);
+  }
 
   const stE = bpMsg.ele('Status');
   stE.ele('Location', { LocTypeCd: 'E' }).ele('LocationID', { Qualifier: 'UN' }).txt(destLocode);
@@ -388,9 +396,9 @@ async function build(masterRows, purposeCd) {
       if (row.Colour_Code)   li.ele('Attribute', { AttributeTypeCd: 'CL' }).txt(row.Colour_Code);
       if (row.Size_Code)     li.ele('Attribute', { AttributeTypeCd: 'IZ' }).txt(row.Size_Code);
       li.ele('Reference', { RefTypeCd: 'PAC', SourceRefTypeCd: '128' }).txt(packType);
-      li.ele('Reference', { RefTypeCd: 'PT',  SourceRefTypeCd: '128' }).txt(productStyle);
+      if (productStyle) li.ele('Reference', { RefTypeCd: 'PT',  SourceRefTypeCd: '128' }).txt(productStyle);
       li.ele('Reference', { RefTypeCd: 'HZ',  SourceRefTypeCd: '128' }).txt(hazRef2);
-      li.ele('Reference', { RefTypeCd: 'DSC', SourceRefTypeCd: '128' }).txt(description);
+      if (description) li.ele('Reference', { RefTypeCd: 'DSC', SourceRefTypeCd: '128' }).txt(description);
       li.ele('Reference', { RefTypeCd: '98',  SourceRefTypeCd: '128' }).txt(cartonType);
       li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt(cL.toFixed(4));
       li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt(cW.toFixed(4));
