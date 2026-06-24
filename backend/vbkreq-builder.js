@@ -193,8 +193,8 @@ async function build(masterRows, purposeCd) {
     const cH = parseFloat(row.Carton_Height_cm) || ct.H || 0;
     const cWt = parseFloat(row.Carton_Weight_KG) || ct.weight || 0;
 
-    row._gross   = parseFloat((cWt * noCartons).toFixed(4));
-    row._net     = parseFloat(unitWt.toFixed(4));   // N = Unit_Weight_KG per line
+    row._net     = parseFloat((unitWt * bkq).toFixed(4));              // N = Unit_Weight_KG × Booking_Qty
+    row._gross   = parseFloat((row._net + (cWt * noCartons)).toFixed(4)); // G = N + (Carton_Weight × Cartons)
     row._vol     = parseFloat(((cL * cW * cH / 1000000) * noCartons).toFixed(4));
     row._cartons = noCartons;
     row._bkq     = bkq;

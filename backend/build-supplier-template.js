@@ -247,7 +247,8 @@ async function build() {
   const hIdx = {};
   hCols.forEach((c, i) => { hIdx[c.key] = i + 1; });
   const hLet = n => wsH.getColumn(n).letter;
-  for (let r = hFirstDataR; r <= hFirstDataR + 49; r++) {
+  wsH.getColumn(hIdx['PO_Number']).numFmt = '@'; // prevent scientific notation
+  for (let r = hFirstDataR; r <= hFirstDataR + 499; r++) {
     const row = wsH.getRow(r);
     row.getCell(hIdx['Traffic_Mode']).value      = 'CFS';
     row.getCell(hIdx['Booking_Group']).value     = 'Single Booking';
@@ -259,7 +260,7 @@ async function build() {
     });
     row.commit();
   }
-  for (let r = hFirstDataR; r <= hFirstDataR + 49; r++) {
+  for (let r = hFirstDataR; r <= hFirstDataR + 499; r++) {
     wsH.getCell(r, hIdx['PO_Number']).dataValidation = {
       type: 'textLength', operator: 'greaterThan', formulae: [0], allowBlank: false,
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Required', error: 'PO_Number cannot be blank'
@@ -301,7 +302,7 @@ async function build() {
   // Cross-sheet warning: PO_Number in PO Header has no matching rows in PO Lines → orange
   const hPoCol = hLet(hIdx['PO_Number']);
   wsH.addConditionalFormatting({
-    ref: `${hPoCol}${hFirstDataR}:${hPoCol}${hFirstDataR + 49}`,
+    ref: `${hPoCol}${hFirstDataR}:${hPoCol}${hFirstDataR + 499}`,
     rules: [{
       type: 'expression',
       formulae: [`AND($${hPoCol}${hFirstDataR}<>"",COUNTIF('PO Lines'!$${hPoCol}:$${hPoCol},$${hPoCol}${hFirstDataR})=0)`],
@@ -346,7 +347,8 @@ async function build() {
   const sIdx = {};
   sCols.forEach((c, i) => { sIdx[c.key] = i + 1; });
   const sLet = n => wsS.getColumn(n).letter;
-  for (let r = sFirstDataR; r <= sFirstDataR + 199; r++) {
+  wsS.getColumn(sIdx['PO_Number']).numFmt = '@'; // prevent scientific notation
+  for (let r = sFirstDataR; r <= sFirstDataR + 9999; r++) {
     const row = wsS.getRow(r);
     row.getCell(sIdx['Carton_Type']).value = 'BDCM1';
     const ct = sLet(sIdx['Carton_Type']) + r;
@@ -371,7 +373,7 @@ async function build() {
     row.getCell(sIdx['Volume_M3']).numFmt = '0.0000';
     row.commit();
   }
-  for (let r = sFirstDataR; r <= sFirstDataR + 199; r++) {
+  for (let r = sFirstDataR; r <= sFirstDataR + 9999; r++) {
     wsS.getCell(r, sIdx['PO_Number']).dataValidation = {
       type: 'textLength', operator: 'greaterThan', formulae: [0], allowBlank: false,
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Required', error: 'PO_Number cannot be blank'
@@ -400,7 +402,7 @@ async function build() {
   // Cross-sheet warning: PO_Number in PO Lines not found in PO Header → red
   const sPoCol = sLet(sIdx['PO_Number']);
   wsS.addConditionalFormatting({
-    ref: `${sPoCol}${sFirstDataR}:${sPoCol}${sFirstDataR + 199}`,
+    ref: `${sPoCol}${sFirstDataR}:${sPoCol}${sFirstDataR + 9999}`,
     rules: [{
       type: 'expression',
       formulae: [`AND($${sPoCol}${sFirstDataR}<>"",COUNTIF('PO Header'!$${sPoCol}:$${sPoCol},$${sPoCol}${sFirstDataR})=0)`],
@@ -416,7 +418,7 @@ async function build() {
 
   await wb.xlsx.writeFile(OUT_FILE);
   console.log('✅  SupplierInput_template.xlsx written to:\n    ' + OUT_FILE);
-  console.log('\nSheets:  PO Header (50 rows)  |  PO Lines (200 rows)');
+  console.log('\nSheets:  PO Header (500 rows)  |  PO Lines (10000 rows)');
   console.log('\nPO Header mandatory:', hCols.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
   console.log('PO Header defaults :', hCols.filter(c => c.type === 'default').map(c => c.label).join(', '));
   console.log('PO Header auto-fill:', hCols.filter(c => c.type === 'auto').map(c => c.label).join(', '));

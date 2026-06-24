@@ -431,7 +431,11 @@ async function writeExcel(masterRows, supplierRows, carrierAsnFiles) {
     ws.getRow(1).eachCell(cell => Object.assign(cell, headerStyle));
     ws.getRow(1).height = 20;
     for (const row of rows) {
-      const excelRow = ws.addRow(headers.map(h => sanitize(row[h])));
+      const excelRow = ws.addRow(headers.map(h => {
+        const v = sanitize(row[h]);
+        // Store PO_Number as string to prevent Excel scientific notation
+        return h === 'PO_Number' && v !== '' ? String(v) : v;
+      }));
       // Highlight rows where carrier sent a SKU the supplier didn't include
       if (row._missingFromSupplier) {
         excelRow.eachCell(cell => {
@@ -440,6 +444,9 @@ async function writeExcel(masterRows, supplierRows, carrierAsnFiles) {
       }
     }
     ws.columns.forEach(col => { col.width = 22; });
+    // Set PO_Number column to text format to prevent scientific notation
+    const poColIdx = headers.indexOf('PO_Number') + 1;
+    if (poColIdx > 0) ws.getColumn(poColIdx).numFmt = '@';
     return ws;
   }
 
