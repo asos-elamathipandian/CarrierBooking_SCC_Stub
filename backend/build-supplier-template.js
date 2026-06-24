@@ -174,9 +174,8 @@ async function build() {
     // Point 4
     { text: '4.  Dates must be in DD/MM/YYYY format.', bold: true, indent: 1, bg: 'FFFDE8E8' },
     { text: '', bg: 'FFFFFFFF' },
-    // Point 5 (Factory)
-    { text: '5.  Factory_ID: select from the dropdown — it is based on the FACTORY_LOOKUP tab (last tab). Factory_Name and address auto-fill when you pick an ID.', bold: false, indent: 1, bg: 'FFE9F3FB' },
-    { text: '     Default Factory_ID is 9999 (Dummy Factory) — no address details are required for this value.', bold: false, indent: 2, bg: 'FFE9F3FB' },
+    // Point 5
+    { text: '5.  Factory details (ID, name, address) and Mode of Transport are sourced automatically from Databricks — no need to provide them in this template.', bold: false, indent: 1, bg: 'FFE9F3FB' },
     { text: '', bg: 'FFFFFFFF' },
     // Point 6
     { text: '6.  In the PO Lines sheet, use multiple rows for POs that contain multiple SKU lines.', bold: true, indent: 1, bg: 'FFD6E4F0' },
@@ -232,20 +231,11 @@ async function build() {
     { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo_Ready_Planned_Collection_Date', width: 34, type: 'mandatory' },
     { key: 'Carrier_Booking_Request_Date',        label: 'Carrier_Booking_Request_Date',        width: 28, type: 'mandatory' },
     { key: 'Traffic_Mode',                        label: 'Traffic_Mode',                        width: 14, type: 'mandatory' },
-    { key: 'Mode_Of_Transport',                   label: 'Mode_Of_Transport',                   width: 18, type: 'mandatory' },
     { key: 'Booking_Group',                       label: 'Booking_Group',                       width: 30, type: 'mandatory' },
-    { key: 'Factory_ID',                          label: 'Factory_ID',                          width: 18, type: 'mandatory' },
     // Defaulted
     { key: 'Pack_Type',                           label: 'Pack_Type',                           width: 14, type: 'default' },
     { key: 'Collection_Type',                     label: 'Collection_Type',                     width: 18, type: 'default' },
     { key: 'Hazardous',                           label: 'Hazardous',                           width: 20, type: 'default' },
-    // Pre-filled (auto via VLOOKUP)
-    { key: 'Factory_Name',                        label: 'Factory_Name',                        width: 28, type: 'auto' },
-    { key: 'Factory_Street1',                     label: 'Factory_Street1',                     width: 30, type: 'auto' },
-    { key: 'Factory_Street2',                     label: 'Factory_Street2',                     width: 24, type: 'auto' },
-    { key: 'Factory_City',                        label: 'Factory_City',                        width: 20, type: 'auto' },
-    { key: 'Factory_PostalCd',                    label: 'Factory_PostalCd',                    width: 16, type: 'auto' },
-    { key: 'Factory_CountryCd',                   label: 'Factory_CountryCd',                   width: 16, type: 'auto' },
     // Optional
     { key: 'Collection_Time',                     label: 'Collection_Time (HH:MM)',             width: 24, type: 'optional' },
     { key: 'Remarks',                             label: 'Remarks',                             width: 30, type: 'optional' },
@@ -260,26 +250,10 @@ async function build() {
   for (let r = hFirstDataR; r <= hFirstDataR + 49; r++) {
     const row = wsH.getRow(r);
     row.getCell(hIdx['Traffic_Mode']).value      = 'CFS';
-    row.getCell(hIdx['Mode_Of_Transport']).value = 'Road';
     row.getCell(hIdx['Booking_Group']).value     = 'Single Booking';
     row.getCell(hIdx['Pack_Type']).value         = 'Bulk Flat';
     row.getCell(hIdx['Collection_Type']).value   = 'Delivery';
     row.getCell(hIdx['Hazardous']).value         = 'N/A';
-    row.getCell(hIdx['Factory_ID']).value        = '9999';
-    const fid = '$' + hLet(hIdx['Factory_ID']) + r;
-    // Factory_Name: 9999 → "Dummy Factory", else VLOOKUP
-    row.getCell(hIdx['Factory_Name']).value = {
-      formula: 'IF(' + fid + '="9999","Dummy Factory",IFERROR(VLOOKUP(' + fid + ',FACTORY_LOOKUP!$A:$G,2,0),""))'
-    };
-    styleAuto(row.getCell(hIdx['Factory_Name']));
-    // Address fields: 9999 → blank, else VLOOKUP
-    [['Factory_Street1',3],['Factory_Street2',4],
-     ['Factory_City',5],['Factory_PostalCd',6],['Factory_CountryCd',7]].forEach(([k, col]) => {
-      row.getCell(hIdx[k]).value = {
-        formula: 'IF(' + fid + '="9999","",IFERROR(VLOOKUP(' + fid + ',FACTORY_LOOKUP!$A:$G,' + col + ',0),""))'
-      };
-      styleAuto(row.getCell(hIdx[k]));
-    });
     ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date'].forEach(k => {
       row.getCell(hIdx[k]).numFmt = 'DD/MM/YYYY';
     });
@@ -301,17 +275,9 @@ async function build() {
       type: 'list', allowBlank: false, formulae: ['"CFS,CY"'],
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Traffic Mode', error: 'Select CFS or CY'
     };
-    wsH.getCell(r, hIdx['Mode_Of_Transport']).dataValidation = {
-      type: 'list', allowBlank: false, formulae: ['"Sea,Air,Road,Rail,Eco"'],
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Mode of Transport', error: 'Select Sea, Air, Road, Rail or Eco'
-    };
     wsH.getCell(r, hIdx['Booking_Group']).dataValidation = {
       type: 'list', allowBlank: false, formulae: ['LISTS_LOOKUP!$A$2:$A$28'],
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Booking Group', error: 'Select a Booking Group from the list'
-    };
-    wsH.getCell(r, hIdx['Factory_ID']).dataValidation = {
-      type: 'list', allowBlank: false, formulae: ['FACTORY_LOOKUP!$A$3:$A$100'],
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Factory ID', error: 'Select a Factory ID from the FACTORY_LOOKUP tab'
     };
     wsH.getCell(r, hIdx['Pack_Type']).dataValidation = {
       type: 'list', allowBlank: false, formulae: ['"Flat,Bulk Flat,Hanging"'],
@@ -446,37 +412,11 @@ async function build() {
   });
   wsS.views = [{ state: 'frozen', ySplit: sFirstDataR - 1, xSplit: 1, showGridLines: true }];
 
-  // ── FACTORY_LOOKUP (last tab — visible) ───────────────────────────────────────
-  const wsF = wb.addWorksheet('FACTORY_LOOKUP');
-  wsF.properties.tabColor = { argb: 'FF1F6F5F' };
-  wsF.mergeCells('A1:G1');
-  const fb = wsF.getCell('A1');
-  fb.value = 'FACTORY LOOKUP TABLE — Add one row per factory. Factory_ID appears as a dropdown on PO Header. Name and address auto-fill when you select an ID. Do NOT change column headers.';
-  fb.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
-  fb.font  = { bold: true, color: { argb: 'FF0B4F2A' }, size: 11 };
-  fb.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' };
-  wsF.getRow(1).height = 36;
-  const fHdrs = ['Factory_ID','Factory_Name','Factory_Street1','Factory_Street2','Factory_City','Factory_PostalCd','Factory_CountryCd'];
-  const fWidths = [18,30,32,28,20,16,16];
-  const fhr = wsF.getRow(2);
-  fHdrs.forEach((h, i) => {
-    const c = fhr.getCell(i + 1);
-    c.value = h;
-    c.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF274E13' } };
-    c.font  = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-    c.alignment = { horizontal: 'center', vertical: 'middle' };
-    wsF.getColumn(i + 1).width = fWidths[i];
-  });
-  fhr.height = 28;
-  wsF.views = [{ state: 'frozen', ySplit: 2, showGridLines: true }];
-  // Pre-seed: 9999 = Dummy Factory (no address required)
-  const dummyRow = wsF.addRow(['9999', 'Dummy Factory', '', '', '', '', '']);
-  dummyRow.getCell(1).font = { bold: true, color: { argb: 'FF7F7F7F' }, italic: true };
-  dummyRow.getCell(2).font = { bold: true, color: { argb: 'FF7F7F7F' }, italic: true };
+  // FACTORY_LOOKUP tab removed — factory data sourced from Databricks
 
   await wb.xlsx.writeFile(OUT_FILE);
   console.log('✅  SupplierInput_template.xlsx written to:\n    ' + OUT_FILE);
-  console.log('\nSheets:  PO Header (50 rows)  |  PO Lines (200 rows)  |  FACTORY_LOOKUP');
+  console.log('\nSheets:  PO Header (50 rows)  |  PO Lines (200 rows)');
   console.log('\nPO Header mandatory:', hCols.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
   console.log('PO Header defaults :', hCols.filter(c => c.type === 'default').map(c => c.label).join(', '));
   console.log('PO Header auto-fill:', hCols.filter(c => c.type === 'auto').map(c => c.label).join(', '));

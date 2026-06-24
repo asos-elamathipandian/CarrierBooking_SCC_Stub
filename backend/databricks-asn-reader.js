@@ -98,10 +98,21 @@ async function fetchAsnsByPoRefs(poRefs) {
     const poSql = `
       SELECT
         OrderNo,
-        CAST(SupplierID AS STRING) AS SupplierID,
+        CAST(SupplierID AS STRING)        AS SupplierID,
         SupplierName,
         LadingPort,
-        FreightTermsDescription    AS Incoterms,
+        FreightTermsDescription           AS Incoterms,
+        PODtl[0].OriginCountryID          AS FirstCountry,
+        SupplierAddress1                  AS SupplierStreet1,
+        SupplierCity,
+        SupplierPostCode,
+        SupplierCountryCode,
+        FactoryID,
+        FactoryName,
+        FactoryAddress1                   AS FactoryStreet1,
+        FactoryCity,
+        FactoryPostCode,
+        FactoryCountryCode,
         ROW_NUMBER() OVER (PARTITION BY OrderNo ORDER BY _IngestedDate DESC) AS _rn
       FROM sourcingandbuying.conformed.bam033j_purchase_order_v1
       WHERE OrderNo IN (${poList})
@@ -110,10 +121,21 @@ async function fetchAsnsByPoRefs(poRefs) {
     for (const r of (poRows || [])) {
       if (r._rn === 1 || !poEnrichMap[r.OrderNo]) {
         poEnrichMap[r.OrderNo] = {
-          supplierID:   r.SupplierID   || '',
-          supplierName: r.SupplierName || '',
-          ladingPort:   r.LadingPort   || '',
-          incoterms:    r.Incoterms    || ''
+          supplierID:      r.SupplierID          || '',
+          supplierName:    r.SupplierName        || '',
+          ladingPort:      r.LadingPort          || '',
+          incoterms:       r.Incoterms           || '',
+          country:         r.FirstCountry        || '',
+          supplierStreet1: r.SupplierStreet1     || '',
+          supplierCity:    r.SupplierCity        || '',
+          supplierPostal:  r.SupplierPostCode    || '',
+          supplierCountry: r.SupplierCountryCode || '',
+          factoryID:       r.FactoryID           ? String(r.FactoryID) : '',
+          factoryName:     r.FactoryName         || '',
+          factoryStreet1:  r.FactoryStreet1      || '',
+          factoryCity:     r.FactoryCity         || '',
+          factoryPostal:   r.FactoryPostCode     || '',
+          factoryCountry:  r.FactoryCountryCode  || ''
         };
       }
     }
@@ -138,6 +160,16 @@ async function fetchAsnsByPoRefs(poRefs) {
         supplierCode:     enrich.supplierID     || row.supplierCode || '',
         shippingPoint:    enrich.ladingPort     || row.portOfLoad   || '',
         shippingTerms:    enrich.incoterms      || '',
+        supplierStreet1:  enrich.supplierStreet1 || '',
+        supplierCity:     enrich.supplierCity    || '',
+        supplierPostal:   enrich.supplierPostal  || '',
+        supplierCountry:  enrich.supplierCountry || '',
+        factoryID:        enrich.factoryID       || '',
+        factoryName:      enrich.factoryName     || '',
+        factoryStreet1:   enrich.factoryStreet1  || '',
+        factoryCity:      enrich.factoryCity     || '',
+        factoryPostal:    enrich.factoryPostal   || '',
+        factoryCountry:   enrich.factoryCountry  || '',
         mode:             row.mode              || '',
         carrier:          row.carrier           || '',
         expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest),
@@ -152,7 +184,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       colour:      '',
       style:       '',
       packFormat:  row.asnLoadingType === 'H' ? 'H' : 'F',
-      country:     row.countryOfManufacture || '',
+      country:     row.countryOfManufacture || enrich.country || '',
       quantity:    row.bookedQty            || 0,
       expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest)
     });

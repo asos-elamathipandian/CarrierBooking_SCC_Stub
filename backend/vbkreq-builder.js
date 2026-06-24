@@ -27,10 +27,13 @@ const CARTON_TYPES = {
   'Hanging':             { weight: 0.70, L: 213.00, W: 94.00, H: 60.00 }
 };
 
-// FC → Destination port LOCODE lookup
+// FC → Destination port LOCODE lookup (UN/LOCODE: 2-char country + 3-char location)
 const FC_LOCODE = {
-  'FC01': 'GBBSY',
-  'FC02': 'GBBSY',
+  'FC01': 'GBBSY',   // Barnsley, GB
+  'FC02': 'GBLIC',   // Lichfield, GB
+  'FC03': 'GBHEM',   // Hemel Hempstead, GB
+  'FC04': 'DEBER',   // Berlin, DE
+  'FC05': 'USPHL',   // Philadelphia, US
   'P005': 'GBBSY',
   'POROP': 'POROP'
 };
@@ -171,7 +174,11 @@ async function build(masterRows, purposeCd) {
   const expectedDeliveryDate = formatDateYMD(first.Expected_Delivery_Date);
   const loadingPortLocode = first.Loading_Port_LOCODE || first.Loading_Port_ID || 'XXXX';
   const fcId = first.FC_ID || 'FC01';
-  const destLocode = FC_LOCODE[fcId] || 'GBBSY';
+  // Derive LOCODE: lookup first, then CountryCd + first-3-of-City, then fallback
+  const destLocode = FC_LOCODE[fcId]
+    || ((first.FC_CountryCd && first.FC_City)
+        ? first.FC_CountryCd.toUpperCase() + first.FC_City.replace(/\s+/g, '').slice(0, 3).toUpperCase()
+        : 'GBBSY');
   // Transport mode: from Mode_Of_Transport column (Sea/Air/Road etc), fallback to 30 (Road)
   const transportModeCode = resolveMode(first.Mode_Of_Transport || '30');
 
@@ -243,6 +250,13 @@ async function build(masterRows, purposeCd) {
   const tpSU = bpMsg.ele('TradePartner', { RoleCd: 'SU' });
   tpSU.ele('TradePartnerName').txt(first.Supplier_Name || '');
   tpSU.ele('TradePartnerID', { Qualifier: '93' }).txt(first.Supplier_ID || '');
+  if (first.Supplier_Street1 || first.Supplier_City || first.Supplier_PostalCd || first.Supplier_CountryCd) {
+    const addrSU = tpSU.ele('TradePartnerAddress');
+    if (first.Supplier_Street1)   addrSU.ele('Street').txt(first.Supplier_Street1);
+    if (first.Supplier_City)      addrSU.ele('City').txt(first.Supplier_City);
+    if (first.Supplier_PostalCd)  addrSU.ele('PostalCd').txt(first.Supplier_PostalCd);
+    if (first.Supplier_CountryCd) addrSU.ele('CountryCd').txt(first.Supplier_CountryCd);
+  }
 
   // TradePartner: FA (Factory — from address)
   const tpFA = bpMsg.ele('TradePartner', { RoleCd: 'FA' });
@@ -374,7 +388,7 @@ async function build(masterRows, purposeCd) {
       if (row.Colour_Code)   li.ele('Attribute', { AttributeTypeCd: 'CL' }).txt(row.Colour_Code);
       if (row.Size_Code)     li.ele('Attribute', { AttributeTypeCd: 'IZ' }).txt(row.Size_Code);
       li.ele('Reference', { RefTypeCd: 'PAC', SourceRefTypeCd: '128' }).txt(packType);
-      li.ele('Reference', { RefTypeCd: 'PT',  SourceRefTypeCd: '128' }).txt(productStyle);
+      if (productStyle) li.ele('Reference', { RefTypeCd: 'PT', SourceRefTypeCd: '128' }).txt(productStyle);
       li.ele('Reference', { RefTypeCd: 'HZ',  SourceRefTypeCd: '128' }).txt(hazRef2);
       li.ele('Reference', { RefTypeCd: 'DSC', SourceRefTypeCd: '128' }).txt(description);
       li.ele('Reference', { RefTypeCd: '98',  SourceRefTypeCd: '128' }).txt(cartonType);

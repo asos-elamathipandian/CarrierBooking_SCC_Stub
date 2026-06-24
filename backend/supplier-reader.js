@@ -6,8 +6,7 @@ const ExcelJS = require('exceljs');
 const REQUIRED_HEADER_COLS = [
   'PO_Number',
   'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date',
-  'Traffic_Mode', 'Mode_Of_Transport', 'Booking_Group',
-  'Factory_ID', 'Factory_Name', 'Factory_Street1', 'Factory_City', 'Factory_PostalCd', 'Factory_CountryCd'
+  'Traffic_Mode', 'Booking_Group'
 ];
 
 // Required fields that must come from PO Lines (or equivalent single-sheet columns)
@@ -137,8 +136,7 @@ function parseTwoSheet(workbook) {
 const LEGACY_REQUIRED_COLS = [
   'PO_Number', 'SKU', 'No_of_Cartons', 'Unit_Weight_KG', 'Booking_Qty',
   'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date',
-  'Traffic_Mode', 'Mode_Of_Transport',
-  'Factory_Name', 'Factory_ID', 'Factory_Street1', 'Factory_City', 'Factory_PostalCd', 'Factory_CountryCd',
+  'Traffic_Mode',
   'Booking_Group'
 ];
 

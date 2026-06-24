@@ -14,7 +14,7 @@ const FC_MASTER = {
   'FC01': { name: 'ASOS Barnsley',           street1: 'Langthwaite Grange Industrial Estate', street2: '', city: 'South Kirkby',   postal: 'WF9 3NR',  country: 'GB' },
   'FC02': { name: 'ASOS Lichfield',           street1: 'Swan Island',                          street2: '', city: 'Lichfield',      postal: 'WS13 7DD', country: 'GB' },
   'FC03': { name: 'ASOS Hemel Hempstead',     street1: 'Maylands Avenue',                      street2: '', city: 'Hemel Hempstead',postal: 'HP2 7DE',  country: 'GB' },
-  'FC04': { name: 'ASOS Euro Hub',            street1: 'Sloterweg 793',                        street2: '', city: 'Badhoevedorp',   postal: '1171 VC',  country: 'NL' },
+  'FC04': { name: 'FC04 Berlin',             street1: 'An der Anhalter Bahn 6',               street2: '', city: 'Berlin',         postal: '',         country: 'DE' },
   'FC05': { name: 'ASOS US Hub',              street1: '5025 Bleigh Avenue',                   street2: '', city: 'Philadelphia',   postal: 'PA 19136', country: 'US' },
 };
 
@@ -90,8 +90,17 @@ async function build(supplierData, feedData) {
         finalDestination: asnGroup.finalDestination || '',
         mode:             asnGroup.mode             || '',
         carrier:          asnGroup.carrier          || '',
-        factoryCode:      asnGroup.factoryCode      || '',
-        factoryName:      asnGroup.factoryName      || ''
+        factoryCode:      asnGroup.factoryCode       || '',
+        factoryName:      asnGroup.factoryName       || '',
+        factoryID:        asnGroup.factoryID         || '',
+        factoryStreet1:   asnGroup.factoryStreet1    || '',
+        factoryCity:      asnGroup.factoryCity       || '',
+        factoryPostal:    asnGroup.factoryPostal     || '',
+        factoryCountry:   asnGroup.factoryCountry    || '',
+        supplierStreet1:  asnGroup.supplierStreet1   || '',
+        supplierCity:     asnGroup.supplierCity      || '',
+        supplierPostal:   asnGroup.supplierPostal    || '',
+        supplierCountry:  asnGroup.supplierCountry   || ''
       };
       for (const line of asnGroup.lines) {
         // Files sorted oldest→newest so every write overwrites with a later file's data
@@ -171,21 +180,26 @@ async function build(supplierData, feedData) {
 
         // Supplier — carrier feed takes priority; fall back to supplier template columns
         // When using Databricks source, supplier is the ID code (name not available in ADE table)
-        Supplier_Name:     carrierPoMeta[poNum]?.supplier     || sRow.Supplier_Name || carrierPoMeta[poNum]?.supplierCode || sRow.Supplier_ID || '',
-        Supplier_ID:       carrierPoMeta[poNum]?.supplierCode || sRow.Supplier_ID   || '',
+        Supplier_Name:      carrierPoMeta[poNum]?.supplier     || sRow.Supplier_Name || carrierPoMeta[poNum]?.supplierCode || sRow.Supplier_ID || '',
+        Supplier_ID:        carrierPoMeta[poNum]?.supplierCode || sRow.Supplier_ID   || '',
+        Supplier_Street1:   carrierPoMeta[poNum]?.supplierStreet1 || '',
+        Supplier_City:      carrierPoMeta[poNum]?.supplierCity    || '',
+        Supplier_PostalCd:  carrierPoMeta[poNum]?.supplierPostal  || '',
+        Supplier_CountryCd: carrierPoMeta[poNum]?.supplierCountry || '',
 
-        // Factory — mandatory from supplier template
-        // Factory_ID 9999 = Dummy Factory: name defaults to "Dummy Factory", address intentionally blank
-        Factory_ID:        sRow.Factory_ID        || '',
-        Factory_Name:      String(sRow.Factory_ID || '').trim() === '9999'
-                             ? (sRow.Factory_Name || 'Dummy Factory')
-                             : (sRow.Factory_Name || ''),
-        Factory_Street1:   sRow.Factory_Street1   || '',
+        // Factory — Databricks primary, supplier template fallback
+        Factory_ID:        carrierPoMeta[poNum]?.factoryID    || sRow.Factory_ID        || '',
+        Factory_Name:      (() => {
+          const fId   = carrierPoMeta[poNum]?.factoryID    || sRow.Factory_ID    || '';
+          const fName = carrierPoMeta[poNum]?.factoryName  || sRow.Factory_Name  || '';
+          return String(fId).trim() === '9999' ? (fName || 'Dummy Factory') : fName;
+        })(),
+        Factory_Street1:   carrierPoMeta[poNum]?.factoryStreet1 || sRow.Factory_Street1   || '',
         Factory_Street2:   sRow.Factory_Street2   || '',
         Factory_Street3:   sRow.Factory_Street3   || '',
-        Factory_City:      sRow.Factory_City      || '',
-        Factory_PostalCd:  sRow.Factory_PostalCd  || '',
-        Factory_CountryCd: sRow.Factory_CountryCd || '',
+        Factory_City:      carrierPoMeta[poNum]?.factoryCity    || sRow.Factory_City      || '',
+        Factory_PostalCd:  carrierPoMeta[poNum]?.factoryPostal  || sRow.Factory_PostalCd  || '',
+        Factory_CountryCd: carrierPoMeta[poNum]?.factoryCountry || sRow.Factory_CountryCd || '',
         Country_Of_Origin:  carrierLine?.country   || '',
 
         // FC — resolved from FC_MASTER by FinalDestination from carrier feed (TradePartner FD)
@@ -241,7 +255,7 @@ async function build(supplierData, feedData) {
         Collection_Type: sRow.Collection_Type  || 'Delivery',
         Hazardous:       sRow.Hazardous        || 'N/A',
         Traffic_Mode:    sRow.Traffic_Mode     || '',
-        Mode_Of_Transport: sRow.Mode_Of_Transport || 'Sea',
+        Mode_Of_Transport: carrierPoMeta[poNum]?.mode || sRow.Mode_Of_Transport || 'Sea',
         Cargo_Ready_Planned_Collection_Date: sRow.Cargo_Ready_Planned_Collection_Date || '',
         Carrier_Booking_Request_Date:        sRow.Carrier_Booking_Request_Date        || '',
         Ship_Date:                           carrierLine?.shipDate              || '',
@@ -285,8 +299,12 @@ async function build(supplierData, feedData) {
           ASN_Ref:       carrierLine.asnId,
           _missingFromSupplier: true,   // flag for Excel highlighting
 
-          Supplier_Name:      carrierPoMeta[poNum]?.supplier     || '',
-          Supplier_ID:        carrierPoMeta[poNum]?.supplierCode || '',
+          Supplier_Name:      carrierPoMeta[poNum]?.supplier      || '',
+          Supplier_ID:        carrierPoMeta[poNum]?.supplierCode  || '',
+          Supplier_Street1:   carrierPoMeta[poNum]?.supplierStreet1 || '',
+          Supplier_City:      carrierPoMeta[poNum]?.supplierCity    || '',
+          Supplier_PostalCd:  carrierPoMeta[poNum]?.supplierPostal  || '',
+          Supplier_CountryCd: carrierPoMeta[poNum]?.supplierCountry || '',
 
           // Factory — inherit from supplier rows for this PO if available
           Factory_Name:       poHdr.Factory_Name      || '',
@@ -347,7 +365,8 @@ async function build(supplierData, feedData) {
           Pack_Type:       carrierLine.packFormat === 'H' ? 'Hanging' : (poHdr.Pack_Type || 'Bulk Flat'),
           Collection_Type: poHdr.Collection_Type || 'Delivery',
           Hazardous:       poHdr.Hazardous       || 'N/A',
-          Traffic_Mode:    poHdr.Traffic_Mode    || po?.lineItems?.[0]?.mode || '',
+          Traffic_Mode:    poHdr.Traffic_Mode || po?.lineItems?.[0]?.mode || '',
+          Mode_Of_Transport: carrierPoMeta[poNum]?.mode || poHdr.Mode_Of_Transport || 'Sea',
           Cargo_Ready_Planned_Collection_Date: poHdr.Cargo_Ready_Planned_Collection_Date || '',
           Carrier_Booking_Request_Date:        poHdr.Carrier_Booking_Request_Date        || '',
           Ship_Date:                           carrierLine.shipDate || '',
