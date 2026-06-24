@@ -25,6 +25,19 @@ function toDateStr(val) {
 }
 
 /**
+ * bam033j dates are stored 1 calendar day ahead of the intended business date
+ * (dates ingested as midnight UTC of the following day). Subtract 1 day to correct.
+ */
+function bam033jDate(val) {
+  if (!val) return '';
+  const s = toDateStr(val);
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * Fetch carrier ASN + PO enrichment data from Databricks for the given PO refs.
  *
  * Returns { carrierAsnFiles, errors } matching the structure of
@@ -100,11 +113,19 @@ async function fetchAsnsByPoRefs(poRefs) {
     const poSql = `
       SELECT
         OrderNo,
-        CAST(SupplierID AS STRING)        AS SupplierID,
+        CAST(SupplierID AS STRING)                                         AS SupplierID,
         SupplierName,
-        TRY(LadingPort)                   AS LadingPort,
-        TRY(FreightTermsDescription)      AS Incoterms,
-        TRY(PODtl[0].OriginCountryID)     AS FirstCountry,
+        LadingPort,
+        FreightTermsDescription                                            AS Incoterms,
+        CASE WHEN size(PODtl) > 0 THEN PODtl[0].OriginCountryID ELSE NULL END AS FirstCountry,
+        CAST(Factory AS STRING)                                            AS FactoryID,
+        FactoryDesc                                                        AS FactoryName,
+        ExFactoryDate,
+        ExpectedShipmentDate,
+        ExpectedHandoverDate,
+        HandoverWindowStartDate,
+        HandoverWindowEndDate,
+        ExpectedDeliveryDateFirstLocation,
         ROW_NUMBER() OVER (PARTITION BY OrderNo ORDER BY _IngestedDate DESC) AS _rn
       FROM sourcingandbuying.conformed.bam033j_purchase_order_v1
       WHERE OrderNo IN (${poList})
@@ -115,21 +136,28 @@ async function fetchAsnsByPoRefs(poRefs) {
     if (poRows && poRows.length > 0) {
       console.log(`[Databricks PO] sample OrderNo values: ${[...new Set(poRows.slice(0,5).map(r => r.OrderNo))].join(', ')}`);
       console.log(`[Databricks PO] sample SupplierName: ${poRows[0].SupplierName}, LadingPort: ${poRows[0].LadingPort}, FactoryName: ${poRows[0].FactoryName}`);
+      console.log(`[Databricks PO] dates — ExFactoryDate: ${poRows[0].ExFactoryDate}, ExpectedShipmentDate: ${poRows[0].ExpectedShipmentDate}, ExpectedHandoverDate: ${poRows[0].ExpectedHandoverDate}, HandoverWindowStartDate: ${poRows[0].HandoverWindowStartDate}, ExpectedDeliveryDateFirstLocation: ${poRows[0].ExpectedDeliveryDateFirstLocation}`);
     }
     for (const r of (poRows || [])) {
       if (Number(r._rn) === 1 || !poEnrichMap[r.OrderNo]) {
         poEnrichMap[r.OrderNo] = {
-          supplierID:      r.SupplierID          || '',
-          supplierName:    r.SupplierName        || '',
-          ladingPort:      r.LadingPort          || '',
-          incoterms:       r.Incoterms           || '',
-          country:         r.FirstCountry        || '',
+          supplierID:           r.SupplierID          || '',
+          supplierName:         r.SupplierName        || '',
+          ladingPort:           r.LadingPort          || '',
+          incoterms:            r.Incoterms           || '',
+          country:              r.FirstCountry        || '',
+          factoryID:            r.FactoryID           || '',
+          factoryName:          r.FactoryName         || '',
+          expectedShipmentDate: bam033jDate(r.ExFactoryDate || r.ExpectedShipmentDate || ''),
+          expectedDeliveryDate: bam033jDate(r.ExpectedDeliveryDateFirstLocation || r.ExpectedHandoverDate || ''),
+          exFactoryDate:        bam033jDate(r.ExFactoryDate        || ''),
+          expShipmentDate:      bam033jDate(r.ExpectedShipmentDate || ''),
+          expHandoverDate:      bam033jDate(r.ExpectedHandoverDate || ''),
+          expDeliveryDate:      bam033jDate(r.ExpectedDeliveryDateFirstLocation || ''),
           supplierStreet1: '',
           supplierCity:    '',
           supplierPostal:  '',
           supplierCountry: '',
-          factoryID:       '',
-          factoryName:     '',
           factoryStreet1:  '',
           factoryCity:     '',
           factoryPostal:   '',
@@ -153,24 +181,24 @@ async function fetchAsnsByPoRefs(poRefs) {
         poId:             row.poId              || '',
         pofc:             row.firstDestination  || row.finalDestination || '',
         finalDestination: row.finalDestination  || '',
-        shipDate:         toDateStr(row.asnEstimatedShipmentDate || row.latestPlannedShipmentDate),
+        shipDate:         toDateStr(row.asnEstimatedShipmentDate || row.latestPlannedShipmentDate || enrich.expectedShipmentDate),
         supplier:         enrich.supplierName   || '',
         supplierCode:     enrich.supplierID     || row.supplierCode || '',
         shippingPoint:    enrich.ladingPort     || row.portOfLoad   || '',
         shippingTerms:    enrich.incoterms      || '',
-        supplierStreet1:  enrich.supplierStreet1 || '',
-        supplierCity:     enrich.supplierCity    || '',
-        supplierPostal:   enrich.supplierPostal  || '',
-        supplierCountry:  enrich.supplierCountry || '',
-        factoryID:        enrich.factoryID       || '',
-        factoryName:      enrich.factoryName     || '',
-        factoryStreet1:   enrich.factoryStreet1  || '',
-        factoryCity:      enrich.factoryCity     || '',
-        factoryPostal:    enrich.factoryPostal   || '',
-        factoryCountry:   enrich.factoryCountry  || '',
+        supplierStreet1:  '',
+        supplierCity:     '',
+        supplierPostal:   '',
+        supplierCountry:  '',
+        factoryID:        enrich.factoryID      || '',
+        factoryName:      enrich.factoryName    || '',
+        factoryStreet1:   '',
+        factoryCity:      '',
+        factoryPostal:    '',
+        factoryCountry:   '',
         mode:             row.mode              || '',
         carrier:          row.carrier           || '',
-        expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest),
+        expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest || enrich.expectedDeliveryDate),
         lines: []
       };
     }
@@ -184,7 +212,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       packFormat:  row.asnLoadingType === 'H' ? 'H' : 'F',
       country:     row.countryOfManufacture || enrich.country || '',
       quantity:    row.bookedQty            || 0,
-      expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest)
+      expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest || enrich.expectedDeliveryDate)
     });
   }
 
@@ -195,6 +223,11 @@ async function fetchAsnsByPoRefs(poRefs) {
 
   const parsed = Object.values(asnPoMap);
   console.log(`[Databricks ASN] ${parsed.length} ASN group(s) fetched for ${safePOs.length} PO ref(s)`);
+  if (parsed.length > 0) {
+    const p = parsed[0];
+    console.log(`[Databricks ASN] shipDate="${p.shipDate}", expectedDeliveryDate="${p.expectedDeliveryDate}", mode="${p.mode}"`);
+    console.log(`[Databricks ASN] raw asnEstimatedShipmentDate="${rows[0]?.asnEstimatedShipmentDate}", latestPlannedShipmentDate="${rows[0]?.latestPlannedShipmentDate}", asnDeliveryDateFinalDest="${rows[0]?.asnDeliveryDateFinalDest}"`);
+  }
 
   return {
     poFeeds: [], asnFeeds: [],
