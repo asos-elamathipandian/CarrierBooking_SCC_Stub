@@ -81,6 +81,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       s.asnLoadingType,
       ol.orderId                         AS poId,
       ol.sku,
+      ol.optionId,
       TRY_CAST(ol.bookedQty AS DOUBLE)   AS bookedQty
     FROM latest s
     LATERAL VIEW EXPLODE(orderLineItems) AS ol
@@ -208,7 +209,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       description: '',
       size:        '',
       colour:      '',
-      style:       '',
+      style:       row.optionId || '',
       packFormat:  row.asnLoadingType === 'H' ? 'H' : 'F',
       country:     row.countryOfManufacture || enrich.country || '',
       quantity:    row.bookedQty            || 0,

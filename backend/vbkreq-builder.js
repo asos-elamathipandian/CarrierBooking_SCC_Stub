@@ -56,7 +56,7 @@ function resolveMode(modeVal) {
 }
 
 function getCtrlNumber() {
-  let data = { counter: 91800256, bookingCounter: 1000000001, bookingVersions: {} };
+  let data = { counter: 800100001, bookingCounter: 1000000001, bookingVersions: {} };
   if (fs.existsSync(COUNTER_FILE)) {
     try { data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')); } catch (_) {}
   }
@@ -65,7 +65,7 @@ function getCtrlNumber() {
   const current = data.counter;
   data.counter = current + 1;
   fs.writeFileSync(COUNTER_FILE, JSON.stringify(data, null, 2));
-  return String(current);
+  return `ASOSBOOK-${current}`;
 }
 
 function getBookingRef() {
@@ -388,7 +388,7 @@ async function build(masterRows, purposeCd) {
       if (row.Colour_Code)   li.ele('Attribute', { AttributeTypeCd: 'CL' }).txt(row.Colour_Code);
       if (row.Size_Code)     li.ele('Attribute', { AttributeTypeCd: 'IZ' }).txt(row.Size_Code);
       li.ele('Reference', { RefTypeCd: 'PAC', SourceRefTypeCd: '128' }).txt(packType);
-      if (productStyle) li.ele('Reference', { RefTypeCd: 'PT', SourceRefTypeCd: '128' }).txt(productStyle);
+      li.ele('Reference', { RefTypeCd: 'PT',  SourceRefTypeCd: '128' }).txt(productStyle);
       li.ele('Reference', { RefTypeCd: 'HZ',  SourceRefTypeCd: '128' }).txt(hazRef2);
       li.ele('Reference', { RefTypeCd: 'DSC', SourceRefTypeCd: '128' }).txt(description);
       li.ele('Reference', { RefTypeCd: '98',  SourceRefTypeCd: '128' }).txt(cartonType);
