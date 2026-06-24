@@ -691,12 +691,12 @@
     </div>
     <div class="step-body">
       <div style="margin-bottom:12px">
-        <label style="font-size:12px;font-weight:600;color:#444;display:block;margin-bottom:5px">PO Number(s) <span style="color:#888;font-weight:400">— comma or newline separated</span></label>
-        <textarea id="cancelPoInput" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #FECACA;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box" placeholder="e.g. 500034236929  or  VB-1000000015 — comma or newline separated"></textarea>
+        <label style="font-size:12px;font-weight:600;color:#444;display:block;margin-bottom:5px">PO Number(s) <span style="color:#888;font-weight:400">— enter one or more POs to list all their VBs, or enter VB Refs directly</span></label>
+        <textarea id="cancelPoInput" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #FECACA;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box" placeholder="e.g. 500034236929, 500037528092  or  VB-1000000015"></textarea>
       </div>
       <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <button class="btn" id="btnLookupCancel" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D">🔍 Look Up Existing Bookings</button>
-        <button class="btn" id="btnRunCancel" disabled style="background:#991B1B;color:#fff;border-color:#991B1B">✕ Cancel &amp; Upload to SFTP</button>
+        <button class="btn" id="btnLookupCancel" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D">🔍 Look Up VBs</button>
+        <button class="btn" id="btnRunCancel" disabled style="background:#991B1B;color:#fff;border-color:#991B1B">✕ Cancel Selected VB &amp; Upload</button>
       </div>
       <div id="cancelLookupPanel" style="display:none;margin-bottom:12px"></div>
       <div id="cancelStatus"></div>

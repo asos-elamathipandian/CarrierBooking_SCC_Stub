@@ -722,13 +722,39 @@ app.get('/api/lookup-vbref', (req, res) => {
           : (e.poNumbers || []).map(String).includes(String(input)))
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
       if (matches.length) {
-        result[input] = {
-          bookingRef:    matches[0].bookingRef,
-          poNumbers:     matches[0].poNumbers || [],
-          timestamp:     matches[0].timestamp,
-          filename:      matches[0].filename,
-          hasMasterRows: !!(matches[0].masterRows?.length)
-        };
+        if (isVbRef) {
+          // Single VB ref lookup — return one entry
+          result[input] = {
+            bookingRef:    matches[0].bookingRef,
+            poNumbers:     matches[0].poNumbers || [],
+            timestamp:     matches[0].timestamp,
+            filename:      matches[0].filename,
+            hasMasterRows: !!(matches[0].masterRows?.length),
+            allRefs:       null
+          };
+        } else {
+          // PO lookup — return ALL unique VBs for this PO
+          const seen = new Map();
+          for (const e of matches) {
+            const ref = String(e.bookingRef || '');
+            if (!seen.has(ref)) seen.set(ref, e);
+          }
+          const allRefs = [...seen.values()].map(e => ({
+            bookingRef:    e.bookingRef,
+            timestamp:     e.timestamp,
+            filename:      e.filename,
+            hasMasterRows: !!(e.masterRows?.length)
+          }));
+          // Primary entry = most recent
+          result[input] = {
+            bookingRef:    allRefs[0].bookingRef,
+            poNumbers:     matches[0].poNumbers || [],
+            timestamp:     allRefs[0].timestamp,
+            filename:      allRefs[0].filename,
+            hasMasterRows: allRefs[0].hasMasterRows,
+            allRefs
+          };
+        }
       }
     }
     res.json({ refs: result });

@@ -208,50 +208,114 @@ function progSet(n, state, text) {
   if (text) el.textContent = text;
 }
 
-// ── Cancellation VB Ref lookup ────────────────────────────────────────────────
 // ── Cancel Booking card ───────────────────────────────────────────────────────
 const btnLookupCancel = document.getElementById('btnLookupCancel');
 const btnRunCancel    = document.getElementById('btnRunCancel');
 const cancelPoInput   = document.getElementById('cancelPoInput');
+let _selectedCancelRef = null;
+
+function updateCancelBtn() {
+  const panel = document.getElementById('cancelLookupPanel');
+  const checked = panel ? [...panel.querySelectorAll('input[type=checkbox][name=cancelVbSelect]:checked')] : [];
+  if (btnRunCancel) {
+    btnRunCancel.disabled = checked.length === 0;
+    btnRunCancel.textContent = checked.length > 1 ? `✕ Cancel ${checked.length} Selected VBs & Upload` : '✕ Cancel Selected VB & Upload';
+  }
+}
 
 async function renderCancelLookup(inputs) {
   const panel = document.getElementById('cancelLookupPanel');
   if (!panel) return;
+  _selectedCancelRef = null;
+  if (btnRunCancel) btnRunCancel.disabled = true;
   panel.style.display = '';
-  panel.innerHTML = '<span style="font-size:12px;color:#888">Looking up existing bookings…</span>';
+  panel.innerHTML = '<span style="font-size:12px;color:#888">Looking up bookings…</span>';
   try {
     const res  = await fetch(`${API}/lookup-vbref?pos=${encodeURIComponent(inputs.join(','))}`);
     const data = await res.json();
     const refs = data.refs || {};
-    const hasAny = Object.keys(refs).length > 0;
-    const thS = 'background:#7F1D1D;color:#fff;padding:6px 10px;text-align:left;font-size:12px';
-    const tdS = 'padding:6px 10px;border-bottom:1px solid #FEE2E2;font-size:12px';
-    const rows = inputs.map(input => {
+
+    // Aggregate all VBs across all inputs
+    const allRows = []; // { bookingRef, poDisplay, timestamp, hasMasterRows }
+    let notFound = [];
+    for (const input of inputs) {
       const found = refs[input];
-      if (!found) return `<tr><td style="${tdS};font-family:monospace">${escapeHtml(input)}</td><td style="${tdS}" colspan="3"><span style="color:#B91C1C;font-size:11px">⚠️ No booking record found</span></td></tr>`;
-      const isVbRef = /^VB-/i.test(input);
-      const refCell = `<span style="font-family:monospace;font-weight:700;color:#1F4E79">${escapeHtml(found.bookingRef)}</span>`;
-      const posCell = (found.poNumbers || []).map(p => escapeHtml(p)).join(', ') || '—';
-      const dateCell = `<span style="color:#888;font-size:11px">${new Date(found.timestamp).toLocaleDateString('en-GB')}</span>`;
-      const storedBadge = found.hasMasterRows
-        ? '<span style="color:#1B5E20;font-size:10px;font-weight:700">✅ Ready to cancel</span>'
-        : '<span style="color:#B45309;font-size:10px">⚠️ No stored data (re-run booking first)</span>';
-      return `<tr>
-        <td style="${tdS};font-family:monospace">${escapeHtml(input)}</td>
-        <td style="${tdS}">${isVbRef ? posCell : refCell}</td>
-        <td style="${tdS}">${isVbRef ? refCell : posCell}</td>
-        <td style="${tdS}">${dateCell}<br/>${storedBadge}</td>
-      </tr>`;
+      if (!found) { notFound.push(input); continue; }
+      const poDisplay = (found.poNumbers || []).join(', ') || input;
+      const refList = found.allRefs || [{ bookingRef: found.bookingRef, timestamp: found.timestamp, hasMasterRows: found.hasMasterRows }];
+      for (const r of refList) allRows.push({ ...r, poDisplay });
+    }
+
+    if (!allRows.length) {
+      panel.innerHTML = `<span style="font-size:12px;color:#B91C1C">⚠️ No booking records found for: ${notFound.map(escapeHtml).join(', ')}. Must have been created with this tool.</span>`;
+      return;
+    }
+
+    // Group rows by PO
+    const byPo = {}; // poDisplay -> [rows]
+    for (const r of allRows) {
+      if (!byPo[r.poDisplay]) byPo[r.poDisplay] = [];
+      byPo[r.poDisplay].push(r);
+    }
+
+    const thS = 'background:#7F1D1D;color:#fff;padding:6px 10px;text-align:left;font-size:12px';
+    const tdS = 'padding:8px 10px;border-bottom:1px solid #FEE2E2;font-size:12px;vertical-align:middle';
+    const poHeaderS = 'background:#FEF2F2;padding:6px 10px;font-size:12px;font-weight:700;color:#7F1D1D;border-bottom:1px solid #FECACA';
+    let globalIdx = 0;
+    const tbodyRows = Object.entries(byPo).map(([poDisplay, rList]) => {
+      const poHeader = `<tr><td colspan="4" style="${poHeaderS}">PO: ${escapeHtml(poDisplay)}</td></tr>`;
+      const vbRows = rList.map(r => {
+        const i = globalIdx++;
+        const badge = r.hasMasterRows
+          ? '<span style="color:#1B5E20;font-size:10px;font-weight:700">✅ Ready</span>'
+          : '<span style="color:#B45309;font-size:10px">⚠️ No stored data</span>';
+        const cb = r.hasMasterRows
+          ? `<input type="checkbox" name="cancelVbSelect" value="${escapeHtml(r.bookingRef)}" data-po="${escapeHtml(r.poDisplay)}" id="cvb${i}" style="accent-color:#991B1B;cursor:pointer;width:15px;height:15px">`
+          : `<input type="checkbox" disabled style="opacity:0.4;width:15px;height:15px">`;
+        return `<tr>
+          <td style="${tdS};text-align:center;width:36px">${cb}</td>
+          <td style="${tdS}"><label for="cvb${i}" style="font-family:monospace;font-weight:700;color:#1F4E79;cursor:pointer">${escapeHtml(r.bookingRef)}</label></td>
+          <td style="${tdS}">${new Date(r.timestamp).toLocaleDateString('en-GB')} ${new Date(r.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</td>
+          <td style="${tdS}">${badge}</td>
+        </tr>`;
+      }).join('');
+      return poHeader + vbRows;
     }).join('');
-    panel.innerHTML = `<table style="width:100%;border-collapse:collapse">
-      <thead><tr>
-        <th style="${thS}">Input</th>
-        <th style="${thS}">PO Number(s)</th>
-        <th style="${thS}">VB Ref</th>
-        <th style="${thS}">Booked On</th>
-      </tr></thead>
-      <tbody>${rows}</tbody></table>`;
-    if (btnRunCancel) btnRunCancel.disabled = !hasAny;
+
+    const notFoundNote = notFound.length
+      ? `<p style="font-size:11px;color:#B91C1C;margin:6px 0 0">⚠️ Not found: ${notFound.map(escapeHtml).join(', ')}</p>`
+      : '';
+
+    panel.innerHTML = `
+      <p style="font-size:12px;color:#666;margin:0 0 8px">↓ Select one VB per PO to cancel:</p>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="${thS};width:36px"></th>
+          <th style="${thS}">VB Ref</th>
+          <th style="${thS}">Booked On</th>
+          <th style="${thS}">Status</th>
+        </tr></thead>
+        <tbody>${tbodyRows}</tbody>
+      </table>${notFoundNote}`;
+
+    // Auto-check if only one ready option overall
+    const readyRows = allRows.filter(r => r.hasMasterRows);
+    if (readyRows.length === 1) {
+      const cb = panel.querySelector('input[type=checkbox]');
+      if (cb) { cb.checked = true; }
+    }
+    panel.querySelectorAll('input[type=checkbox][name=cancelVbSelect]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          // Uncheck all other checkboxes in the same PO group
+          panel.querySelectorAll(`input[type=checkbox][name=cancelVbSelect][data-po="${cb.dataset.po}"]`).forEach(other => {
+            if (other !== cb) other.checked = false;
+          });
+        }
+        updateCancelBtn();
+      });
+    });
+    updateCancelBtn();
   } catch (err) {
     panel.innerHTML = `<span style="font-size:12px;color:#922B21">❌ ${err.message}</span>`;
   }
@@ -267,15 +331,18 @@ if (btnLookupCancel) {
 
 if (btnRunCancel) {
   btnRunCancel.addEventListener('click', async () => {
-    const inputs = (cancelPoInput?.value || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-    if (!inputs.length) return;
+    const panel = document.getElementById('cancelLookupPanel');
+    const selectedRefs = panel
+      ? [...panel.querySelectorAll('input[type=checkbox][name=cancelVbSelect]:checked')].map(cb => cb.value)
+      : [];
+    if (!selectedRefs.length) return;
     setLoading(btnRunCancel, true);
-    psSetResult('cancelStatus', '<span style="font-size:12px;color:#888">⏳ Generating cancellation VBKREQ(s)…</span>');
+    psSetResult('cancelStatus', '<span style="font-size:12px;color:#888">⏳ Generating cancellation VBKREQ…</span>');
     try {
       const genRes  = await fetch(`${API}/cancel-booking`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs })
+        body: JSON.stringify({ inputs: selectedRefs })
       });
       const genData = await genRes.json();
       if (!genRes.ok) throw new Error(genData.error || 'Cancel generation failed');
