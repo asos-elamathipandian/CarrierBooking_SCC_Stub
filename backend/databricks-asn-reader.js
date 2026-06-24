@@ -81,7 +81,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       s.asnLoadingType,
       ol.orderId                         AS poId,
       ol.sku,
-      ol.optionId,
+      get_json_object(to_json(ol), '$.optionId') AS optionId,
       TRY_CAST(ol.bookedQty AS DOUBLE)   AS bookedQty
     FROM latest s
     LATERAL VIEW EXPLODE(orderLineItems) AS ol
