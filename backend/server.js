@@ -17,6 +17,8 @@ const sftpUploader         = require('./sftp-uploader');
 const poParser             = require('./po-parser');
 const asnParser            = require('./asn-parser');
 const carrierAsnParser     = require('./carrier-asn-parser');
+const spClient             = require('./sharepoint-client');
+const spScheduler          = require('./sharepoint-scheduler');
 
 const app = express();
 const PORT = 3000;
@@ -772,6 +774,47 @@ app.get('/api/lookup-vbref', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// GET /api/sharepoint/status
+// ─────────────────────────────────────────────
+app.get('/api/sharepoint/status', (req, res) => {
+  const status = spScheduler.readStatus();
+  res.json({
+    configured: spClient.isConfigured(),
+    schedule:   process.env.SP_SCHEDULE || '',
+    ...status
+  });
+});
+
+// ─────────────────────────────────────────────
+// POST /api/sharepoint/sync  — manual trigger
+// ─────────────────────────────────────────────
+app.post('/api/sharepoint/sync', async (req, res) => {
+  if (!spClient.isConfigured()) {
+    return res.status(400).json({ error: 'SharePoint not configured. Fill in SP_* vars in .env and restart.' });
+  }
+  // Run async — respond immediately so the UI can poll status
+  spScheduler.runSync(sessionState).catch(err =>
+    console.error('[SP sync] Error:', err.message)
+  );
+  res.json({ success: true, message: 'Sync started — poll /api/sharepoint/status for progress.' });
+});
+
+// ─────────────────────────────────────────────
+// GET /api/sharepoint/files  — list current SP folder
+// ─────────────────────────────────────────────
+app.get('/api/sharepoint/files', async (req, res) => {
+  if (!spClient.isConfigured()) {
+    return res.status(400).json({ error: 'SharePoint not configured.' });
+  }
+  try {
+    const files = await spClient.listTemplateFiles();
+    res.json({ files });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
 // GET /api/health — simple liveness check
 // ─────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -783,11 +826,21 @@ app.get('/api/health', (req, res) => {
 // Serve the blank supplier Excel template
 // ─────────────────────────────────────────────
 app.get('/api/download-template', (req, res) => {
-  const templatePath = path.join(__dirname, '..', 'samples', 'SupplierInput_template.xlsx');
+  const today = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const dd = pad(today.getDate()), mm = pad(today.getMonth() + 1), yyyy = today.getFullYear();
+  const slot = today.getHours() < 12 ? 'AM' : 'PM';
+  const templateName = `Supplier PO sheet-${dd}${mm}${yyyy}-${slot}.xlsx`;
+  const templatePath = path.join(__dirname, '..', 'samples', templateName);
   if (!fs.existsSync(templatePath)) {
-    return res.status(404).json({ error: 'Template not found. Run: node backend/build-supplier-template.js' });
+    // Fallback: serve any matching Supplier PO sheet-*.xlsx in samples/
+    const fallback = fs.readdirSync(path.join(__dirname, '..', 'samples'))
+      .filter(f => /^Supplier PO sheet-.*\.xlsx$/i.test(f))
+      .sort().reverse()[0];
+    if (!fallback) return res.status(404).json({ error: 'Template not found.' });
+    return res.download(path.join(__dirname, '..', 'samples', fallback), fallback);
   }
-  res.download(templatePath, 'SupplierInput_template.xlsx');
+  res.download(templatePath, templateName);
 });
 
 // ─────────────────────────────────────────────
@@ -810,4 +863,5 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`CarrierBookingStub running at http://localhost:${PORT}`);
+  spScheduler.start(sessionState);
 });

@@ -728,3 +728,86 @@ async function loadHistory() {
 
 // Load history on page start and after each upload
 loadHistory();
+
+// ── SharePoint auto-sync status banner ───────────────────────────────────────
+const spBanner    = document.getElementById('spSyncBanner');
+const spStatus    = document.getElementById('spSyncStatus');
+const spFiles     = document.getElementById('spSyncFiles');
+const btnSpSync   = document.getElementById('btnSpSyncNow');
+let _spPollTimer  = null;
+
+async function loadSpStatus() {
+  try {
+    const res  = await fetch(`${API}/sharepoint/status`);
+    const data = await res.json();
+
+    if (!data.configured) {
+      if (spBanner) spBanner.style.display = 'none';
+      return;
+    }
+
+    if (spBanner) spBanner.style.display = '';
+
+    if (data.running) {
+      if (spStatus) spStatus.textContent = '⏳ Syncing…';
+      // Poll every 3s while running
+      if (!_spPollTimer) _spPollTimer = setInterval(loadSpStatus, 3000);
+      return;
+    }
+
+    // Not running — clear poll timer
+    if (_spPollTimer) { clearInterval(_spPollTimer); _spPollTimer = null; }
+
+    const schedule = data.schedule ? `Scheduled: ${data.schedule}` : 'No schedule set';
+    if (data.error) {
+      if (spStatus) spStatus.innerHTML = `<span style="color:#B91C1C">❌ ${escapeHtml(data.error)}</span> &nbsp;·&nbsp; ${schedule}`;
+    } else if (data.lastSync) {
+      const when = new Date(data.lastSync).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      const date = new Date(data.lastSync).toLocaleDateString('en-GB');
+      const skippedNote = data.skipped ? ' &nbsp;<span style="color:#92400E">(no changes — skipped)</span>' : '';
+      if (spStatus) spStatus.innerHTML = `Last synced: <strong>${when} on ${date}</strong>${skippedNote} &nbsp;·&nbsp; ${escapeHtml(schedule)} &nbsp;·&nbsp; ${data.rowCount || 0} row(s), ${(data.poRefs || []).length} PO(s)`;
+    } else {
+      if (spStatus) spStatus.innerHTML = `Not yet synced &nbsp;·&nbsp; ${escapeHtml(schedule)}`;
+    }
+
+    // Show file list
+    if (spFiles && data.files && data.files.length) {
+      spFiles.innerHTML = data.files.map(f => {
+        const kb  = Math.round((f.size || 0) / 1024);
+        const mod = f.lastModified ? new Date(f.lastModified).toLocaleDateString('en-GB') : '';
+        return `<span style="display:inline-block;margin-right:10px;color:#0369A1">📄 ${escapeHtml(f.name)} <span style="color:#888">(${kb} KB${mod ? ', ' + mod : ''})</span></span>`;
+      }).join('');
+    } else if (spFiles) {
+      spFiles.innerHTML = '';
+    }
+
+    // If a fresh sync just populated supplier data, update the PO tags
+    if (data.lastSync && data.poRefs && data.poRefs.length && !state.poRefs.length) {
+      state.poRefs = data.poRefs;
+      renderPoTags(data.poRefs);
+      document.getElementById('pipelineCard')?.classList.remove('locked');
+      const badge = document.getElementById('badgePipeline');
+      if (badge) badge.className = 'step-badge active';
+    }
+  } catch (_) {
+    // silently ignore if server not up yet
+  }
+}
+
+if (btnSpSync) {
+  btnSpSync.addEventListener('click', async () => {
+    setLoading(btnSpSync, true);
+    try {
+      await fetch(`${API}/sharepoint/sync`, { method: 'POST' });
+      if (spStatus) spStatus.textContent = '⏳ Syncing…';
+      if (!_spPollTimer) _spPollTimer = setInterval(loadSpStatus, 3000);
+    } catch (err) {
+      if (spStatus) spStatus.textContent = `❌ ${err.message}`;
+    } finally {
+      setLoading(btnSpSync, false);
+    }
+  });
+}
+
+// Initial SP status check
+loadSpStatus();
