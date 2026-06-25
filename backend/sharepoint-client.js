@@ -100,32 +100,63 @@ async function getDriveId() {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+function mapFile(f, supplierFolder) {
+  return {
+    id:                   f.id,
+    name:                 f.name,
+    supplierFolder:       supplierFolder || '',
+    size:                 f.size,
+    lastModifiedDateTime: f.lastModifiedDateTime,
+    webUrl:               f.webUrl
+  };
+}
+
+async function listChildrenByPath(siteId, driveId, folderPath) {
+  const endpoint = folderPath === '/'
+    ? `/sites/${siteId}/drives/${driveId}/root/children`
+    : `/sites/${siteId}/drives/${driveId}/root:${folderPath}:/children`;
+  const data = await graphGet(endpoint);
+  return data.value || [];
+}
+
 /**
- * List Excel (.xlsx / .xlsm) files in SP_FOLDER_PATH.
- * Returns array of { id, name, size, lastModifiedDateTime, webUrl }
+ * List Excel files across SP_FOLDER_PATH and all its immediate subfolders.
+ * Each result includes { id, name, supplierFolder, size, lastModifiedDateTime, webUrl }.
+ * If SP_FOLDER_PATH itself contains Excel files they are included too (supplierFolder = '').
  */
 async function listTemplateFiles() {
   const siteId  = await getSiteId();
   const driveId = await getDriveId();
-  const folder  = (process.env.SP_FOLDER_PATH || '/').replace(/\/$/, '') || '/';
+  const root    = (process.env.SP_FOLDER_PATH || '/').replace(/\/$/, '') || '/';
 
-  let endpoint;
-  if (folder === '/') {
-    endpoint = `/sites/${siteId}/drives/${driveId}/root/children`;
-  } else {
-    endpoint = `/sites/${siteId}/drives/${driveId}/root:${folder}:/children`;
+  const rootItems = await listChildrenByPath(siteId, driveId, root);
+
+  const results = [];
+
+  // Excel files directly in the root folder
+  for (const f of rootItems) {
+    if (!f.folder && /\.(xlsx|xlsm)$/i.test(f.name)) {
+      results.push(mapFile(f, ''));
+    }
   }
 
-  const data = await graphGet(endpoint);
-  return (data.value || [])
-    .filter(f => !f.folder && /\.(xlsx|xlsm)$/i.test(f.name))
-    .map(f => ({
-      id:                   f.id,
-      name:                 f.name,
-      size:                 f.size,
-      lastModifiedDateTime: f.lastModifiedDateTime,
-      webUrl:               f.webUrl
-    }));
+  // Scan each subfolder (one level deep — one folder per supplier)
+  const subfolders = rootItems.filter(f => f.folder);
+  for (const sf of subfolders) {
+    const subPath = root === '/' ? `/${sf.name}` : `${root}/${sf.name}`;
+    try {
+      const subItems = await listChildrenByPath(siteId, driveId, subPath);
+      for (const f of subItems) {
+        if (!f.folder && /\.(xlsx|xlsm)$/i.test(f.name)) {
+          results.push(mapFile(f, sf.name));
+        }
+      }
+    } catch (err) {
+      console.warn(`[SP] Could not list subfolder "${sf.name}":`, err.message);
+    }
+  }
+
+  return results;
 }
 
 /**

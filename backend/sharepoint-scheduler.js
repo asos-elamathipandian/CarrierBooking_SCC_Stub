@@ -58,29 +58,43 @@ async function runSync(sessionState) {
     files = await sp.listTemplateFiles();
   } catch (err) {
     console.error('[SP Scheduler] List failed:', err.message);
-    writeStatus({ running: false, error: `List failed: ${err.message}`, lastSync: new Date().toISOString() });
+    writeStatus({ running: false, error: `List failed: ${err.message}`, lastSync: now.toISOString() });
     return;
   }
 
   if (!files.length) {
-    console.warn('[SP Scheduler] No Excel files found in SharePoint folder.');
-    writeStatus({ running: false, files: [], lastSync: new Date().toISOString(), error: null });
+    console.warn('[SP Scheduler] No Excel files found in SharePoint folder or subfolders.');
+    writeStatus({ running: false, files: [], lastSync: now.toISOString(), error: null });
     return;
   }
 
-  // Pick the most recently modified Excel file — no filename restrictions
-  files.sort((a, b) => new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime));
-  const latest = files[0];
-  console.log(`[SP Scheduler] Latest file: "${latest.name}" (modified ${latest.lastModifiedDateTime})`);
-
-  // Skip only if this exact file version was already processed last time
+  // Load the set of already-processed file versions: { [id]: lastModifiedDateTime }
   const prevStatus = readStatus();
-  const alreadyProcessed =
-    prevStatus.lastProcessedId === latest.id &&
-    prevStatus.lastProcessedModified === latest.lastModifiedDateTime;
+  const processedMap = prevStatus.processedMap || {};
 
-  if (alreadyProcessed) {
-    console.log(`[SP Scheduler] "${latest.name}" unchanged since last sync — skipping.`);
+  // Group files by supplier folder, pick the latest per folder, filter to unprocessed
+  const byFolder = {};
+  for (const f of files) {
+    const key = f.supplierFolder || '__root__';
+    if (!byFolder[key]) byFolder[key] = [];
+    byFolder[key].push(f);
+  }
+
+  const toProcess = [];
+  for (const [folder, folderFiles] of Object.entries(byFolder)) {
+    folderFiles.sort((a, b) => new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime));
+    const latest = folderFiles[0];
+    const alreadyProcessed = processedMap[latest.id] === latest.lastModifiedDateTime;
+    if (alreadyProcessed) {
+      console.log(`[SP Scheduler] "${latest.name}" (${folder}) — unchanged, skipping.`);
+    } else {
+      console.log(`[SP Scheduler] New/updated: "${latest.name}" (${folder})`);
+      toProcess.push(latest);
+    }
+  }
+
+  if (!toProcess.length) {
+    console.log('[SP Scheduler] All supplier files already processed — nothing to do.');
     writeStatus({ running: false, lastSync: now.toISOString(), skipped: true });
     return;
   }
@@ -88,16 +102,22 @@ async function runSync(sessionState) {
   const downloaded = [];
   const buffers    = [];
 
-  try {
-    const buf       = await sp.downloadFile(latest.id);
-    const localPath = path.join(SYNC_DIR, latest.name);
-    fs.writeFileSync(localPath, buf);
-    downloaded.push({ name: latest.name, size: buf.length, lastModified: latest.lastModifiedDateTime, localPath });
-    buffers.push({ name: latest.name, buffer: buf });
-    console.log(`[SP Scheduler] Downloaded latest: ${latest.name} (${Math.round(buf.length / 1024)} KB)`);
-  } catch (err) {
-    console.error(`[SP Scheduler] Download failed for ${latest.name}:`, err.message);
-    writeStatus({ running: false, lastSync: now.toISOString(), error: `Download failed: ${err.message}` });
+  for (const file of toProcess) {
+    try {
+      const buf       = await sp.downloadFile(file.id);
+      const localName = file.supplierFolder ? `${file.supplierFolder}-${file.name}` : file.name;
+      const localPath = path.join(SYNC_DIR, localName);
+      fs.writeFileSync(localPath, buf);
+      downloaded.push({ name: file.name, supplierFolder: file.supplierFolder, size: buf.length, lastModified: file.lastModifiedDateTime });
+      buffers.push({ name: file.name, buffer: buf, id: file.id, lastModifiedDateTime: file.lastModifiedDateTime });
+      console.log(`[SP Scheduler] Downloaded: ${file.name} from "${file.supplierFolder || 'root'}" (${Math.round(buf.length / 1024)} KB)`);
+    } catch (err) {
+      console.error(`[SP Scheduler] Download failed for ${file.name}:`, err.message);
+    }
+  }
+
+  if (!buffers.length) {
+    writeStatus({ running: false, lastSync: now.toISOString(), error: 'All downloads failed' });
     return;
   }
 
@@ -114,6 +134,8 @@ async function runSync(sessionState) {
         (parsed.validationErrors || []).map(e => `[${f.name}] ${e}`)
       );
       allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
+      // Mark as processed
+      processedMap[f.id] = f.lastModifiedDateTime;
       console.log(`[SP Scheduler] Parsed ${f.name}: ${parsed.rows.length} row(s)`);
     } catch (err) {
       console.error(`[SP Scheduler] Parse failed for ${f.name}:`, err.message);
@@ -133,13 +155,12 @@ async function runSync(sessionState) {
   console.log(`[SP Scheduler] Sync complete — ${buffers.length} file(s), ${allRows.length} row(s), ${poRefs.length} PO(s)`);
 
   writeStatus({
-    running:               false,
-    lastSync:              now.toISOString(),
-    skipped:               false,
-    error:                 null,
-    lastProcessedId:       latest.id,
-    lastProcessedModified: latest.lastModifiedDateTime,
-    files:    downloaded.map(f => ({ name: f.name, size: f.size, lastModified: f.lastModified })),
+    running:      false,
+    lastSync:     now.toISOString(),
+    skipped:      false,
+    error:        null,
+    processedMap,
+    files:    downloaded.map(f => ({ name: f.name, supplierFolder: f.supplierFolder, size: f.size, lastModified: f.lastModified })),
     poRefs,
     rowCount: allRows.length
   });
