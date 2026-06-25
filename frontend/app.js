@@ -208,26 +208,31 @@ function progSet(n, state, text) {
   if (text) el.textContent = text;
 }
 
-// ── Cancel Booking card ───────────────────────────────────────────────────────
+// ── Cancel / Re-Submit Booking card ──────────────────────────────────────────
 const btnLookupCancel = document.getElementById('btnLookupCancel');
 const btnRunCancel    = document.getElementById('btnRunCancel');
+const btnRunResub     = document.getElementById('btnRunResub');
 const cancelPoInput   = document.getElementById('cancelPoInput');
-let _selectedCancelRef = null;
 
-function updateCancelBtn() {
+function updateAmendBtns() {
   const panel = document.getElementById('cancelLookupPanel');
   const checked = panel ? [...panel.querySelectorAll('input[type=checkbox][name=cancelVbSelect]:checked')] : [];
+  const n = checked.length;
   if (btnRunCancel) {
-    btnRunCancel.disabled = checked.length === 0;
-    btnRunCancel.textContent = checked.length > 1 ? `✕ Cancel ${checked.length} Selected VBs & Upload` : '✕ Cancel Selected VB & Upload';
+    btnRunCancel.disabled = n === 0;
+    btnRunCancel.textContent = n > 1 ? `✕ Cancel ${n} Selected VBs & Upload` : '✕ Cancel Selected VB & Upload';
+  }
+  if (btnRunResub) {
+    btnRunResub.disabled = n === 0;
+    btnRunResub.textContent = n > 1 ? `♻ Re-Submit ${n} Selected VBs & Upload` : '♻ Re-Submit Selected VB & Upload';
   }
 }
 
 async function renderCancelLookup(inputs) {
   const panel = document.getElementById('cancelLookupPanel');
   if (!panel) return;
-  _selectedCancelRef = null;
   if (btnRunCancel) btnRunCancel.disabled = true;
+  if (btnRunResub)  btnRunResub.disabled  = true;
   panel.style.display = '';
   panel.innerHTML = '<span style="font-size:12px;color:#888">Looking up bookings…</span>';
   try {
@@ -287,7 +292,7 @@ async function renderCancelLookup(inputs) {
       : '';
 
     panel.innerHTML = `
-      <p style="font-size:12px;color:#666;margin:0 0 8px">↓ Select one VB per PO to cancel:</p>
+      <p style="font-size:12px;color:#666;margin:0 0 8px">↓ Select one VB per PO — then click Re-Submit or Cancel:</p>
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
           <th style="${thS};width:36px"></th>
@@ -312,10 +317,10 @@ async function renderCancelLookup(inputs) {
             if (other !== cb) other.checked = false;
           });
         }
-        updateCancelBtn();
+        updateAmendBtns();
       });
     });
-    updateCancelBtn();
+    updateAmendBtns();
   } catch (err) {
     panel.innerHTML = `<span style="font-size:12px;color:#922B21">❌ ${err.message}</span>`;
   }
@@ -330,22 +335,32 @@ if (btnLookupCancel) {
 }
 
 if (btnRunCancel) {
-  btnRunCancel.addEventListener('click', async () => {
+  btnRunCancel.addEventListener('click', () => runAmendAction('01'));
+}
+
+if (btnRunResub) {
+  btnRunResub.addEventListener('click', () => runAmendAction('15'));
+}
+
+async function runAmendAction(purposeCd) {
+  const isResub = purposeCd === '15';
+  const btn = isResub ? btnRunResub : btnRunCancel;
     const panel = document.getElementById('cancelLookupPanel');
     const selectedRefs = panel
       ? [...panel.querySelectorAll('input[type=checkbox][name=cancelVbSelect]:checked')].map(cb => cb.value)
       : [];
     if (!selectedRefs.length) return;
-    setLoading(btnRunCancel, true);
-    psSetResult('cancelStatus', '<span style="font-size:12px;color:#888">⏳ Generating cancellation VBKREQ…</span>');
+  setLoading(btn, true);
+  const statusMsg = isResub ? '⏳ Generating re-submission VBKREQ…' : '⏳ Generating cancellation VBKREQ…';
+  psSetResult('cancelStatus', `<span style="font-size:12px;color:#888">${statusMsg}</span>`);
     try {
       const genRes  = await fetch(`${API}/cancel-booking`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: selectedRefs })
+      body: JSON.stringify({ inputs: selectedRefs, purposeCd })
       });
       const genData = await genRes.json();
-      if (!genRes.ok) throw new Error(genData.error || 'Cancel generation failed');
+    if (!genRes.ok) throw new Error(genData.error || (isResub ? 'Re-submission generation failed' : 'Cancel generation failed'));
       const gens = genData.generations || [];
       const uploadResults = [];
       for (const gen of gens) {
@@ -362,17 +377,17 @@ if (btnRunCancel) {
           uploadResults.push({ filename: gen.filename, ok: false, error: err.message });
         }
       }
-      renderCancelResult(gens, uploadResults);
+    renderAmendResult(gens, uploadResults, purposeCd);
       loadHistory();
     } catch (err) {
       psSetResult('cancelStatus', `<div style="color:#922B21;font-size:13px">❌ ${err.message}</div>`);
     } finally {
-      setLoading(btnRunCancel, false);
+    setLoading(btn, false);
     }
-  });
 }
 
-function renderCancelResult(generations, uploadResults) {
+function renderAmendResult(generations, uploadResults, purposeCd) {
+  const isResub = purposeCd === '15';
   const upMap = Object.fromEntries((uploadResults || []).map(r => [r.filename, r]));
   const thS = 'background:#7F1D1D;color:#fff;padding:7px 10px;text-align:left;font-size:12px;white-space:nowrap';
   const tdS = 'padding:7px 10px;border-bottom:1px solid #FEE2E2;font-size:12px';
@@ -393,12 +408,13 @@ function renderCancelResult(generations, uploadResults) {
       <td style="${tdS}"><a class="download-link" href="${dlHref}" download="${escapeHtml(gen.filename)}" style="font-size:11px;display:block;margin-bottom:3px">⬇ ${escapeHtml(gen.filename)}</a>${upBadge}</td>
     </tr>`;
   }).join('');
+  const vbHeader = isResub ? 'VB Ref Re-Submitted' : 'VB Ref Cancelled';
   psSetResult('cancelStatus', `
     <table style="width:100%;border-collapse:collapse">
       <thead><tr>
         <th style="${thS}">PO Number(s)</th>
-        <th style="${thS}">VB Ref Cancelled</th>
-        <th style="${thS}">Cancellation XML</th>
+        <th style="${thS}">${vbHeader}</th>
+        <th style="${thS}">${isResub ? 'Re-Submission XML' : 'Cancellation XML'}</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`);
@@ -431,7 +447,7 @@ if (btnRunPipeline) {
     progSet(3, 'pending', '⚡ Generate');
     progSet(4, 'pending', '🚀 Upload');
 
-    const purposeCd = document.querySelector('input[name="purposeCd"]:checked')?.value || '13';
+    const purposeCd = '13'; // pipeline always submits new bookings
     const pipelineStart = Date.now();
     try {
       // ── 1. Fetch ASN ──────────────────────────────────────────────────────

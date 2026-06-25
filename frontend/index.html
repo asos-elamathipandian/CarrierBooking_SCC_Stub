@@ -609,22 +609,7 @@
         <div class="ref-tags" id="blobPoRefTags"><span style="color:#aaa;font-size:12px">Upload supplier template first&hellip;</span></div>
       </div>
 
-      <!-- Purpose code selector -->
-      <div class="purpose-selector" style="margin-bottom:14px">
-        <label style="font-size:13px;font-weight:600;color:#444;margin-bottom:6px;display:block">Purpose Code</label>
-        <div class="purpose-options">
-          <label class="purpose-option">
-            <input type="radio" name="purposeCd" value="13" checked>
-            <span><strong>13 &mdash; Submission</strong> <em>(new booking)</em></span>
-          </label>
-          <label class="purpose-option">
-            <input type="radio" name="purposeCd" value="15">
-            <span><strong>15 &mdash; Re-Submission</strong> <em>(increments version)</em></span>
-          </label>
-        </div>
-      </div>
-
-      <!-- Single run button -->
+      <!-- Single run button (always purposeCd=13 — new submission) -->
       <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center">
         <button class="btn btn-primary" id="btnRunPipeline" disabled>⚡ Build VB &amp; Upload to SFTP</button>
         <button class="btn" id="btnStopPipeline" style="display:none;background:#DC2626;color:#fff;border-color:#DC2626;padding:7px 16px;font-size:13px">⏹ Force Stop</button>
@@ -673,20 +658,20 @@
 
   </div><!-- /booking group -->
 
-  <!-- ── Section divider: Cancellation ── -->
+  <!-- ── Section divider: Re-Submit / Cancel ── -->
   <div style="margin:28px 0 16px;display:flex;align-items:center;gap:14px">
     <div style="flex:1;height:1px;background:linear-gradient(90deg,#FECACA,transparent)"></div>
-    <span style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#B91C1C;padding:4px 14px;border:1.5px solid #FECACA;border-radius:20px;background:#FFF5F5">Cancellation</span>
+    <span style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#B91C1C;padding:4px 14px;border:1.5px solid #FECACA;border-radius:20px;background:#FFF5F5">Re-Submit / Cancel</span>
     <div style="flex:1;height:1px;background:linear-gradient(270deg,#FECACA,transparent)"></div>
   </div>
 
-  <!-- ── Cancel Booking ── -->
+  <!-- ── Re-Submit / Cancel Booking ── -->
   <div class="step-card" style="border-top:3px solid #B91C1C">
     <div class="step-header">
-      <div class="step-badge" style="background:#7F1D1D">✕</div>
+      <div class="step-badge" style="background:#7F1D1D">♻</div>
       <div>
-        <div class="step-title">Cancel Booking</div>
-        <div class="step-desc">Look up existing VB Refs by PO and send a cancellation VBKREQ to E2open/DT SFTP</div>
+        <div class="step-title">Re-Submit / Cancel Booking</div>
+        <div class="step-desc">Look up existing VB Refs by PO and re-submit (15) or cancel (01) — uses stored booking data, no template re-upload needed</div>
       </div>
     </div>
     <div class="step-body">
@@ -695,7 +680,8 @@
         <textarea id="cancelPoInput" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #FECACA;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box" placeholder="e.g. 500034236929, 500037528092  or  VB-1000000015"></textarea>
       </div>
       <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <button class="btn" id="btnLookupCancel" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D">🔍 Look Up VBs</button>
+        <button class="btn" id="btnLookupCancel" style="background:#374151;color:#fff;border-color:#374151">🔍 Look Up VBs</button>
+        <button class="btn" id="btnRunResub" disabled style="background:#1D4ED8;color:#fff;border-color:#1D4ED8">♻ Re-Submit Selected VB &amp; Upload</button>
         <button class="btn" id="btnRunCancel" disabled style="background:#991B1B;color:#fff;border-color:#991B1B">✕ Cancel Selected VB &amp; Upload</button>
       </div>
       <div id="cancelLookupPanel" style="display:none;margin-bottom:12px"></div>

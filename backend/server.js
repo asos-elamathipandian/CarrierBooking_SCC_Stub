@@ -364,6 +364,8 @@ app.post('/api/generate-vbkreq', async (req, res) => {
     const purposeCd = req.body.purposeCd || '13';
     const overrideCargoReady     = req.body.overrideCargoReady     || '';
     const overrideBookingReqDate = req.body.overrideBookingReqDate || '';
+    // Optional map { [PO_Number]: bookingRef } sent by the UI when user selects a specific VB to re-submit
+    const overrideBookingRefs    = req.body.overrideBookingRefs    || null;
 
     // Apply optional date overrides to a working copy of master rows
     const workingRows = sessionState.masterData.map(row => {
@@ -374,9 +376,10 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       return r;
     });
 
-    // For cancellations, reuse the most recent bookingRef per PO from the generation log
-    if (purposeCd === '01') {
+    // For cancellations AND re-submissions, reuse the correct bookingRef per PO from the generation log
+    if (purposeCd === '01' || purposeCd === '15') {
       const logEntries = readGenerationLog();
+      // Build most-recent map as fallback
       const poRefMap = {};
       for (const entry of logEntries) {
         for (const po of (entry.poNumbers || [])) {
@@ -387,8 +390,12 @@ app.post('/api/generate-vbkreq', async (req, res) => {
         }
       }
       for (const row of workingRows) {
-        const found = poRefMap[String(row.PO_Number || '').trim()];
-        if (found) row.Booking_Ref = found.bookingRef;
+        const poKey = String(row.PO_Number || '').trim();
+        // UI-selected override takes priority; otherwise use the most-recent from the log
+        const chosen = (overrideBookingRefs && overrideBookingRefs[poKey])
+          ? overrideBookingRefs[poKey]
+          : (poRefMap[poKey] ? poRefMap[poKey].bookingRef : null);
+        if (chosen) row.Booking_Ref = chosen;
       }
     }
 
@@ -643,7 +650,8 @@ function readGenerationLog() {
 // ─────────────────────────────────────────────
 app.post('/api/cancel-booking', async (req, res) => {
   try {
-    const { inputs = [] } = req.body || {};
+    const { inputs = [], purposeCd: reqPurpose = '01' } = req.body || {};
+    const actionPurpose = reqPurpose === '15' ? '15' : '01'; // only 01 or 15 allowed here
     if (!inputs.length) return res.status(400).json({ error: 'No PO numbers or VB Refs provided.' });
 
     const logEntries = readGenerationLog();
@@ -669,7 +677,7 @@ app.post('/api/cancel-booking', async (req, res) => {
     const generations = [];
     for (const [bookingRef, entry] of matchedByRef) {
       const workingRows = entry.masterRows.map(r => ({ ...r, Booking_Ref: bookingRef }));
-      const { xml, filename, ctrlNumber, version } = await vbkreqBuilder.build(workingRows, '01');
+      const { xml, filename, ctrlNumber, version } = await vbkreqBuilder.build(workingRows, actionPurpose);
       const poNums  = entry.poNumbers || [];
       const asnRefs = entry.asnRefs   || [];
       const groupLabel = entry.group || bookingRef;
