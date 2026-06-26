@@ -758,16 +758,32 @@ async function loadSpStatus() {
     // Not running — clear poll timer
     if (_spPollTimer) { clearInterval(_spPollTimer); _spPollTimer = null; }
 
-    const schedule = data.schedule ? `Scheduled: ${data.schedule}` : 'No schedule set';
+    const scheduleEl = document.getElementById('spScheduleLabel');
+    if (scheduleEl) scheduleEl.textContent = data.schedule ? `⏰ ${data.schedule}` : '';
+    const dismissBtn = document.getElementById('btnDismissSpError');
     if (data.error) {
-      if (spStatus) spStatus.innerHTML = `<span style="color:#B91C1C">❌ ${escapeHtml(data.error)}</span> &nbsp;·&nbsp; ${schedule}`;
-    } else if (data.lastSync) {
+      // Extract a short friendly message from the raw error
+      const raw = data.error;
+      let friendly = raw;
+      if (raw.includes('401'))      friendly = 'SharePoint connection failed — not authorised (401). Permission may still be propagating.';
+      else if (raw.includes('404')) friendly = 'SharePoint folder not found (404). Check SP_FOLDER_PATH in .env.';
+      else if (raw.includes('403')) friendly = 'Access denied to SharePoint (403). Check app permissions.';
+      else if (raw.includes('List failed')) friendly = `Could not list SharePoint files. ${raw.split(':')[0]}.`;
+      if (spStatus) spStatus.innerHTML =
+        `<span style="color:#B91C1C;font-weight:600">⚠ ${escapeHtml(friendly)}</span>` +
+        `<details style="display:inline;margin-left:6px"><summary style="display:inline;cursor:pointer;font-size:11px;color:#9CA3AF">details</summary>` +
+        `<div style="font-size:10px;color:#6B7280;margin-top:4px;word-break:break-all">${escapeHtml(raw)}</div></details>` +
+        `<button onclick="dismissSpError()" style="display:inline-block;margin-left:10px;padding:2px 10px;font-size:11px;background:#FEE2E2;color:#B91C1C;border:1px solid #FECACA;border-radius:5px;cursor:pointer">✕ Dismiss</button>`;
+    } else {
+      if (dismissBtn) dismissBtn.style.display = 'none';
+    }
+    if (!data.error && data.lastSync) {
       const when = new Date(data.lastSync).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       const date = new Date(data.lastSync).toLocaleDateString('en-GB');
       const skippedNote = data.skipped ? ' &nbsp;<span style="color:#92400E">(no changes — skipped)</span>' : '';
-      if (spStatus) spStatus.innerHTML = `Last synced: <strong>${when} on ${date}</strong>${skippedNote} &nbsp;·&nbsp; ${escapeHtml(schedule)} &nbsp;·&nbsp; ${data.rowCount || 0} row(s), ${(data.poRefs || []).length} PO(s)`;
-    } else {
-      if (spStatus) spStatus.innerHTML = `Not yet synced &nbsp;·&nbsp; ${escapeHtml(schedule)}`;
+      if (spStatus) spStatus.innerHTML = `Last synced: <strong>${when} on ${date}</strong>${skippedNote} &nbsp;·&nbsp; ${data.rowCount || 0} row(s), ${(data.poRefs || []).length} PO(s)`;
+    } else if (!data.error) {
+      if (spStatus) spStatus.innerHTML = `Not yet synced`;
     }
 
     // Show file list
@@ -779,6 +795,35 @@ async function loadSpStatus() {
       }).join('');
     } else if (spFiles) {
       spFiles.innerHTML = '';
+    }
+
+    // Show run history
+    const histDetails = document.getElementById('spHistoryDetails');
+    const histBody    = document.getElementById('spHistoryBody');
+    if (histDetails && histBody && data.syncHistory && data.syncHistory.length) {
+      histDetails.style.display = '';
+      const outcomeLabel = { synced: '✅ Synced', skipped: '⏭ Skipped', no_files: '📭 No files', error: '❌ Error' };
+      const outcomeColour = { synced: '#15803D', skipped: '#92400E', no_files: '#6B7280', error: '#B91C1C' };
+      histBody.innerHTML = data.syncHistory.map((h, i) => {
+        const ts    = new Date(h.timestamp);
+        const date  = ts.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        const time  = ts.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const label = outcomeLabel[h.outcome] || h.outcome;
+        const colour = outcomeColour[h.outcome] || '#555';
+        const files = h.outcome === 'error'
+          ? `<span style="color:#B91C1C">${escapeHtml(h.error || '')}</span>`
+          : (h.files || []).map(f => escapeHtml(f)).join(', ') || '—';
+        const bg = i % 2 === 0 ? '#F0F9FF' : '#fff';
+        return `<tr style="background:${bg}">
+          <td style="padding:4px 8px;white-space:nowrap;color:#374151">${date} ${time}</td>
+          <td style="padding:4px 8px;font-weight:600;color:${colour}">${label}</td>
+          <td style="padding:4px 8px;text-align:right;color:#374151">${h.outcome === 'synced' ? h.rowCount : '—'}</td>
+          <td style="padding:4px 8px;text-align:right;color:#374151">${h.outcome === 'synced' ? h.poCount : '—'}</td>
+          <td style="padding:4px 8px;color:#555">${files}</td>
+        </tr>`;
+      }).join('');
+    } else if (histDetails) {
+      histDetails.style.display = 'none';
     }
 
     // If a fresh sync just populated supplier data, update the PO tags
@@ -807,6 +852,13 @@ if (btnSpSync) {
       setLoading(btnSpSync, false);
     }
   });
+}
+
+async function dismissSpError() {
+  try {
+    await fetch(`${API}/sharepoint/dismiss-error`, { method: 'POST' });
+    loadSpStatus();
+  } catch (_) {}
 }
 
 // Initial SP status check

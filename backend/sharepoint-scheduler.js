@@ -40,6 +40,17 @@ function writeStatus(patch) {
   fs.writeFileSync(STATUS_FILE, JSON.stringify(next, null, 2));
 }
 
+/**
+ * Append one entry to syncHistory (max 10, newest first).
+ * entry: { timestamp, outcome, rowCount, poCount, files, error }
+ */
+function appendHistory(entry) {
+  const current = readStatus();
+  const history = Array.isArray(current.syncHistory) ? current.syncHistory : [];
+  history.unshift(entry);
+  writeStatus({ syncHistory: history.slice(0, 10) });
+}
+
 // ── Core sync logic ───────────────────────────────────────────────────────────
 
 async function runSync(sessionState) {
@@ -59,12 +70,14 @@ async function runSync(sessionState) {
   } catch (err) {
     console.error('[SP Scheduler] List failed:', err.message);
     writeStatus({ running: false, error: `List failed: ${err.message}`, lastSync: now.toISOString() });
+    appendHistory({ timestamp: now.toISOString(), outcome: 'error', error: `List failed: ${err.message}`, rowCount: 0, poCount: 0, files: [] });
     return;
   }
 
   if (!files.length) {
     console.warn('[SP Scheduler] No Excel files found in SharePoint folder or subfolders.');
     writeStatus({ running: false, files: [], lastSync: now.toISOString(), error: null });
+    appendHistory({ timestamp: now.toISOString(), outcome: 'no_files', rowCount: 0, poCount: 0, files: [], error: null });
     return;
   }
 
@@ -96,6 +109,7 @@ async function runSync(sessionState) {
   if (!toProcess.length) {
     console.log('[SP Scheduler] All supplier files already processed — nothing to do.');
     writeStatus({ running: false, lastSync: now.toISOString(), skipped: true });
+    appendHistory({ timestamp: now.toISOString(), outcome: 'skipped', rowCount: 0, poCount: 0, files: [], error: null });
     return;
   }
 
@@ -118,6 +132,7 @@ async function runSync(sessionState) {
 
   if (!buffers.length) {
     writeStatus({ running: false, lastSync: now.toISOString(), error: 'All downloads failed' });
+    appendHistory({ timestamp: now.toISOString(), outcome: 'error', error: 'All downloads failed', rowCount: 0, poCount: 0, files: [], error: null });
     return;
   }
 
@@ -154,15 +169,24 @@ async function runSync(sessionState) {
   const poRefs = [...new Set(allHeaderPoRefs.map(p => String(p).trim()).filter(Boolean))];
   console.log(`[SP Scheduler] Sync complete — ${buffers.length} file(s), ${allRows.length} row(s), ${poRefs.length} PO(s)`);
 
+  const syncedFiles = downloaded.map(f => ({ name: f.name, supplierFolder: f.supplierFolder, size: f.size, lastModified: f.lastModified }));
   writeStatus({
     running:      false,
     lastSync:     now.toISOString(),
     skipped:      false,
     error:        null,
     processedMap,
-    files:    downloaded.map(f => ({ name: f.name, supplierFolder: f.supplierFolder, size: f.size, lastModified: f.lastModified })),
+    files:    syncedFiles,
     poRefs,
     rowCount: allRows.length
+  });
+  appendHistory({
+    timestamp: now.toISOString(),
+    outcome:   'synced',
+    rowCount:  allRows.length,
+    poCount:   poRefs.length,
+    files:     syncedFiles.map(f => f.supplierFolder ? `${f.name} (${f.supplierFolder})` : f.name),
+    error:     null
   });
 }
 
@@ -196,6 +220,23 @@ function start(sessionState) {
     });
     console.log(`[SP Scheduler] Scheduled at cron "${expr}" (from SP_SCHEDULE=${timesStr})`);
   }
+
+  // ── Catch-up sync on startup ──────────────────────────────────────────────
+  // If the server restarted after a scheduled slot passed today and no sync
+  // has run today yet, fire one immediately so we don't wait until the next slot.
+  const status = readStatus();
+  const lastSync = status.lastSync ? new Date(status.lastSync) : null;
+  const today = new Date().toDateString();
+  const syncedToday = lastSync && lastSync.toDateString() === today;
+
+  if (!syncedToday && sp.isConfigured()) {
+    console.log('[SP Scheduler] No sync yet today — running catch-up sync on startup…');
+    setTimeout(() => {
+      runSync(sessionState).catch(err =>
+        console.error('[SP Scheduler] Catch-up sync error:', err.message)
+      );
+    }, 3000); // 3s delay to let the server finish booting
+  }
 }
 
-module.exports = { start, runSync, readStatus };
+module.exports = { start, runSync, readStatus, writeStatus, appendHistory };

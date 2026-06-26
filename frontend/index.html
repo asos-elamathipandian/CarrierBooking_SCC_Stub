@@ -566,39 +566,88 @@
     <div class="step-header">
       <div class="step-badge active" id="badge1">1</div>
       <div>
-        <div class="step-title">Upload Supplier Input Excel</div>
-        <div class="step-desc"><strong>Step 1</strong> &mdash; Upload the supplier templates from suppliers and validate the file to fetch right set of POs</div>
+        <div class="step-title">Load Supplier PO Files &mdash; Manual / Auto</div>
+        <div class="step-desc">Upload the supplier-filled Excel sheet to identify which POs need booking</div>
       </div>
     </div>
     <div class="step-body">
+
+      <!-- Manual upload section -->
+      <div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:10px;padding:12px 14px">
+        <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:10px">MANUAL UPLOAD &nbsp;<span style="font-weight:400;color:#94A3B8">— you have the file locally</span></div>
+
+      <!-- How it works guide -->
+      <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:140px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:8px 10px;font-size:11px">
+          <div style="font-weight:700;color:#15803D;margin-bottom:2px">① Get the template</div>
+          <div style="color:#374151">Download the blank Excel sheet and send it to your supplier to fill in</div>
+          <a href="/api/download-template" download style="display:inline-block;margin-top:6px;padding:3px 10px;background:#15803D;color:#fff;border-radius:5px;font-size:11px;text-decoration:none">⬇ Download Template</a>
+        </div>
+        <div style="flex:1;min-width:140px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:8px 10px;font-size:11px">
+          <div style="font-weight:700;color:#C2410C;margin-bottom:2px">② Supplier fills &amp; returns it</div>
+          <div style="color:#374151">Supplier completes the PO sheet and either emails it back or uploads it to SharePoint</div>
+        </div>
+        <div style="flex:1;min-width:140px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 10px;font-size:11px">
+          <div style="font-weight:700;color:#1D4ED8;margin-bottom:2px">③ Load it here</div>
+          <div style="color:#374151">Drop the file below (or it auto-loads from SharePoint) — then hit the button to unlock the pipeline</div>
+        </div>
+      </div>
+
       <div class="drop-zone" id="dropZone">
-        <div class="drop-zone-icon">📤</div>
-        <div id="dropZoneText">Drag &amp; drop your supplier PO list here</div>
-        <div class="drop-zone-hint">or <u style="cursor:pointer" onclick="document.getElementById('supplierFileInput').click()">browse to choose files</u> (.xlsx / .xls) &mdash; multiple files allowed</div>
+        <div class="drop-zone-icon">📂</div>
+        <div id="dropZoneText" style="font-weight:600">Drop the supplier Excel file here</div>
+        <div class="drop-zone-hint">or <u style="cursor:pointer" onclick="document.getElementById('supplierFileInput').click()">click to browse</u> &nbsp;·&nbsp; .xlsx / .xls &nbsp;·&nbsp; multiple suppliers allowed</div>
       </div>
       <input type="file" id="supplierFileInput" accept=".xlsx,.xls" multiple />
       <ul id="supplierFileList" style="margin-top:8px;padding:0 0 0 4px;list-style:none;font-size:12px;color:#555;display:none"></ul>
-      <div style="margin-top:6px;font-size:12px;color:#64748b">
-        Need the template? <a href="/api/download-template" download style="color:#0288D1;text-decoration:underline">Download blank SupplierInput_template.xlsx</a>
-      </div>
+
       <div style="margin-top:10px;text-align:right">
         <button class="btn btn-primary" id="btnParseSupplier" disabled>
-          ⬆ Upload &amp; Retrieve Valid POs
+          ✓ Read Files &amp; Unlock Booking Pipeline
         </button>
       </div>
-      <div class="status-box" id="status1"></div>
-      <div id="refsPreview"></div>
-      <div id="supplierParsePanel" style="display:none;margin-top:12px"></div>
+      </div><!-- end manual upload section -->
+
+      <!-- OR divider -->
+      <div style="display:flex;align-items:center;gap:10px;margin:14px 0">
+        <div style="flex:1;height:1px;background:#CBD5E1"></div>
+        <div style="font-size:12px;font-weight:700;color:#64748B;background:#F8FAFC;padding:4px 14px;border:1.5px solid #CBD5E1;border-radius:20px">OR</div>
+        <div style="flex:1;height:1px;background:#CBD5E1"></div>
+      </div>
+
+      <!-- Auto sync section label -->
+      <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:8px">AUTO PULL FROM SHAREPOINT &nbsp;<span style="font-weight:400;color:#94A3B8">— supplier uploads to SharePoint, files load automatically</span></div>
 
       <!-- SharePoint auto-sync status -->
       <div id="spSyncBanner" style="display:none;margin-top:14px;padding:10px 14px;background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:8px;font-size:12px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span style="font-weight:700;color:#0369A1">☁ SharePoint Auto-Sync</span>
+          <span id="spScheduleLabel" style="color:#0369A1;font-size:11px;background:#DBEAFE;padding:2px 7px;border-radius:10px"></span>
           <span id="spSyncStatus" style="color:#555">Checking…</span>
-          <button class="btn" id="btnSpSyncNow" style="padding:4px 12px;font-size:11px;background:#0369A1;color:#fff;border-color:#0369A1;margin-left:auto">↻ Sync Now</button>
+          <button class="btn" id="btnSpSyncNow" style="padding:4px 12px;font-size:11px;background:#0369A1;color:#fff;border-color:#0369A1;margin-left:auto">↻ Manual Sync — Pull Latest</button>
         </div>
         <div id="spSyncFiles" style="margin-top:6px"></div>
+        <details id="spHistoryDetails" style="display:none;margin-top:8px">
+          <summary style="cursor:pointer;color:#0369A1;font-size:11px;user-select:none">Run History (last 10)</summary>
+          <div id="spSyncHistory" style="margin-top:6px;overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead>
+                <tr style="background:#E0F2FE;color:#0C4A6E">
+                  <th style="padding:4px 8px;text-align:left;white-space:nowrap">Date &amp; Time</th>
+                  <th style="padding:4px 8px;text-align:left">Outcome</th>
+                  <th style="padding:4px 8px;text-align:right">Rows</th>
+                  <th style="padding:4px 8px;text-align:right">POs</th>
+                  <th style="padding:4px 8px;text-align:left">Files</th>
+                </tr>
+              </thead>
+              <tbody id="spHistoryBody"></tbody>
+            </table>
+          </div>
+        </details>
       </div>
+    </div>
+      <div class="status-box" id="status1"></div>
+      <div id="refsPreview"></div>
+      <div id="supplierParsePanel" style="display:none;margin-top:12px"></div>
     </div>
   </div>
 

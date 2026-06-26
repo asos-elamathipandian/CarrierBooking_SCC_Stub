@@ -800,6 +800,14 @@ app.post('/api/sharepoint/sync', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// POST /api/sharepoint/dismiss-error  — clear stored error
+// ─────────────────────────────────────────────
+app.post('/api/sharepoint/dismiss-error', (req, res) => {
+  spScheduler.writeStatus({ error: null });
+  res.json({ success: true });
+});
+
+// ─────────────────────────────────────────────
 // GET /api/sharepoint/files  — list current SP folder
 // ─────────────────────────────────────────────
 app.get('/api/sharepoint/files', async (req, res) => {
@@ -863,5 +871,7 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`CarrierBookingStub running at http://localhost:${PORT}`);
+  // Clear any stale error from a previous server run so UI starts clean
+  spScheduler.writeStatus({ error: null, running: false });
   spScheduler.start(sessionState);
 });
