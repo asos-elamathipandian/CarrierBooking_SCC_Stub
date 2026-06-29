@@ -168,4 +168,42 @@ async function downloadFile(itemId) {
   return graphGetBytes(`/sites/${siteId}/drives/${driveId}/items/${itemId}/content`);
 }
 
-module.exports = { isConfigured, listTemplateFiles, downloadFile };
+/**
+ * Upload a file buffer into a supplier subfolder under SP_FOLDER_PATH.
+ * Graph API creates intermediate folders automatically on a PUT upload.
+ * Returns the DriveItem metadata of the uploaded file.
+ *
+ * @param {string} supplierFolder  — folder name under SP_FOLDER_PATH (e.g. "SUPPLIER_A")
+ * @param {string} fileName        — filename to write (e.g. "template.xlsx")
+ * @param {Buffer} buffer          — file content
+ */
+async function uploadToSupplierFolder(supplierFolder, fileName, buffer) {
+  const siteId  = await getSiteId();
+  const driveId = await getDriveId();
+  const root    = (process.env.SP_FOLDER_PATH || '/').replace(/\/$/, '') || '/';
+
+  // Sanitise filename to avoid Graph API path errors
+  const safeName   = fileName.replace(/[/\\?%*:|"<>]/g, '_');
+  const folderPart = supplierFolder ? `/${supplierFolder}` : '';
+  const filePath   = `${root}${folderPart}/${safeName}`;
+
+  const token = await getAccessToken();
+  const url   = `${GRAPH_BASE}/sites/${siteId}/drives/${driveId}/root:${filePath}:/content`;
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      'Content-Type': 'application/octet-stream'
+    },
+    body: buffer
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Graph upload ${res.status}: ${body}`);
+  }
+  return res.json(); // DriveItem metadata
+}
+
+module.exports = { isConfigured, listTemplateFiles, downloadFile, uploadToSupplierFolder };

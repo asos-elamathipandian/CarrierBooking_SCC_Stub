@@ -15,11 +15,12 @@
  * The sessionState object is passed in from server.js (shared reference).
  */
 
-const cron          = require('node-cron');
-const path          = require('path');
-const fs            = require('fs');
-const sp            = require('./sharepoint-client');
-const supplierReader = require('./supplier-reader');
+const cron           = require('node-cron');
+const path           = require('path');
+const fs             = require('fs');
+const sp             = require('./sharepoint-client');
+const supplierReader  = require('./supplier-reader');
+const emailIngestor  = require('./email-ingestor');
 
 const SYNC_DIR        = path.join(__dirname, '..', 'bible', 'sharepoint-sync');
 const STATUS_FILE     = path.join(__dirname, '..', 'bible', 'sp-sync-status.json');
@@ -63,6 +64,24 @@ async function runSync(sessionState) {
   const now = new Date();
   writeStatus({ running: true, error: null });
   fs.mkdirSync(SYNC_DIR, { recursive: true });
+
+  // ── Pre-step: pull any new emails from the dedicated ASOS mailbox ───────────
+  // Runs before listing SharePoint so just-uploaded files are included in this cycle.
+  if (emailIngestor.isConfigured()) {
+    try {
+      const ingestResult = await emailIngestor.ingest();
+      if (ingestResult.uploaded > 0) {
+        console.log(`[SP Scheduler] Email ingest: ${ingestResult.uploaded} file(s) uploaded to SharePoint.`);
+      }
+      if (ingestResult.errors.length) {
+        console.warn(`[SP Scheduler] Email ingest errors: ${ingestResult.errors.join('; ')}`);
+      }
+    } catch (err) {
+      // Non-fatal — log and continue with the SP sync
+      console.error('[SP Scheduler] Email ingest failed (continuing):', err.message);
+    }
+  }
+  // ── End pre-step ─────────────────────────────────────────────────────────────
 
   let files;
   try {
