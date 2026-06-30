@@ -79,6 +79,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       s.latestPlannedShipmentDate,
       s.asnDeliveryDateFinalDest,
       s.asnLoadingType,
+      s.bookingRequested,
       ol.orderId                         AS poId,
       ol.sku,
       TRY_CAST(ol.bookedQty AS DOUBLE)   AS bookedQty
@@ -121,6 +122,7 @@ async function fetchAsnsByPoRefs(poRefs) {
         CASE WHEN size(PODtl) > 0 THEN CAST(PODtl[0].OptionItemID AS STRING) ELSE NULL END AS OptionItemID,
         CAST(Factory AS STRING)                                            AS FactoryID,
         FactoryDesc                                                        AS FactoryName,
+        Status                                                             AS POStatus,
         ExFactoryDate,
         ExpectedShipmentDate,
         ExpectedHandoverDate,
@@ -142,6 +144,7 @@ async function fetchAsnsByPoRefs(poRefs) {
     for (const r of (poRows || [])) {
       if (Number(r._rn) === 1 || !poEnrichMap[r.OrderNo]) {
         poEnrichMap[r.OrderNo] = {
+          poStatus:             r.POStatus            || '',
           supplierID:           r.SupplierID          || '',
           supplierName:         r.SupplierName        || '',
           ladingPort:           r.LadingPort          || '',
@@ -200,6 +203,7 @@ async function fetchAsnsByPoRefs(poRefs) {
         factoryCountry:   '',
         mode:             row.mode              || '',
         carrier:          row.carrier           || '',
+        bookingRequested: row.bookingRequested  || null,
         expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest || enrich.expectedDeliveryDate),
         lines: []
       };
@@ -218,13 +222,86 @@ async function fetchAsnsByPoRefs(poRefs) {
     });
   }
 
-  const foundPOs = new Set(Object.values(asnPoMap).map(g => g.poId));
+  // ── Query 3: ASN cancellations from bam036e_asn_v1 ─────────────────────
+  // The latest _notification_type per ASN: 'C' = cancelled, 'M' = modified, 'D' = delete.
+  // Non-fatal — if this query fails we proceed without the cancellation check.
+  const cancelledAsnIds = new Set();
+  try {
+    const uniqueAsnIds = [...new Set(Object.values(asnPoMap).map(g => g.asnId).filter(Boolean))];
+    if (uniqueAsnIds.length > 0) {
+      const asnList = uniqueAsnIds.map(a => `'${a}'`).join(', ');
+      const asnCancelSql = `
+        WITH latest AS (
+          SELECT _asn_nbr, _notification_type,
+            ROW_NUMBER() OVER (PARTITION BY _asn_nbr ORDER BY _last_update_timestamp DESC, _IngestedDate DESC) AS _rn
+          FROM supplychain.conformed.bam036e_asn_v1
+          WHERE _asn_nbr IN (${asnList})
+        )
+        SELECT _asn_nbr
+        FROM latest
+        WHERE _rn = 1 AND _notification_type = 'C'
+      `;
+      console.log(`[Databricks bam036e] checking cancellation status for ${uniqueAsnIds.length} ASN(s)`);
+      const cancelRows = await db.query(asnCancelSql);
+      for (const r of (cancelRows || [])) {
+        if (r._asn_nbr) cancelledAsnIds.add(String(r._asn_nbr));
+      }
+      console.log(`[Databricks bam036e] ${cancelledAsnIds.size} cancelled ASN(s) found`);
+    }
+  } catch (err) {
+    console.warn(`[Databricks bam036e] cancellation check failed (continuing without it): ${err.message}`);
+  }
+
+  // ── Separate active vs cancelled ASN/PO groups ───────────────────────────
+  const cancelledItems = [];
+  const allGroups      = Object.values(asnPoMap);
+
+  const parsed = allGroups.filter(group => {
+    const enrich = poEnrichMap[group.poId] || {};
+
+    if (cancelledAsnIds.has(String(group.asnId))) {
+      console.warn(`[Databricks ASN] SKIPPED — ASN ${group.asnId} / PO ${group.poId} is cancelled (bam036e _notification_type=C)`);
+      cancelledItems.push({
+        type:   'ASN',
+        asnId:  group.asnId,
+        poId:   group.poId,
+        reason: `ASN ${group.asnId} (PO ${group.poId}) is cancelled — latest notification type is C`
+      });
+      return false;
+    }
+
+    if (group.bookingRequested) {
+      const when = toDateStr(group.bookingRequested);
+      console.warn(`[Databricks ASN] SKIPPED — ASN ${group.asnId} / PO ${group.poId} already has a booking request (bookingRequested=${when})`);
+      cancelledItems.push({
+        type:   'ALREADY_BOOKED',
+        asnId:  group.asnId,
+        poId:   group.poId,
+        reason: `ASN ${group.asnId} (PO ${group.poId}) already has a carrier booking request — submitted on ${when}`
+      });
+      return false;
+    }
+
+    if (enrich.poStatus === 'C') {
+      console.warn(`[Databricks ASN] SKIPPED — PO ${group.poId} has Status=C (cancelled)`);
+      cancelledItems.push({
+        type:  'PO',
+        asnId: group.asnId,
+        poId:  group.poId,
+        reason: `PO ${group.poId} is cancelled (Status=C) — booking creation skipped`
+      });
+      return false;
+    }
+
+    return true;
+  });
+
+  const foundPOs = new Set(allGroups.map(g => g.poId));
   const errors   = safePOs
     .filter(p => !foundPOs.has(p))
     .map(p => `Databricks: no shipment record found for PO ${p}`);
 
-  const parsed = Object.values(asnPoMap);
-  console.log(`[Databricks ASN] ${parsed.length} ASN group(s) fetched for ${safePOs.length} PO ref(s)`);
+  console.log(`[Databricks ASN] ${parsed.length} active ASN group(s), ${cancelledItems.length} cancelled, for ${safePOs.length} PO ref(s)`);
   if (parsed.length > 0) {
     const p = parsed[0];
     console.log(`[Databricks ASN] shipDate="${p.shipDate}", expectedDeliveryDate="${p.expectedDeliveryDate}", mode="${p.mode}"`);
@@ -240,6 +317,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       lastModified: new Date(),
       parsed
     }],
+    cancelledItems,
     errors
   };
 }

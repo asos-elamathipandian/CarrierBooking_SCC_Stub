@@ -461,26 +461,53 @@ if (btnRunPipeline) {
       const fetchData = await fetchRes.json();
       if (!fetchRes.ok) throw new Error(fetchData.error || 'Fetch failed');
 
-      const carrierAsnFiles = fetchData.carrierAsnFiles || [];
-      const foundPOs        = new Set(carrierAsnFiles.map(f => f.poRef).filter(Boolean));
-      const notFoundCount   = state.poRefs.filter(po => !foundPOs.has(po)).length;
-      const asnGridRows     = state.poRefs.map(po => {
-        const found = foundPOs.has(po);
+      const carrierAsnFiles  = fetchData.carrierAsnFiles || [];
+      const cancelledItems   = fetchData.cancelledItems  || [];
+      const foundPOs         = new Set(carrierAsnFiles.map(f => f.poRef).filter(Boolean));
+      const skippedPOIds     = new Set(cancelledItems.map(c => c.poId));
+      const notFoundCount    = state.poRefs.filter(po => !foundPOs.has(po) && !skippedPOIds.has(po)).length;
+      const alreadyBooked    = cancelledItems.filter(c => c.type === 'ALREADY_BOOKED');
+      const cancelled        = cancelledItems.filter(c => c.type !== 'ALREADY_BOOKED');
+      const asnGridRows      = state.poRefs.map(po => {
+        const found   = foundPOs.has(po);
+        const skipped = skippedPOIds.has(po);
+        const item    = cancelledItems.find(c => c.poId === po);
+        if (skipped && item?.type === 'ALREADY_BOOKED') {
+          return `<div class="asn-status-row not-found">📋 <strong>PO ${po}</strong> — ASN ${item.asnId} already has a carrier booking — skipped</div>`;
+        }
+        if (skipped) {
+          const label = item?.type === 'ASN' ? `ASN ${item.asnId} cancelled` : `PO cancelled (Status=C)`;
+          return `<div class="asn-status-row not-found">🚫 <strong>PO ${po}</strong> — ${label} — booking skipped</div>`;
+        }
         return `<div class="asn-status-row ${found ? 'found' : 'not-found'}">${found ? '✅' : '⚠️'} <strong>PO ${po}</strong> — ${found ? 'ASN found in Databricks' : 'No ASN found in Databricks'}</div>`;
       }).join('');
+      const skippedSections = [
+        alreadyBooked.length ? `<div style="margin-top:8px;padding:8px;background:#EFF6FF;border-left:3px solid #2563EB;border-radius:4px;font-size:12px">📋 <strong>${alreadyBooked.length} ASN(s) skipped — booking already exists:</strong><br/>${alreadyBooked.map(c => `&nbsp;• ${escapeHtml(c.reason)}`).join('<br/>')}</div>` : '',
+        cancelled.length    ? `<div style="margin-top:8px;padding:8px;background:#FEF2F2;border-left:3px solid #DC2626;border-radius:4px;font-size:12px">🚫 <strong>${cancelled.length} ASN/PO(s) skipped — cancelled:</strong><br/>${cancelled.map(c => `&nbsp;• ${escapeHtml(c.reason)}`).join('<br/>')}</div>` : ''
+      ].join('');
+      const summaryExtras = [
+        notFoundCount   ? ` &nbsp;⚠️ ${notFoundCount} PO(s) with no ASN in Databricks` : '',
+        alreadyBooked.length ? ` &nbsp;📋 ${alreadyBooked.length} already booked` : '',
+        cancelled.length     ? ` &nbsp;🚫 ${cancelled.length} cancelled` : ''
+      ].join('');
       psSetResult('psFetchResult', `<details style="font-size:12px">
         <summary style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px;padding:2px 0">
           <span style="font-size:10px;color:#888">▶</span>
-          ✅ <strong>${carrierAsnFiles.length}</strong> Databricks ASN record(s) fetched${notFoundCount ? ` &nbsp;⚠️ ${notFoundCount} PO(s) with no ASN in Databricks` : ''} <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
+          ✅ <strong>${carrierAsnFiles.length}</strong> Databricks ASN record(s) fetched${summaryExtras} <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
         </summary>
         <div class="asn-status-grid" style="margin-top:8px">${asnGridRows}</div>
+        ${skippedSections}
       </details>`);
 
       if (carrierAsnFiles.length === 0) {
         progSet(1, 'error', '📡 No ASN found');
-        throw new Error('No ASN records found in Databricks for any of the submitted POs. Cannot proceed.');
+        const skipMsg = cancelledItems.length
+          ? ` (${alreadyBooked.length} already booked, ${cancelled.length} cancelled)`
+          : '';
+        throw new Error(`No active ASN records found in Databricks for any of the submitted POs${skipMsg}. Cannot proceed.`);
       }
-      progSet(1, 'done', '📡 ASN ✅');
+      const doneExtras = [alreadyBooked.length ? `${alreadyBooked.length} already booked skipped` : '', cancelled.length ? `${cancelled.length} cancelled skipped` : ''].filter(Boolean).join(', ');
+      progSet(1, 'done', `📡 ASN ✅${doneExtras ? ` (${doneExtras})` : ''}`);
       state.feedsFetched = true;
 
       // ── 2. Build ──────────────────────────────────────────────────────────

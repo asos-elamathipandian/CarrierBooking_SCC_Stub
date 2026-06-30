@@ -174,6 +174,7 @@ app.post('/api/fetch-feeds', async (req, res) => {
       carrierAsnCount: (feedData.carrierAsnFiles || []).length,
       localMode: feedData.localMode || false,
       errors: feedData.errors || [],
+      cancelledItems: feedData.cancelledItems || [],
       feedsSummary: [],
       carrierAsnFiles: (feedData.carrierAsnFiles || []).map(f => ({
         filename:  f.filename,
