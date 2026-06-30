@@ -797,6 +797,7 @@
         <p><strong>Factory_ID 9999 (Dummy Factory):</strong> If a real factory code is not yet known, use <code>9999</code>. Address validation is skipped for this code — the VBKREQ will be generated without a factory address.</p>
         <p><strong>Step 2 — Booking Pipeline (single button):</strong> Step 2 is always visible but locked/dimmed until Step 1 completes successfully. Select Purpose Code (13 = New Submission, 15 = Re-Submission) then click <strong>⚡ Build VB &amp; Upload to SFTP</strong>. All four stages (Fetch ASN → Build → Generate → Upload) run automatically and results appear in a single table: PO | ASN Ref(s) | VB Ref | VBKREQ File download. A tagged supplier template with prefilled booking refs is also available for download per result row.</p>
         <p><strong>Recent Booking History:</strong> The collapsible 🕑 panel below Step 2 shows all VBKREQs generated in the last 3 days, loaded automatically after each pipeline run. Click to expand.</p>
+        <div class="rg-note" style="background:#EFF6FF;border-left:4px solid #2563EB">📋 <strong>Smart Skip — no VBKREQ is raised for:</strong><ul style="margin:6px 0 0 16px;padding:0;font-size:12px"><li>ASNs whose latest notification type in <code>bam036e_asn_v1</code> is <strong>C</strong> (cancelled)</li><li>POs where <code>Status = C</code> in <code>bam033j_purchase_order_v1</code></li><li>ASNs/POs where <code>bookingRequested</code> is already populated (a carrier booking already exists)</li></ul>Skipped items are shown in the ASN fetch results panel with reason details. They do not block other POs from proceeding.</div>
         <p><strong>Cancel Booking (standalone):</strong> Enter one or more PO numbers or VB Refs (e.g. <code>500034236929</code> or <code>VB-1000000025</code>) in the Cancel Booking card at the bottom. Click <strong>Look Up Existing Bookings</strong> to verify the records exist in the generation log and confirm ✅ Ready to cancel status. Then click <strong>Cancel &amp; Upload to SFTP</strong> — the system builds a VBKREQ with <code>PurposeCd=01</code>, reuses the original VB Ref, injects <code>DateTypeCd=177</code> (cancellation status date), and uploads. No supplier template re-upload is required.</p>
         <div class="rg-note">⚠ <strong>Legacy bookings:</strong> Bookings created before the current version of the tool will show <em>⚠ No stored data (re-run booking first)</em> in the lookup panel. To enable cancellation for these, re-run the pipeline with the original supplier template once to refresh the stored master row data in the generation log.</div>
       </div>
@@ -917,6 +918,34 @@
           <tr><td><code>Order @Key / OrderID</code></td><td><code>PO_Number</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>One Order element per PO within the ASN</td></tr>
         </tbody>
       </table></div>
+
+      <!-- Section: Smart Skip -->
+      <div class="rg-section-title" style="background:linear-gradient(90deg,#1D4ED8,#2563EB);color:#fff">📋 Smart Skip &mdash; Cancelled &amp; Already-Booked Items</div>
+      <p style="font-size:12px;margin:8px 0">When fetching ASN data from Databricks (Step 2 pipeline), the tool automatically checks three conditions before including an ASN/PO in the VBKREQ build. Items that match any of the following are silently excluded — the remaining active items continue through the pipeline as normal.</p>
+      <div class="rg-table-wrap"><table class="rg-table">
+        <thead><tr><th>Condition</th><th>Data Source</th><th>Check</th><th>UI indicator</th></tr></thead>
+        <tbody>
+          <tr style="background:#FEF2F2">
+            <td><strong>ASN Cancelled</strong></td>
+            <td><code>supplychain.conformed.bam036e_asn_v1</code></td>
+            <td>Latest <code>_notification_type</code> for the ASN is <code>C</code></td>
+            <td>🚫 &ldquo;ASN {id} cancelled — booking skipped&rdquo;</td>
+          </tr>
+          <tr style="background:#FEF2F2">
+            <td><strong>PO Cancelled</strong></td>
+            <td><code>sourcingandbuying.conformed.bam033j_purchase_order_v1</code></td>
+            <td><code>Status = C</code> on the PO record</td>
+            <td>🚫 &ldquo;PO cancelled (Status=C) — booking skipped&rdquo;</td>
+          </tr>
+          <tr style="background:#EFF6FF">
+            <td><strong>Already Booked</strong></td>
+            <td><code>supplychain.conformed.aim_shipment_detail_v1</code></td>
+            <td><code>bookingRequested</code> field is non-null (a carrier booking request was already sent)</td>
+            <td>📋 &ldquo;ASN {id} already has a carrier booking — skipped&rdquo;</td>
+          </tr>
+        </tbody>
+      </table></div>
+      <div class="rg-note">ℹ The cancellation check against <code>bam036e_asn_v1</code> is non-fatal — if the query fails, the pipeline continues without the cancellation filter and logs a warning to the server console. The <code>Already Booked</code> and <code>PO Cancelled</code> checks use data already retrieved by the main ASN/PO queries and have no additional overhead.</div>
 
       <!-- Section: Cancel Booking -->
       <div class="rg-section-title" style="background:linear-gradient(90deg,#7F1D1D,#991B1B);color:#fff">✕ Cancel Booking — Standalone Cancellation Flow</div>
