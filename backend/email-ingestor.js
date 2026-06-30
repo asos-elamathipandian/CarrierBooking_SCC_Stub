@@ -12,7 +12,8 @@
  * admin-consented for the target mailbox (no extra credentials needed).
  *
  * Required .env vars:
- *   EMAIL_INGEST_MAILBOX  — e.g. carrier-templates@asos.com
+ *   EMAIL_INGEST_MAILBOX  — InboundService@asos.com
+ *                           (Mail.ReadWrite application permission pending cloud team approval)
  *   SP_TENANT_ID, SP_CLIENT_ID, SP_CLIENT_SECRET  (shared with SharePoint)
  *
  * Optional .env vars:
@@ -128,17 +129,23 @@ async function listUnreadMessages(mailbox) {
 
 /**
  * Fetch file attachments for a message and return only .xlsx / .xlsm ones.
+ * If EMAIL_ATTACHMENT_MATCH is set, only attachments whose filename contains
+ * that string (case-insensitive) are accepted.
  * Graph API returns contentBytes (base64) inline for attachments ≤ 3 MB.
  */
 async function getExcelAttachments(mailbox, messageId) {
   const path = `/users/${encodeURIComponent(mailbox)}/messages/${messageId}/attachments`;
   const data = await graphRequest('GET', path);
   const all  = (data && Array.isArray(data.value)) ? data.value : [];
-  return all.filter(a =>
-    a['@odata.type'] === '#microsoft.graph.fileAttachment' &&
-    /\.(xlsx|xlsm)$/i.test(a.name || '') &&
-    a.contentBytes   // must have inline content
-  );
+  const match = (process.env.EMAIL_ATTACHMENT_MATCH || '').trim().toLowerCase();
+  return all.filter(a => {
+    if (a['@odata.type'] !== '#microsoft.graph.fileAttachment') return false;
+    if (!a.contentBytes) return false;
+    const name = (a.name || '').toLowerCase();
+    if (!/\.(xlsx|xlsm)$/i.test(name)) return false;
+    if (match && !name.includes(match)) return false;
+    return true;
+  });
 }
 
 /**
