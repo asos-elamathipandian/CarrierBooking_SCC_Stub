@@ -48,7 +48,7 @@ A web-based internal tool for ASOS to automate carrier booking requests (VBKREQs
 
 | Feature | Description |
 |---|---|
-| **Supplier Template Upload** | Parse multi-sheet Excel files (PO Header + PO Lines) from suppliers |
+| **Supplier Template Upload** | Parse single-sheet Excel (PO Header) from suppliers; SKUs and quantities auto-booked from Databricks ASN feed |
 | **SharePoint Auto-Sync** | Scheduled pull of the latest supplier Excel from a SharePoint folder (Graph API) |
 | **ASN Enrichment** | Fetches shipment and PO detail from Azure Databricks (ADE) |
 | **Bible Build** | Merges supplier template rows with ASN/PO data into a master dataset |

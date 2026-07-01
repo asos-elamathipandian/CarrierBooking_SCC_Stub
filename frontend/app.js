@@ -145,11 +145,11 @@ btnParseSupplier.addEventListener('click', async () => {
       return;
     }
 
-    // Warn if SKU_LINES is empty but header has POs
+    // Header-only template (no PO Lines) — SKUs auto-booked from ASN feed; this is expected
     if ((data.rowCount || 0) === 0 && (data.poCount || 0) > 0) {
-      setStatus(1, 'info',
-        `ℹ️ Found <strong>${data.poCount}</strong> PO(s) in PO Header, but <strong>PO Lines</strong> is empty. ` +
-        'Fill in PO Lines before proceeding to fetch feeds and generate bookings.'
+      setStatus(1, 'success',
+        `✅ Found <strong>${data.poCount}</strong> PO${data.poCount !== 1 ? 's' : ''} in PO Header. ` +
+        'SKUs will be auto-booked from the Databricks ASN feed — proceed to Step 2.'
       );
     }
 
@@ -604,7 +604,7 @@ function renderSupplierSummary(poCount, bookingCount, skuRowCount) {
   const panel = document.getElementById('supplierParsePanel');
   if (!panel) return;
   const skuNote = skuRowCount === 0
-    ? `<div style="font-size:12px;color:#784212;margin-top:6px">⚠️ PO Lines sheet is empty — fill it in before generating bookings.</div>`
+    ? `<div style="font-size:12px;color:#1e7e34;margin-top:6px">✅ SKUs will be auto-booked from the Databricks ASN feed for each PO.</div>`
     : `<div class="parse-stat-badge" style="font-size:14px;padding:8px 18px">📋 <strong>${skuRowCount}</strong> SKU row${skuRowCount !== 1 ? 's' : ''}</div>`;
   panel.innerHTML = `
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 4px">

@@ -131,6 +131,7 @@ async function build(supplierData, feedData) {
   const skuWarnings = []; // { poNum, sku } excluded because not on carrier feed
 
   for (const sRow of supplierRows) {
+    if (sRow._headerOnly) continue; // header-only placeholder — no SKU lines provided; handled in second pass
     const poNum  = String(sRow.PO_Number || '').trim();
     const sku    = String(sRow.SKU       || '').trim();
 
@@ -275,10 +276,14 @@ async function build(supplierData, feedData) {
   // Track which (poNum, sku) combos were covered by supplier rows
   const coveredKeys = new Set(masterRows.map(r => `${r.PO_Number}_${r.SKU}`));
 
-  // Build a PO-level header lookup from already-built master rows so that
-  // carrier-only SKUs inherit the same Booking_Group, dates, and factory data
-  // as the other rows for the same PO (fixes mis-grouping of BK002, BK008 etc.)
+  // Build a PO-level header lookup so that carrier-only SKUs inherit
+  // Booking_Group, dates, and factory data from the same PO.
+  // Seed from header-only placeholders first (POs with no SKU lines supplied),
+  // then supplement with any rows built in the first pass.
   const poHeaderByPO = {};
+  for (const sRow of supplierRows) {
+    if (sRow._headerOnly) poHeaderByPO[String(sRow.PO_Number || '').trim()] = sRow;
+  }
   for (const r of masterRows) {
     if (!poHeaderByPO[r.PO_Number]) poHeaderByPO[r.PO_Number] = r;
   }
@@ -289,9 +294,13 @@ async function build(supplierData, feedData) {
       const poHdr = poHeaderByPO[poNum] || {};
       for (const [sku, carrierLine] of Object.entries(skuMap)) {
         if (coveredKeys.has(`${poNum}_${sku}`)) continue; // already in master rows
-        // SKU is on carrier feed but supplier didn't include it — add with Booking_Qty=0
+        // SKU is on carrier feed but supplier didn't include it — auto-book from ASN
         const poLine = poByLinesku[`${poNum}_${sku}`];
-        const ct = CARTON_TYPES['BDCM1'];
+        // Use header-level carton fields if provided, otherwise fall back to BDCM1 defaults
+        const hdrCartonType = String(poHdr.Carton_Type || 'BDCM1').trim();
+        const ct            = CARTON_TYPES[hdrCartonType] || CARTON_TYPES['BDCM1'];
+        const hdrCartons    = parseFloat(poHdr.No_of_Cartons)  || 1;
+        const hdrUnitWt     = parseFloat(poHdr.Unit_Weight_KG) || 0.21;
         masterRows.push({
           Booking_Ref:   poHdr.Booking_Ref   || '',
           Booking_Group: poHdr.Booking_Group || '',
@@ -348,19 +357,24 @@ async function build(supplierData, feedData) {
           Colour_Code:   carrierLine.colour || '',
           Size_Code:     carrierLine.size   || '',
 
-          // No carton/weight data — supplier hasn't provided it
+          // Line-item level — use defaults (1 carton / 0.21 kg / BDCM1) per SKU
           Carton_Type:      'BDCM1',
-          Carton_Length_cm:  ct.L,
-          Carton_Width_cm:   ct.W,
-          Carton_Height_cm:  ct.H,
-          Carton_Weight_KG:  ct.weight,
-          No_of_Cartons:     0,
-          Unit_Weight_KG:    0,
-          Booking_Qty:       0,
+          Carton_Length_cm:  CARTON_TYPES['BDCM1'].L,
+          Carton_Width_cm:   CARTON_TYPES['BDCM1'].W,
+          Carton_Height_cm:  CARTON_TYPES['BDCM1'].H,
+          Carton_Weight_KG:  CARTON_TYPES['BDCM1'].weight,
+          No_of_Cartons:     1,
+          Unit_Weight_KG:    0.21,
+          Booking_Qty:       carrierLine.quantity || 0,
 
-          Gross_Weight_KG:   0,
-          Net_Weight_KG:     0,
-          Volume_M3:         0,
+          Gross_Weight_KG:   parseFloat((CARTON_TYPES['BDCM1'].weight * 1).toFixed(4)),
+          Net_Weight_KG:     parseFloat((0.21 * (carrierLine.quantity || 0)).toFixed(4)),
+          Volume_M3:         parseFloat(((CARTON_TYPES['BDCM1'].L * CARTON_TYPES['BDCM1'].W * CARTON_TYPES['BDCM1'].H / 1000000) * 1).toFixed(4)),
+
+          // PO Header-level carton values — used for VBKREQ document totals
+          PO_Header_Cartons:    hdrCartons,
+          PO_Header_UnitWeight: hdrUnitWt,
+          PO_Header_CartonType: hdrCartonType,
 
           Pack_Type:       carrierLine.packFormat === 'H' ? 'Hanging' : (poHdr.Pack_Type || 'Bulk Flat'),
           Collection_Type: poHdr.Collection_Type || 'Delivery',
@@ -374,7 +388,7 @@ async function build(supplierData, feedData) {
           ASN_Delivery_Date:                   '',
           Var_Unit: 0,
           Var_Pct:  0,
-          Remarks:  'SKU from carrier feed — not found in supplier template',
+          Remarks:  '',
           ASOS_Intake_Week:    '',
           Collection_Time:     '',
           Incoterms:           carrierPoMeta[poNum]?.shippingTerms || '',
@@ -391,7 +405,7 @@ async function build(supplierData, feedData) {
       for (const sku of Object.keys(skuMap)) {
         if (!coveredKeys.has(`${poNum}_${sku}`)) {
           const c = carrierAsnIndex[poNum][sku];
-          extraSkuWarnings.push(`PO ${poNum} — SKU ${sku} is on the PO/ASN but was NOT in the supplier template — included in VBKREQ with Booking_Qty=0`);
+          extraSkuWarnings.push(`PO ${poNum} — SKU ${sku} auto-booked from ASN (qty: ${carrierAsnIndex[poNum][sku].quantity || 0}) — not in supplier template`);
         }
       }
     }

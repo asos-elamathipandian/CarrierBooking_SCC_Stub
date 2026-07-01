@@ -346,12 +346,40 @@ async function build(masterRows, purposeCd) {
     bpMsg.ele('Status').ele('Date', { DateTypeCd: '177', TimeZone: 'LT' }).txt(now);
   }
 
-  // One Document per VBKREQ — aggregate totals across all rows
-  const totalNet     = parseFloat(masterRows.reduce((s, r) => s + r._net,     0).toFixed(4));
-  const totalGross   = parseFloat(masterRows.reduce((s, r) => s + r._gross,   0).toFixed(4));
-  const totalVol     = parseFloat(masterRows.reduce((s, r) => s + r._vol,     0).toFixed(4));
-  const totalCartons = parseFloat(masterRows.reduce((s, r) => s + r._cartons, 0).toFixed(4));
-  const totalBkq     = parseFloat(masterRows.reduce((s, r) => s + r._bkq,     0).toFixed(6));
+  // One Document per VBKREQ — aggregate totals across all rows.
+  // If rows carry PO_Header_* values (carton data from PO Header sheet), use those
+  // per unique PO for document totals — more accurate than summing defaulted line values.
+  const useHeaderTotals = masterRows.some(r => (parseFloat(r.PO_Header_Cartons) || 0) > 0);
+  let totalNet, totalGross, totalVol, totalCartons;
+
+  if (useHeaderTotals) {
+    const seenPOs = new Set();
+    let dNet = 0, dGross = 0, dVol = 0, dCartons = 0;
+    for (const row of masterRows) {
+      if (seenPOs.has(row.PO_Number)) continue;
+      seenPOs.add(row.PO_Number);
+      const poCartons = parseFloat(row.PO_Header_Cartons)    || 0;
+      const poUnitWt  = parseFloat(row.PO_Header_UnitWeight) || 0;
+      const poCt      = CARTON_TYPES[row.PO_Header_CartonType] || CARTON_TYPES['BDCM1'];
+      const poBkq     = masterRows
+        .filter(r => r.PO_Number === row.PO_Number)
+        .reduce((s, r) => s + (parseFloat(r.Booking_Qty) || 0), 0);
+      dCartons += poCartons;
+      dNet     += poUnitWt * poBkq;
+      dGross   += (poUnitWt * poBkq) + (poCt.weight * poCartons);
+      dVol     += (poCt.L * poCt.W * poCt.H / 1000000) * poCartons;
+    }
+    totalNet     = parseFloat(dNet.toFixed(4));
+    totalGross   = parseFloat(dGross.toFixed(4));
+    totalVol     = parseFloat(dVol.toFixed(4));
+    totalCartons = parseFloat(dCartons.toFixed(4));
+  } else {
+    totalNet     = parseFloat(masterRows.reduce((s, r) => s + r._net,     0).toFixed(4));
+    totalGross   = parseFloat(masterRows.reduce((s, r) => s + r._gross,   0).toFixed(4));
+    totalVol     = parseFloat(masterRows.reduce((s, r) => s + r._vol,     0).toFixed(4));
+    totalCartons = parseFloat(masterRows.reduce((s, r) => s + r._cartons, 0).toFixed(4));
+  }
+  const totalBkq = parseFloat(masterRows.reduce((s, r) => s + r._bkq, 0).toFixed(6));
 
   const doc = bpMsg.ele('Document', { DocType: 'BOOK', Key: bookingRef });
   doc.ele('Reference', { RefTypeCd: 'ACE', SourceRefTypeCd: '128' }).txt(bookingRef);

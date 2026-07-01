@@ -6,10 +6,11 @@ const ExcelJS = require('exceljs');
 const REQUIRED_HEADER_COLS = [
   'PO_Number',
   'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date',
-  'Traffic_Mode', 'Booking_Group'
+  'Traffic_Mode', 'Booking_Group',
+  'No_of_Cartons', 'Unit_Weight_KG', 'Carton_Type'
 ];
 
-// Required fields that must come from PO Lines (or equivalent single-sheet columns)
+// Required fields that must come from PO Lines (used only by legacy single-sheet fallback)
 const REQUIRED_SKU_COLS = [
   'PO_Number', 'SKU', 'Booking_Qty', 'No_of_Cartons', 'Unit_Weight_KG'
 ];
@@ -25,6 +26,13 @@ function cellVal(cell) {
   if (typeof val === 'object' && 'formula' in val) return val.result ?? '';
   return val;
 }
+
+// Maps user-friendly column display labels (as written in the Excel header) back to
+// the internal field names used throughout the codebase.
+const COLUMN_ALIASES = {
+  'Total no. of Cartons of booking': 'No_of_Cartons',
+  'Total items weight of booking':   'Unit_Weight_KG',
+};
 
 /**
  * Extract rows from a sheet into an array of plain objects.
@@ -47,7 +55,8 @@ function readSheet(sheet, anchorCol) {
 
   const headers = [];
   sheet.getRow(headerRowNum).eachCell((cell, colNum) => {
-    headers[colNum] = String(cell.value || '').replace(/\s*\(.*?\)/, '').trim();
+    const raw = String(cell.value || '').replace(/\s*\(.*?\)/, '').trim();
+    headers[colNum] = COLUMN_ALIASES[raw] || raw;
   });
 
   const rows = [];
@@ -63,72 +72,6 @@ function readSheet(sheet, anchorCol) {
   });
 
   return { rows, headerRowNum };
-}
-
-// ── Two-sheet parser (PO Header + PO Lines) ────────────────────────────────────
-
-function parseTwoSheet(workbook) {
-  const wsHdr = workbook.getWorksheet('PO Header');
-  const wsSku = workbook.getWorksheet('PO Lines');
-
-  const { rows: hdrRows } = readSheet(wsHdr, 'PO_Number');
-  const { rows: skuRows } = readSheet(wsSku, 'PO_Number');
-
-  // Build a map of PO → header row
-  const hdrMap = new Map();
-  for (const h of hdrRows) {
-    const po = String(h.PO_Number || '').trim();
-    if (po && !hdrMap.has(po)) hdrMap.set(po, h);
-  }
-
-  const rows = [];
-  const validationErrors = [];
-
-  for (const skuRow of skuRows) {
-    const po  = String(skuRow.PO_Number || '').trim();
-    const sku = String(skuRow.SKU       || '').trim();
-    if (!po && !sku) continue;
-
-    const hdr = hdrMap.get(po) || {};
-
-    // Merge: header fields + SKU fields (SKU fields take precedence on overlap)
-    const merged = { ...hdr, ...skuRow };
-
-    // Validate required header fields
-    // Factory_ID 9999 = Dummy Factory: address fields are not required
-    const isDummyFactory = String(merged.Factory_ID || '').trim() === '9999';
-    const FACTORY_ADDRESS_COLS = ['Factory_Name', 'Factory_Street1', 'Factory_City', 'Factory_PostalCd', 'Factory_CountryCd'];
-    const missingHdr = REQUIRED_HEADER_COLS.filter(c => {
-      if (isDummyFactory && FACTORY_ADDRESS_COLS.includes(c)) return false;
-      return !merged[c] || String(merged[c]).trim() === '';
-    });
-    if (missingHdr.length > 0) {
-      validationErrors.push(
-        `PO Lines row ${skuRow._rowNum} (PO ${po}): missing header fields: ${missingHdr.join(', ')}`
-      );
-    }
-
-    // Validate required SKU fields
-    const missingSku = REQUIRED_SKU_COLS.filter(c => !merged[c] || String(merged[c]).trim() === '');
-    if (missingSku.length > 0) {
-      validationErrors.push(
-        `PO Lines row ${skuRow._rowNum}: missing required fields: ${missingSku.join(', ')}`
-      );
-    }
-
-    // Collection_Time mandatory when Collection_Type = 'Collection'
-    if (String(merged.Collection_Type || '').trim() === 'Collection' &&
-        (!merged.Collection_Time || String(merged.Collection_Time).trim() === '')) {
-      validationErrors.push(
-        `PO Lines row ${skuRow._rowNum}: Collection_Time is required when Collection_Type is "Collection"`
-      );
-    }
-
-    rows.push(merged);
-  }
-
-  return { rows, validationErrors, sheetName: 'PO Header+PO Lines', headerRowNum: 3,
-    headerPoRefs: [...hdrMap.keys()] };
 }
 
 // ── Legacy single-sheet parser (SUPPLIER_INPUT) ───────────────────────────────
@@ -189,19 +132,16 @@ function parseSingleSheet(sheet) {
 
 /**
  * Parse a supplier Excel buffer.
- * Supports the two-sheet format (PO Header + PO Lines) and the legacy
- * single-sheet format (SUPPLIER_INPUT) for backward compatibility.
+ * Current format: PO Header sheet only — SKUs auto-booked from ASN feed.
+ * Legacy fallback: SUPPLIER_INPUT single-sheet format.
  */
 async function parse(buffer) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
 
-  // Two-sheet format takes priority (new names first, legacy names as fallback)
+  // PO Header sheet present — use header-only parser (PO Lines not used)
   const wsHdr = workbook.getWorksheet('PO Header') || workbook.getWorksheet('BOOKING_HEADER');
-  const wsSku = workbook.getWorksheet('PO Lines') || workbook.getWorksheet('SKU_LINES');
-  if (wsHdr && wsSku) {
-    return parseTwoSheet(workbook);
-  }
+  if (wsHdr) return parseHeaderOnly(workbook);
 
   // Legacy fallback: SUPPLIER_INPUT or first visible sheet
   let sheet = workbook.getWorksheet('SUPPLIER_INPUT');

@@ -1,10 +1,10 @@
 ﻿'use strict';
 
 /**
- * Generates samples/SupplierInput_template.xlsx
- * Two-sheet design:
- *   PO Header — one row per PO (header-level fields + factory auto-fill)
- *   PO Lines  — one row per SKU (qty / weight / carton fields)
+ * Generates samples/Supplier PO sheet-DDMMYYYY.xlsx
+ * Single-sheet design:
+ *   PO Header — one row per PO (mandatory booking fields + carton totals + defaults)
+ *   No PO Lines sheet — SKUs and quantities are auto-booked from Databricks ASN feed.
  * Run: node backend/build-supplier-template.js
  */
 
@@ -13,7 +13,7 @@ const path    = require('path');
 const fs      = require('fs');
 
 const OUT_DIR  = path.join(__dirname, '..', 'samples');
-const OUT_FILE = path.join(OUT_DIR, 'SupplierInput_template.xlsx');
+const OUT_FILE = path.join(OUT_DIR, 'Supplier PO sheet-DDMMYYYY.xlsx');
 
 const CARTON_TYPES = [
   ['BDCM1',                1.40, 60.00, 30.00, 40.00],
@@ -127,6 +127,46 @@ function applyHeaderRow(ws, columns, headerRow) {
   return headerRow + 1; // first data row
 }
 
+/**
+ * Writes a group-label row that spans consecutive columns of the same type.
+ * e.g.  [←─ MANDATORY (8 cols) ─→][←─ DEFAULTED (3) ─→][←─ AUTO-FILLED (4) ─→][←─ OPTIONAL (2) ─→]
+ */
+function addGroupRow(ws, columns, rowNum) {
+  const LABELS = {
+    mandatory: '◀  MANDATORY — must be completed  ▶',
+    default:   '◀  DEFAULTED — pre-filled, editable  ▶',
+    auto:      '◀  AUTO-FILLED — from Carton_Type lookup  ▶',
+    optional:  '◀  OPTIONAL — leave blank if not needed  ▶',
+  };
+  // Build consecutive groups
+  const groups = [];
+  let cur = null;
+  columns.forEach((col, i) => {
+    if (!cur || cur.type !== col.type) {
+      cur = { type: col.type, start: i + 1, end: i + 1 };
+      groups.push(cur);
+    } else {
+      cur.end = i + 1;
+    }
+  });
+  for (const g of groups) {
+    const startLetter = ws.getColumn(g.start).letter;
+    const endLetter   = ws.getColumn(g.end).letter;
+    if (g.start !== g.end) ws.mergeCells(`${startLetter}${rowNum}:${endLetter}${rowNum}`);
+    const cell = ws.getCell(rowNum, g.start);
+    cell.value = LABELS[g.type] || g.type.toUpperCase();
+    const pal  = PALETTE[g.type] || PALETTE.optional;
+    cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: pal.header } };
+    cell.font  = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    cell.border = {
+      right:  { style: 'medium', color: { argb: 'FFFFFFFF' } },
+      bottom: { style: 'thin',   color: { argb: 'FFCCCCCC' } },
+    };
+  }
+  ws.getRow(rowNum).height = 14;
+}
+
 function styleAuto(cell) {
   cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.auto.pastel } };
   cell.font = { color: { argb: PALETTE.auto.text }, size: 10 };
@@ -154,42 +194,44 @@ async function build() {
   iTitle.height = 22;
 
   const iLines = [
-    // Point 1
-    { text: '1.  The supplier must complete two sheets — PO Header and PO Lines —', bold: true, indent: 1, bg: 'FFD6E4F0' },
-    { text: '     with the PO Number used as the primary key to link both sheets.', bold: false, indent: 2, bg: 'FFE9F3FB' },
+    // Overview
+    { text: '1.  Fill in one row per PO in the PO Header sheet and share the file to the ASOS booking team via email ‘InboundService@asos.com’.', bold: true, indent: 1, bg: 'FFD6E4F0' },
     { text: '', bg: 'FFFFFFFF' },
-    // Point 2
-    { text: '2.  All mandatory fields must be completed; otherwise, booking creation will fail.', bold: true, indent: 1, bg: 'FFFDE8E8' },
-    { text: '     If a field is unclear or you prefer not to provide a value, leave the default pre-filled value where applicable.', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    // Mandatory fields
+    { text: '2.  MANDATORY fields (pink/red columns) — must be filled for every PO row:', bold: true, indent: 1, bg: 'FFFDE8E8' },
+    { text: '       •  PO_Number', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    { text: '       •  Cargo_Ready_Planned_Collection_Date   (DD/MM/YYYY)', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    { text: '       •  Carrier_Booking_Request_Date            (DD/MM/YYYY)', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    { text: '       •  Traffic_Mode                            (CFS or CY)', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    { text: '       •  Booking_Group                           (see rule below)', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    { text: '       •  Total no. of Cartons of booking    (whole number > 0  |  default: 1)', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    { text: '       •  Total items weight of booking      (kg per unit  |  default: 0.21)', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    { text: '       •  Carton_Type                             (select from dropdown  |  default: BDCM1)', bold: false, indent: 2, bg: 'FFFEF4F4' },
     { text: '', bg: 'FFFFFFFF' },
-    // Point 3
-    { text: '3.  Enter one row per PO in the PO Header sheet. Ensure all mandatory (pink) columns are filled for each PO.', bold: true, indent: 1, bg: 'FFD6E4F0' },
+    // Defaulted fields
+    { text: '3.  DEFAULTED fields (green columns) — pre-filled with sensible values; update only if different:', bold: true, indent: 1, bg: 'FFD6E4F0' },
+    { text: '       •  Pack_Type = Bulk Flat         •  Collection_Type = Delivery         •  Hazardous = N/A', bold: false, indent: 2, bg: 'FFE8F5E9' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Auto-filled fields
+    { text: '4.  AUTO-FILLED fields (blue columns) — calculated from Carton_Type via lookup — do not edit:', bold: true, indent: 1, bg: 'FFD6E4F0' },
+    { text: '       •  Carton_Length_cm   •  Carton_Width_cm   •  Carton_Height_cm   •  Carton_Weight_KG', bold: false, indent: 2, bg: 'FFE3F2FD' },
+    { text: '', bg: 'FFFFFFFF' },
+    // Optional fields
+    { text: '5.  OPTIONAL fields (grey columns) — leave blank if not applicable:', bold: true, indent: 1, bg: 'FFF5F5F5' },
+    { text: '       •  Collection_Time (HH:MM)   •  Remarks', bold: false, indent: 2, bg: 'FFF5F5F5' },
     { text: '', bg: 'FFFFFFFF' },
     // Booking_Group rules
-    { text: '     Booking_Group rules:', bold: true, indent: 2, bg: 'FFE9F3FB' },
-    { text: '       "Single Booking"                          →  one PO per booking', bold: false, indent: 3, bg: 'FFE9F3FB' },
-    { text: '       "Multiple POs-BK001" … "Multiple POs-BK025"  →  POs with the same code (BK001, BK002 …) are combined into one booking', bold: false, indent: 3, bg: 'FFE9F3FB' },
-    { text: '       "Multiple"                                →  all POs are combined into a single booking', bold: false, indent: 3, bg: 'FFE9F3FB' },
+    { text: '6.  Booking_Group rules:', bold: true, indent: 1, bg: 'FFE9F3FB' },
+    { text: '       •  "Single Booking"                        →  one carrier booking request per PO', bold: false, indent: 2, bg: 'FFE9F3FB' },
+    { text: '       •  "Multiple POs-BK001" … "Multiple POs-BK025"  →  POs sharing the same code are merged into one carrier booking request', bold: false, indent: 2, bg: 'FFE9F3FB' },
+    { text: '       •  "Multiple"                              →  all POs in the file combined into a single carrier booking request', bold: false, indent: 2, bg: 'FFE9F3FB' },
     { text: '', bg: 'FFFFFFFF' },
-    // Point 4
-    { text: '4.  Dates must be in DD/MM/YYYY format.', bold: true, indent: 1, bg: 'FFFDE8E8' },
+    // Notes
+    { text: '7.  No_of_Cartons / Unit_Weight_KG / Carton_Type drive the booking-level totals (QUR / G / N / VOL) in the carrier Booking request.', bold: false, indent: 1, bg: 'FFFEF3CD' },
+    { text: '     Factory details and Mode of Transport are sourced automatically from ASOS PO — leave them out of this template.', bold: false, indent: 1, bg: 'FFFEF3CD' },
     { text: '', bg: 'FFFFFFFF' },
-    // Point 5
-    { text: '5.  Factory details (ID, name, address) and Mode of Transport are sourced automatically from Databricks — no need to provide them in this template.', bold: false, indent: 1, bg: 'FFE9F3FB' },
-    { text: '', bg: 'FFFFFFFF' },
-    // Point 6
-    { text: '6.  In the PO Lines sheet, use multiple rows for POs that contain multiple SKU lines.', bold: true, indent: 1, bg: 'FFD6E4F0' },
-    { text: '     Each row must have the same PO_Number as the corresponding header row in PO Header.', bold: false, indent: 2, bg: 'FFE9F3FB' },
-    { text: '', bg: 'FFFFFFFF' },
-    // Colour guide
-    { text: '🎨  Colour guide:', bold: true, indent: 1, bg: 'FFF5F5F5' },
-    { text: '  🔴  Pink / Red  — MANDATORY field (must be filled)', bold: false, indent: 2, bg: 'FFFCE8E8' },
-    { text: '  🟢  Green       — DEFAULTED field (pre-set, editable)', bold: false, indent: 2, bg: 'FFE8F5E9' },
-    { text: '  🔵  Blue        — AUTO-FILLED field (formula / lookup — do not edit)', bold: false, indent: 2, bg: 'FFE3F2FD' },
-    { text: '  ⚪  Grey        — OPTIONAL field (leave blank if not applicable)', bold: false, indent: 2, bg: 'FFF5F5F5' },
-    { text: '', bg: 'FFFFFFFF' },
-    // Footer note
-    { text: '⚠  Do NOT modify or delete column headers on any sheet.', bold: true, indent: 1, bg: 'FFFFF3CD' },
+    // Footer warning
+    { text: '⚠  Do NOT rename, move, or delete column headers in the PO Header sheet.', bold: true, indent: 1, bg: 'FFFFF3CD' },
   ];
 
   iLines.forEach((line, idx) => {
@@ -224,26 +266,36 @@ async function build() {
   // ── PO Header ─────────────────────────────────────────────────────────────────
   const wsH = wb.addWorksheet('PO Header');
   wsH.properties.tabColor = { argb: 'FF1F4E79' };
-  // Columns ordered: Mandatory → Defaulted → Pre-filled (auto) → Optional
+  // Columns ordered: Mandatory → Auto-filled → Defaulted → Optional
   const hCols = [
-    // Mandatory
+    // Mandatory (all 8 together)
     { key: 'PO_Number',                           label: 'PO_Number',                           width: 22, type: 'mandatory' },
     { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo_Ready_Planned_Collection_Date', width: 34, type: 'mandatory' },
     { key: 'Carrier_Booking_Request_Date',        label: 'Carrier_Booking_Request_Date',        width: 28, type: 'mandatory' },
     { key: 'Traffic_Mode',                        label: 'Traffic_Mode',                        width: 14, type: 'mandatory' },
     { key: 'Booking_Group',                       label: 'Booking_Group',                       width: 30, type: 'mandatory' },
+    { key: 'No_of_Cartons',                       label: 'Total no. of Cartons of booking', width: 28, type: 'mandatory' },
+    { key: 'Unit_Weight_KG',                      label: 'Total items weight of booking',   width: 28, type: 'mandatory' },
+    { key: 'Carton_Type',                         label: 'Carton_Type',                         width: 22, type: 'mandatory' },
+    // Pre-filled (auto-calc from Carton_Type via CARTON_LOOKUP)
+    { key: 'Carton_Length_cm', label: 'Carton_Length_cm', width: 18, type: 'auto' },
+    { key: 'Carton_Width_cm',  label: 'Carton_Width_cm',  width: 17, type: 'auto' },
+    { key: 'Carton_Height_cm', label: 'Carton_Height_cm', width: 17, type: 'auto' },
+    { key: 'Carton_Weight_KG', label: 'Carton_Weight_KG', width: 18, type: 'auto' },
     // Defaulted
-    { key: 'Pack_Type',                           label: 'Pack_Type',                           width: 14, type: 'default' },
-    { key: 'Collection_Type',                     label: 'Collection_Type',                     width: 18, type: 'default' },
-    { key: 'Hazardous',                           label: 'Hazardous',                           width: 20, type: 'default' },
+    { key: 'Pack_Type',        label: 'Pack_Type',        width: 14, type: 'default' },
+    { key: 'Collection_Type',  label: 'Collection_Type',  width: 18, type: 'default' },
+    { key: 'Hazardous',        label: 'Hazardous',        width: 20, type: 'default' },
     // Optional
     { key: 'Collection_Time',                     label: 'Collection_Time (HH:MM)',             width: 24, type: 'optional' },
     { key: 'Remarks',                             label: 'Remarks',                             width: 30, type: 'optional' },
   ];
   const hLastCol = wsH.getColumn(hCols.length).letter;
   const hLegendRow  = 1;
-  const hHeaderRow  = addLegend(wsH, hLegendRow);
-  const hFirstDataR = applyHeaderRow(wsH, hCols, hHeaderRow);
+  const hGroupRow   = addLegend(wsH, hLegendRow);   // row 2 = group label bar
+  addGroupRow(wsH, hCols, hGroupRow);               // row 2 = ◀ MANDATORY ▶ | ◀ DEFAULTED ▶ | ...
+  const hHeaderRow  = hGroupRow + 1;                // row 3 = column headers
+  const hFirstDataR = applyHeaderRow(wsH, hCols, hHeaderRow); // row 4+ = data
   const hIdx = {};
   hCols.forEach((c, i) => { hIdx[c.key] = i + 1; });
   const hLet = n => wsH.getColumn(n).letter;
@@ -255,6 +307,18 @@ async function build() {
     row.getCell(hIdx['Pack_Type']).value         = 'Bulk Flat';
     row.getCell(hIdx['Collection_Type']).value   = 'Delivery';
     row.getCell(hIdx['Hazardous']).value         = 'N/A';
+    row.getCell(hIdx['No_of_Cartons']).value     = 1;
+    row.getCell(hIdx['Unit_Weight_KG']).value    = 0.21;
+    row.getCell(hIdx['Carton_Type']).value       = 'BDCM1';
+    const hCt = hLet(hIdx['Carton_Type']) + r;
+    row.getCell(hIdx['Carton_Length_cm']).value  = { formula: 'IFERROR(VLOOKUP(' + hCt + ',CARTON_LOOKUP!$A:$E,3,0),"")' };
+    row.getCell(hIdx['Carton_Width_cm']).value   = { formula: 'IFERROR(VLOOKUP(' + hCt + ',CARTON_LOOKUP!$A:$E,4,0),"")' };
+    row.getCell(hIdx['Carton_Height_cm']).value  = { formula: 'IFERROR(VLOOKUP(' + hCt + ',CARTON_LOOKUP!$A:$E,5,0),"")' };
+    row.getCell(hIdx['Carton_Weight_KG']).value  = { formula: 'IFERROR(VLOOKUP(' + hCt + ',CARTON_LOOKUP!$A:$E,2,0),"")' };
+    ['Carton_Length_cm','Carton_Width_cm','Carton_Height_cm','Carton_Weight_KG'].forEach(k => styleAuto(row.getCell(hIdx[k])));
+    ['Carton_Length_cm','Carton_Width_cm','Carton_Height_cm'].forEach(k => (row.getCell(hIdx[k]).numFmt = '0.00'));
+    row.getCell(hIdx['Carton_Weight_KG']).numFmt = '0.0000';
+    row.getCell(hIdx['Unit_Weight_KG']).numFmt   = '0.0000';
     ['Cargo_Ready_Planned_Collection_Date','Carrier_Booking_Request_Date'].forEach(k => {
       row.getCell(hIdx[k]).numFmt = 'DD/MM/YYYY';
     });
@@ -293,6 +357,20 @@ async function build() {
       type: 'list', allowBlank: false, formulae: ['"Flammable,Glass - Hazardous,Hazardous,N/A"'],
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Hazardous', error: 'Select a hazardous classification'
     };
+    wsH.getCell(r, hIdx['No_of_Cartons']).dataValidation = {
+      type: 'whole', operator: 'greaterThan', formulae: [0], allowBlank: false,
+      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'No of Cartons required',
+      error: 'Enter a whole number greater than 0'
+    };
+    wsH.getCell(r, hIdx['Unit_Weight_KG']).dataValidation = {
+      type: 'decimal', operator: 'greaterThan', formulae: [0], allowBlank: false,
+      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Unit Weight required',
+      error: 'Enter a positive weight in KG (e.g. 0.21)'
+    };
+    wsH.getCell(r, hIdx['Carton_Type']).dataValidation = {
+      type: 'list', allowBlank: false, formulae: ['CARTON_LOOKUP!$A$2:$A$20'],
+      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Carton Type', error: 'Select a carton type from the list'
+    };
     const tc = hLet(hIdx['Collection_Time']) + r;
     wsH.getCell(r, hIdx['Collection_Time']).dataValidation = {
       type: 'custom',
@@ -300,134 +378,15 @@ async function build() {
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Time', error: 'Enter time as HH:MM (e.g. 09:30) or leave blank'
     };
   }
-  // Cross-sheet warning: PO_Number in PO Header has no matching rows in PO Lines → orange
-  const hPoCol = hLet(hIdx['PO_Number']);
-  wsH.addConditionalFormatting({
-    ref: `${hPoCol}${hFirstDataR}:${hPoCol}${hFirstDataR + 499}`,
-    rules: [{
-      type: 'expression',
-      formulae: [`AND($${hPoCol}${hFirstDataR}<>"",COUNTIF('PO Lines'!$${hPoCol}:$${hPoCol},$${hPoCol}${hFirstDataR})=0)`],
-      style: {
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD966' } },
-        font: { color: { argb: 'FF7F6000' }, bold: true }
-      }
-    }]
-  });
   wsH.views = [{ state: 'frozen', ySplit: hFirstDataR - 1, xSplit: 1, showGridLines: true }];
-
-  // ── PO Lines ──────────────────────────────────────────────────────────────────
-  const wsS = wb.addWorksheet('PO Lines');
-  wsS.properties.tabColor = { argb: 'FF7B2C2C' };
-  // Columns ordered: Mandatory → Defaulted → Pre-filled (auto) → Optional
-  const sCols = [
-    // Mandatory
-    { key: 'PO_Number',        label: 'PO_Number',        width: 22, type: 'mandatory' },
-    { key: 'SKU',              label: 'SKU',              width: 22, type: 'mandatory' },
-    { key: 'Booking_Qty',      label: 'Booking_Qty',      width: 14, type: 'mandatory' },
-    { key: 'No_of_Cartons',    label: 'No_of_Cartons',    width: 16, type: 'mandatory' },
-    { key: 'Unit_Weight_KG',   label: 'Unit_Weight_KG',   width: 16, type: 'mandatory' },
-    // Defaulted
-    { key: 'Carton_Type',      label: 'Carton_Type',      width: 22, type: 'default' },
-    // Pre-filled (auto-calc)
-    { key: 'Carton_Length_cm', label: 'Carton_Length_cm', width: 18, type: 'auto' },
-    { key: 'Carton_Width_cm',  label: 'Carton_Width_cm',  width: 17, type: 'auto' },
-    { key: 'Carton_Height_cm', label: 'Carton_Height_cm', width: 17, type: 'auto' },
-    { key: 'Carton_Weight_KG', label: 'Carton_Weight_KG', width: 18, type: 'auto' },
-    { key: 'Gross_Weight_KG',  label: 'Gross_Weight_KG',  width: 17, type: 'auto' },
-    { key: 'Net_Weight_KG',    label: 'Net_Weight_KG',    width: 16, type: 'auto' },
-    { key: 'Volume_M3',        label: 'Volume_M3',        width: 13, type: 'auto' },
-    // Optional
-    { key: 'EAN_Barcode',      label: 'EAN_Barcode',      width: 18, type: 'optional' },
-    { key: 'Colour_Code',      label: 'Colour_Code',      width: 14, type: 'optional' },
-    { key: 'Size_Code',        label: 'Size_Code',        width: 12, type: 'optional' },
-  ];
-  const sLastCol = wsS.getColumn(sCols.length).letter;
-  const sLegendRow  = 1;
-  const sHeaderRow  = addLegend(wsS, sLegendRow);
-  const sFirstDataR = applyHeaderRow(wsS, sCols, sHeaderRow);
-  const sIdx = {};
-  sCols.forEach((c, i) => { sIdx[c.key] = i + 1; });
-  const sLet = n => wsS.getColumn(n).letter;
-  wsS.getColumn(sIdx['PO_Number']).numFmt = '@'; // prevent scientific notation
-  for (let r = sFirstDataR; r <= sFirstDataR + 9999; r++) {
-    const row = wsS.getRow(r);
-    row.getCell(sIdx['Carton_Type']).value = 'BDCM1';
-    const ct = sLet(sIdx['Carton_Type']) + r;
-    row.getCell(sIdx['Carton_Length_cm']).value = { formula: 'IFERROR(VLOOKUP(' + ct + ',CARTON_LOOKUP!$A:$E,3,0),"")' };
-    row.getCell(sIdx['Carton_Width_cm']).value  = { formula: 'IFERROR(VLOOKUP(' + ct + ',CARTON_LOOKUP!$A:$E,4,0),"")' };
-    row.getCell(sIdx['Carton_Height_cm']).value = { formula: 'IFERROR(VLOOKUP(' + ct + ',CARTON_LOOKUP!$A:$E,5,0),"")' };
-    row.getCell(sIdx['Carton_Weight_KG']).value = { formula: 'IFERROR(VLOOKUP(' + ct + ',CARTON_LOOKUP!$A:$E,2,0),"")' };
-    const noC  = sLet(sIdx['No_of_Cartons'])  + r;
-    const unitW= sLet(sIdx['Unit_Weight_KG']) + r;
-    const bkq  = sLet(sIdx['Booking_Qty'])    + r;
-    const cL   = sLet(sIdx['Carton_Length_cm'])  + r;
-    const cW   = sLet(sIdx['Carton_Width_cm'])   + r;
-    const cH   = sLet(sIdx['Carton_Height_cm'])  + r;
-    const cWt  = sLet(sIdx['Carton_Weight_KG'])  + r;
-    row.getCell(sIdx['Gross_Weight_KG']).value = { formula: 'IFERROR(' + cWt + '*' + noC + ',0)' };
-    row.getCell(sIdx['Net_Weight_KG']).value   = { formula: 'IFERROR(' + unitW + '*' + bkq + ',0)' };
-    row.getCell(sIdx['Volume_M3']).value        = { formula: 'IFERROR((' + cL + '*' + cW + '*' + cH + '/1000000)*' + noC + ',0)' };
-    ['Carton_Length_cm','Carton_Width_cm','Carton_Height_cm','Carton_Weight_KG',
-     'Gross_Weight_KG','Net_Weight_KG','Volume_M3'].forEach(k => styleAuto(row.getCell(sIdx[k])));
-    ['Carton_Length_cm','Carton_Width_cm','Carton_Height_cm'].forEach(k => (row.getCell(sIdx[k]).numFmt = '0.00'));
-    ['Carton_Weight_KG','Gross_Weight_KG','Net_Weight_KG','Unit_Weight_KG'].forEach(k => (row.getCell(sIdx[k]).numFmt = '0.0000'));
-    row.getCell(sIdx['Volume_M3']).numFmt = '0.0000';
-    row.getCell(sIdx['PO_Number']).numFmt = '@'; // cell-level: forces Excel to respect text format on paste
-    row.commit();
-  }
-  for (let r = sFirstDataR; r <= sFirstDataR + 9999; r++) {
-    wsS.getCell(r, sIdx['PO_Number']).dataValidation = {
-      type: 'textLength', operator: 'greaterThan', formulae: [0], allowBlank: false,
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Required', error: 'PO_Number cannot be blank'
-    };
-    wsS.getCell(r, sIdx['SKU']).dataValidation = {
-      type: 'textLength', operator: 'greaterThan', formulae: [0], allowBlank: false,
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Required', error: 'SKU cannot be blank'
-    };
-    wsS.getCell(r, sIdx['Booking_Qty']).dataValidation = {
-      type: 'whole', operator: 'greaterThan', formulae: [0],
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Booking Qty', error: 'Booking_Qty must be a whole number greater than 0'
-    };
-    wsS.getCell(r, sIdx['No_of_Cartons']).dataValidation = {
-      type: 'whole', operator: 'greaterThan', formulae: [0],
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid No of Cartons', error: 'Enter a whole number greater than 0'
-    };
-    wsS.getCell(r, sIdx['Unit_Weight_KG']).dataValidation = {
-      type: 'decimal', operator: 'greaterThan', formulae: [0],
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Weight', error: 'Enter a positive weight in KG'
-    };
-    wsS.getCell(r, sIdx['Carton_Type']).dataValidation = {
-      type: 'list', allowBlank: false, formulae: ['CARTON_LOOKUP!$A$2:$A$20'],
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Carton Type', error: 'Select a carton type from the list'
-    };
-  }
-  // Cross-sheet warning: PO_Number in PO Lines not found in PO Header → red
-  const sPoCol = sLet(sIdx['PO_Number']);
-  wsS.addConditionalFormatting({
-    ref: `${sPoCol}${sFirstDataR}:${sPoCol}${sFirstDataR + 9999}`,
-    rules: [{
-      type: 'expression',
-      formulae: [`AND($${sPoCol}${sFirstDataR}<>"",COUNTIF('PO Header'!$${sPoCol}:$${sPoCol},$${sPoCol}${sFirstDataR})=0)`],
-      style: {
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } },
-        font: { color: { argb: 'FF9C0006' }, bold: true }
-      }
-    }]
-  });
-  wsS.views = [{ state: 'frozen', ySplit: sFirstDataR - 1, xSplit: 1, showGridLines: true }];
-
-  // FACTORY_LOOKUP tab removed — factory data sourced from Databricks
 
   await wb.xlsx.writeFile(OUT_FILE);
   console.log('✅  SupplierInput_template.xlsx written to:\n    ' + OUT_FILE);
-  console.log('\nSheets:  PO Header (500 rows)  |  PO Lines (10000 rows)');
+  console.log('\nSheets:  PO Header only (500 rows) — no PO Lines sheet');
   console.log('\nPO Header mandatory:', hCols.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
   console.log('PO Header defaults :', hCols.filter(c => c.type === 'default').map(c => c.label).join(', '));
   console.log('PO Header auto-fill:', hCols.filter(c => c.type === 'auto').map(c => c.label).join(', '));
-  console.log('\nPO Lines mandatory:', sCols.filter(c => c.type === 'mandatory').map(c => c.label).join(', '));
-  console.log('PO Lines defaults :', sCols.filter(c => c.type === 'default').map(c => c.label).join(', '));
-  console.log('PO Lines auto-calc:', sCols.filter(c => c.type === 'auto').map(c => c.label).join(', '));
-  console.log('PO Lines optional :', sCols.filter(c => c.type === 'optional').map(c => c.label).join(', '));
+  console.log('PO Header optional :', hCols.filter(c => c.type === 'optional').map(c => c.label).join(', '));
 }
 
 build().catch(err => {
