@@ -21,6 +21,7 @@ const fs             = require('fs');
 const sp             = require('./sharepoint-client');
 const supplierReader  = require('./supplier-reader');
 const emailIngestor  = require('./email-ingestor');
+const reportSender   = require('./report-sender');
 
 const SYNC_DIR        = path.join(__dirname, '..', 'bible', 'sharepoint-sync');
 const STATUS_FILE     = path.join(__dirname, '..', 'bible', 'sp-sync-status.json');
@@ -207,6 +208,11 @@ async function runSync(sessionState) {
     files:     syncedFiles.map(f => f.supplierFolder ? `${f.name} (${f.supplierFolder})` : f.name),
     error:     null
   });
+
+  // Send post-run booking report email
+  reportSender.sendScheduledReport().catch(err =>
+    console.error('[SP Scheduler] Report send failed:', err.message)
+  );
 }
 
 // ── Schedule builder ──────────────────────────────────────────────────────────

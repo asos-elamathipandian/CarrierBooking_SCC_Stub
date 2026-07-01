@@ -431,16 +431,32 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       const bookingRef = vbRef || groupRows[0]?.Booking_Ref || '';
       // Human-readable label: strip the internal PO__ prefix used for Single Booking keys
       const groupLabel = group === '__ALL__' ? 'Multiple' : group.startsWith('PO__') ? group.replace('PO__', '') : group;
+      // Compute per-PO totals (PO_Header_* preferred; falls back to line-level fields)
+      const _seenPOs = new Set();
+      let _totalCartons = 0, _totalWeight = 0;
+      for (const r of groupRows) {
+        if (!_seenPOs.has(r.PO_Number)) {
+          _seenPOs.add(r.PO_Number);
+          _totalCartons += parseFloat(r.PO_Header_Cartons  || r.No_of_Cartons)  || 0;
+          _totalWeight  += parseFloat(r.PO_Header_UnitWeight || r.Unit_Weight_KG) || 0;
+        }
+      }
+      const _first = groupRows[0] || {};
       bibleBuilder.appendGenerationLog({
-        timestamp:  new Date().toISOString(),
+        timestamp:      new Date().toISOString(),
         bookingRef,
         poNumbers,
         asnRefs,
         filename,
         ctrlNumber,
-        group: groupLabel,
-        sftp: null,
-        masterRows: groupRows
+        group:          groupLabel,
+        sftp:           null,
+        supplier:       _first.Supplier || _first.Supplier_Name || _first.supplierName || '',
+        bookingGroup:   _first.Booking_Group || groupLabel,
+        cargoReadyDate: _first.Cargo_Ready_Planned_Collection_Date || _first.CargoReadyDate || '',
+        noOfCartons:    _totalCartons || null,
+        totalWeight:    _totalWeight  || null,
+        masterRows:     groupRows
       });
       generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers, asnRefs, bookingRef });
     }
@@ -684,9 +700,32 @@ app.post('/api/cancel-booking', async (req, res) => {
       const poNums  = entry.poNumbers || [];
       const asnRefs = entry.asnRefs   || [];
       const groupLabel = entry.group || bookingRef;
+      const _cancelFirst = workingRows[0] || {};
+      const _cancelSeenPOs = new Set();
+      let _cancelCartons = 0, _cancelWeight = 0;
+      for (const r of workingRows) {
+        if (!_cancelSeenPOs.has(r.PO_Number)) {
+          _cancelSeenPOs.add(r.PO_Number);
+          _cancelCartons += parseFloat(r.PO_Header_Cartons  || r.No_of_Cartons)  || 0;
+          _cancelWeight  += parseFloat(r.PO_Header_UnitWeight || r.Unit_Weight_KG) || 0;
+        }
+      }
       bibleBuilder.appendGenerationLog({
-        timestamp: new Date().toISOString(), bookingRef, poNumbers: poNums, asnRefs,
-        filename, ctrlNumber, group: groupLabel, purposeCd: '01', sftp: null, masterRows: workingRows
+        timestamp:      new Date().toISOString(),
+        bookingRef,
+        poNumbers:      poNums,
+        asnRefs,
+        filename,
+        ctrlNumber,
+        group:          groupLabel,
+        purposeCd:      '01',
+        sftp:           null,
+        supplier:       _cancelFirst.Supplier || _cancelFirst.Supplier_Name || _cancelFirst.supplierName || '',
+        bookingGroup:   _cancelFirst.Booking_Group || groupLabel,
+        cargoReadyDate: _cancelFirst.Cargo_Ready_Planned_Collection_Date || _cancelFirst.CargoReadyDate || '',
+        noOfCartons:    _cancelCartons || null,
+        totalWeight:    _cancelWeight  || null,
+        masterRows:     workingRows
       });
       generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers: poNums, asnRefs, bookingRef });
     }
