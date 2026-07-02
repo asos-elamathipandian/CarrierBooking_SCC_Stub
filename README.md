@@ -226,3 +226,46 @@ node backend/test-sftp.js         # Test E2open SFTP
   - POs where `Status = C` in `bam033j_purchase_order_v1`
   - ASNs/POs where `bookingRequested` is already populated (booking already exists)
   - Skipped items are reported in the UI with reason details and do not block other POs from proceeding
+
+---
+
+## Booking Report Email
+
+After each scheduled SharePoint sync (09:00 and 13:00) the tool automatically sends an HTML email summarising all carrier booking requests generated since the last report.
+
+### Report columns
+
+| Column | Description |
+|--------|-------------|
+| Supplier | Supplier name from Databricks PO feed |
+| PO Number(s) | All POs in the booking |
+| VB Ref | Carrier booking reference (VB-XXXXXX) |
+| ASN Ref(s) | ASN IDs pulled from Databricks |
+| Filename | Generated VBKREQ XML filename |
+| Booking Group | Single Booking / Multiple POs-BKxxx / Multiple |
+| Cargo Ready Date | Supplier-supplied cargo ready date |
+| No. of Cartons | Total cartons across all POs in the booking |
+| Total Weight (KG) | Total weight across all POs |
+| SFTP Status | Uploaded / Pending |
+| Generated At | Timestamp of VBKREQ generation |
+
+### Trigger
+
+The report fires once at the **end of each scheduled sync run**. It covers all VBKREQs generated since the previous report was sent (tracked in `bible/report-state.json`). **Manual UI bookings are not reported immediately** — they appear in the next scheduled report (09:00 or 13:00).
+
+### Azure App Service — required setting
+
+`node-cron` runs in-process. On Azure App Service the scheduler (and therefore the report) requires **Always On** to be enabled (Basic tier or above). Without it the Node.js process idles after ~20 minutes of inactivity and cron jobs stop firing.
+
+> **Ephemeral filesystem note:** `bible/report-state.json` lives on the local App Service filesystem, which resets on restart or redeploy. After a restart the next report will include all historical log entries as a catch-up email rather than only the entries since the last run. To avoid this, promote `lastReportTime` to Azure Blob Storage or persist it as an app setting.
+
+### Required App Registration permission
+
+The sender mailbox (`REPORT_FROM`) needs the **`Mail.Send`** application permission in addition to the existing `Mail.ReadWrite`. In Azure AD: App Registration → API Permissions → Microsoft Graph → Application permissions → add `Mail.Send` → Grant admin consent.
+
+### Configuration
+
+```
+REPORT_TO=InboundService@asos.com      # comma-separated recipients
+REPORT_FROM=InboundService@asos.com    # sender mailbox (defaults to EMAIL_INGEST_MAILBOX)
+```
