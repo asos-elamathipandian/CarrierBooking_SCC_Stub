@@ -616,14 +616,14 @@
       </div>
 
       <!-- Auto sync section label -->
-      <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:8px">AUTO PULL FROM SHAREPOINT &nbsp;<span style="font-weight:400;color:#94A3B8">— supplier uploads to SharePoint, files load automatically</span></div>
+      <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:8px">AUTO PULL FROM SHAREPOINT &nbsp;<span style="font-weight:400;color:#94A3B8">— Supplier emails the purchase orders and the files are automatically retrieved, also stored in SharePoint during the scheduled CRON job</span></div>
 
       <!-- SharePoint auto-sync status -->
       <div id="spSyncBanner" style="display:none;margin-top:14px;padding:10px 14px;background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:8px;font-size:12px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span id="spScheduleLabel" style="color:#0369A1;font-size:11px;background:#DBEAFE;padding:2px 7px;border-radius:10px"></span>
           <span id="spSyncStatus" style="color:#555">Checking…</span>
-          <button class="btn" id="btnSpSyncNow" style="padding:4px 12px;font-size:11px;background:#0369A1;color:#fff;border-color:#0369A1;margin-left:auto">↻ Manual Sync — Pull Latest</button>
+          <button class="btn" id="btnSpSyncNow" style="padding:4px 12px;font-size:11px;background:#0369A1;color:#fff;border-color:#0369A1;margin-left:auto">↻ Sync Now — Instantly pulls latest from SharePoint</button>
         </div>
         <div id="spSyncFiles" style="margin-top:6px"></div>
         <details id="spHistoryDetails" style="display:none;margin-top:8px">

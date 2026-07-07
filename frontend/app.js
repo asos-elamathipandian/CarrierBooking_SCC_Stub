@@ -202,7 +202,7 @@ btnParseSupplier.addEventListener('click', async () => {
 function progSet(n, state, text) {
   const el = document.getElementById('prog' + n);
   if (!el) return;
-  const colours = { pending: '#94a3b8', active: '#1D4ED8', done: '#15803D', error: '#B91C1C' };
+  const colours = { pending: '#94a3b8', active: '#1D4ED8', done: '#15803D', error: '#B91C1C', warn: '#B45309', skip: '#9CA3AF' };
   el.style.color      = colours[state] || colours.pending;
   el.style.fontWeight = state === 'done' || state === 'active' ? '700' : 'normal';
   if (text) el.textContent = text;
@@ -496,19 +496,30 @@ if (btnRunPipeline) {
           ✅ <strong>${carrierAsnFiles.length}</strong> Databricks ASN record(s) fetched${summaryExtras} <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
         </summary>
         <div class="asn-status-grid" style="margin-top:8px">${asnGridRows}</div>
-        ${skippedSections}
       </details>`);
 
-      if (carrierAsnFiles.length === 0) {
+      // Count truly active (non-cancelled) ASN groups across all returned files
+      const totalActiveGroups = carrierAsnFiles.reduce((sum, f) => sum + (f.asnGroups || []).length, 0);
+
+      if (carrierAsnFiles.length === 0 && cancelledItems.length === 0) {
         progSet(1, 'error', '📡 No ASN found');
-        const skipMsg = cancelledItems.length
-          ? ` (${alreadyBooked.length} already booked, ${cancelled.length} cancelled)`
-          : '';
-        throw new Error(`No active ASN records found in Databricks for any of the submitted POs${skipMsg}. Cannot proceed.`);
+        throw new Error(`No active ASN records found in Databricks for any of the submitted POs. Cannot proceed.`);
       }
+
       const doneExtras = [alreadyBooked.length ? `${alreadyBooked.length} already booked skipped` : '', cancelled.length ? `${cancelled.length} cancelled skipped` : ''].filter(Boolean).join(', ');
-      progSet(1, 'done', `📡 ASN ✅${doneExtras ? ` (${doneExtras})` : ''}`);
+      const allSkipped = totalActiveGroups === 0;
+      progSet(1, allSkipped ? 'warn' : 'done', `📡 ASN ${allSkipped ? '⚠️' : '✅'}${doneExtras ? ` (${doneExtras})` : ''}`);
       state.feedsFetched = true;
+
+      // All POs were cancelled or already booked — skip remaining stages
+      if (allSkipped) {
+        progSet(2, 'skip', '🗂 Build — skipped');
+        progSet(3, 'skip', '⚡ Generate — skipped');
+        progSet(4, 'skip', '🚀 Upload — skipped');
+        const badge = document.getElementById('badgePipeline');
+        if (badge) { badge.className = 'step-badge'; badge.style.background = '#B45309'; badge.style.boxShadow = 'none'; badge.textContent = '⚠'; }
+        return;
+      }
 
       // ── 2. Build ──────────────────────────────────────────────────────────
       progSet(2, 'active', '🗂 Building…');

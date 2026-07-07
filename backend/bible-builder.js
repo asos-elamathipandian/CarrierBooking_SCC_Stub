@@ -457,7 +457,7 @@ async function writeExcel(masterRows, supplierRows, carrierAsnFiles) {
         });
       }
     }
-    ws.columns.forEach(col => { col.width = 22; });
+    (ws.columns || []).forEach(col => { col.width = 22; });
     // Set PO_Number column to text format to prevent scientific notation
     const poColIdx = headers.indexOf('PO_Number') + 1;
     if (poColIdx > 0) ws.getColumn(poColIdx).numFmt = '@';

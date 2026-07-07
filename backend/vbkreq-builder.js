@@ -428,14 +428,15 @@ async function build(masterRows, purposeCd) {
       li.ele('Reference', { RefTypeCd: 'HZ',  SourceRefTypeCd: '128' }).txt(hazRef2);
       if (description) li.ele('Reference', { RefTypeCd: 'DSC', SourceRefTypeCd: '128' }).txt(description);
       li.ele('Reference', { RefTypeCd: '98',  SourceRefTypeCd: '128' }).txt(cartonType);
-      li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt(cL.toFixed(4));
-      li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt(cW.toFixed(4));
-      li.ele('Reference', { RefTypeCd: 'HT',  SourceRefTypeCd: '128' }).txt(cH.toFixed(4));
+      // Line-level dimensions and weights hardcoded to 1 — totals remain accurate at Document level
+      li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt('1');
+      li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt('1');
+      li.ele('Reference', { RefTypeCd: 'HT',  SourceRefTypeCd: '128' }).txt('1');
       li.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(row._bkq.toFixed(6));
-      li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(row._gross.toFixed(4));
-      li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(row._net.toFixed(4));
-      li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(row._vol.toFixed(4));
-      li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt(row._cartons.toFixed(4));
+      li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt('1');
+      li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt('1');
+      li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt('1');
+      li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt('1');
       li.ele('TradePartner', { RoleCd: 'FS' }).ele('TradePartnerID', { Qualifier: '93' }).txt(lineFC);
     }
   }

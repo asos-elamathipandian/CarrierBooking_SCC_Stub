@@ -128,6 +128,45 @@ function parseSingleSheet(sheet) {
     headerPoRefs: [...new Set(rows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))] };
 }
 
+// ── PO Header-only parser ─────────────────────────────────────────────────────
+
+/**
+ * Parse a workbook that has a 'PO Header' (or 'BOOKING_HEADER') sheet only.
+ * Each row becomes a header-only placeholder (_headerOnly: true).
+ * SKU lines are NOT expected — they will be auto-booked from the carrier ASN feed.
+ */
+function parseHeaderOnly(workbook) {
+  const wsHdr = workbook.getWorksheet('PO Header') || workbook.getWorksheet('BOOKING_HEADER');
+  const { rows: rawRows, headerRowNum } = readSheet(wsHdr, 'PO_Number');
+
+  const rows = [];
+  const validationErrors = [];
+
+  for (const obj of rawRows) {
+    const po = String(obj.PO_Number || '').trim();
+    if (!po) continue;
+
+    const missing = REQUIRED_HEADER_COLS.filter(c => !obj[c] || String(obj[c]).trim() === '');
+    if (missing.length > 0) {
+      validationErrors.push(`Row ${obj._rowNum}: missing required fields: ${missing.join(', ')}`);
+    }
+    if (String(obj.Collection_Type || '').trim() === 'Collection' &&
+        (!obj.Collection_Time || String(obj.Collection_Time).trim() === '')) {
+      validationErrors.push(`Row ${obj._rowNum}: Collection_Time is required when Collection_Type is "Collection"`);
+    }
+
+    rows.push({ ...obj, _headerOnly: true });
+  }
+
+  return {
+    rows,
+    validationErrors,
+    sheetName: wsHdr.name,
+    headerRowNum,
+    headerPoRefs: [...new Set(rows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))]
+  };
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
