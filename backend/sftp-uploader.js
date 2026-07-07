@@ -7,18 +7,20 @@ const path = require('path');
 const OUTPUT_DIR = path.join(__dirname, '..', 'output');
 
 function loadConfig() {
-  const host       = process.env.SFTP_HOST;
-  const port       = process.env.SFTP_PORT       || '22';
-  const username   = process.env.SFTP_USERNAME;
-  const password   = process.env.SFTP_PASSWORD;
-  const keyPath    = process.env.SFTP_PRIVATE_KEY_PATH;
-  const passphrase = process.env.SFTP_PRIVATE_KEY_PASSPHRASE || null;
-  const uploadPath = process.env.SFTP_UPLOAD_PATH || '/inbound/vbkreq/';
+  const isProd = (process.env.SFTP_ENV || '').toLowerCase() === 'prod';
+
+  const host       = isProd ? process.env.PROD_SFTP_HOST       : process.env.SFTP_HOST;
+  const port       = isProd ? (process.env.PROD_SFTP_PORT || '22') : (process.env.SFTP_PORT || '22');
+  const username   = isProd ? process.env.PROD_SFTP_USERNAME   : process.env.SFTP_USERNAME;
+  const password   = isProd ? null                              : (process.env.SFTP_PASSWORD || null);
+  const keyPath    = isProd ? process.env.PROD_SFTP_PRIVATE_KEY_PATH : process.env.SFTP_PRIVATE_KEY_PATH;
+  const passphrase = isProd ? (process.env.PROD_SFTP_PASSPHRASE || null) : (process.env.SFTP_PRIVATE_KEY_PASSPHRASE || null);
+  const uploadPath = isProd ? (process.env.PROD_SFTP_REMOTE_DIR || '/inbound/vbkreq/') : (process.env.SFTP_UPLOAD_PATH || '/inbound/vbkreq/');
 
   if (!host || !username) return null; // local mode — SFTP not configured
   if (!password && !keyPath) return null; // need at least one auth method
 
-  return { host, port, username, password: password || null, privateKeyPath: keyPath || null, passphrase, uploadPath };
+  return { host, port, username, password, privateKeyPath: keyPath || null, passphrase, uploadPath, isProd };
 }
 
 /**
