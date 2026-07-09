@@ -65,7 +65,7 @@ function getCtrlNumber() {
   const current = data.counter;
   data.counter = current + 1;
   fs.writeFileSync(COUNTER_FILE, JSON.stringify(data, null, 2));
-  return `ASOSBOOK-${current}`;
+  return String(current);
 }
 
 function getBookingRef() {
