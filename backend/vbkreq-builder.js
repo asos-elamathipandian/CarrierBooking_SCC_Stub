@@ -56,26 +56,32 @@ function resolveMode(modeVal) {
 }
 
 function getCtrlNumber() {
-  let data = { counter: 800100001, bookingCounter: 1000000001, bookingVersions: {} };
+  const isProd = (process.env.SFTP_ENV || '').toLowerCase() === 'prod';
+  let data = { counter: 800100001, prodCounter: 100000001, testCounter: 200000001, bookingCounter: 1000000001, bookingVersions: {} };
   if (fs.existsSync(COUNTER_FILE)) {
     try { data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')); } catch (_) {}
   }
   if (!data.bookingVersions) data.bookingVersions = {};
-  if (!data.bookingCounter)  data.bookingCounter  = 1000000001;
-  const current = data.counter;
-  data.counter = current + 1;
+  if (!data.prodCounter)     data.prodCounter     = 100000001;
+  if (!data.testCounter)     data.testCounter     = 200000001;
+  const key     = isProd ? 'prodCounter' : 'testCounter';
+  const current = data[key];
+  data[key]     = current + 1;
   fs.writeFileSync(COUNTER_FILE, JSON.stringify(data, null, 2));
-  return String(current);
+  return `ASOSBOOK-${current}`;
 }
 
 function getBookingRef() {
-  let data = { counter: 91800256, bookingCounter: 1000000001, bookingVersions: {} };
+  const isProd = (process.env.SFTP_ENV || '').toLowerCase() === 'prod';
+  let data = { counter: 91800256, bookingCounter: 1000000001, prodBookingCounter: 1000010004, testBookingCounter: 1000000200, bookingVersions: {} };
   if (fs.existsSync(COUNTER_FILE)) {
     try { data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8')); } catch (_) {}
   }
-  if (!data.bookingCounter) data.bookingCounter = 1000000001;
-  const ref = `VB-${data.bookingCounter}`;
-  data.bookingCounter += 1;
+  if (!data.prodBookingCounter) data.prodBookingCounter = 1000010004;
+  if (!data.testBookingCounter) data.testBookingCounter = 1000000200;
+  const key = isProd ? 'prodBookingCounter' : 'testBookingCounter';
+  const ref = `VB-${data[key]}`;
+  data[key] += 1;
   fs.writeFileSync(COUNTER_FILE, JSON.stringify(data, null, 2));
   return ref;
 }
@@ -154,7 +160,7 @@ async function build(masterRows, purposeCd) {
   const ctrlNumber = getCtrlNumber();
   const now = nowDateTimeStr();
   const filenameTs = nowFilenameStr();
-  const filename = `DAVIESTN_E2ASOS_VBKREQ_1.0_${filenameTs}${ctrlNumber}.xml`;
+  const filename = `DAVIESTN_E2ASOS_VBKREQ_1.0_${filenameTs}${ctrlNumber.replace('ASOSBOOK-', '')}.xml`;
 
   // Use first row for booking-level fields
   const first = masterRows[0];

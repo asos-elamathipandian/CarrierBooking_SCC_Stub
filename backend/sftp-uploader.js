@@ -36,6 +36,7 @@ function saveLocally(filename, xmlContent) {
     bytesSent: Buffer.byteLength(xmlContent, 'utf8'),
     uploadedAt: new Date().toISOString(),
     localMode: true,
+    sftpEnv: 'LOCAL',
     note: 'Saved locally to output/ (SFTP not configured)'
   };
 }
@@ -89,7 +90,8 @@ async function upload(filename, xmlContent) {
       remotePath,
       filename,
       bytesSent: buffer.length,
-      uploadedAt: new Date().toISOString()
+      uploadedAt: new Date().toISOString(),
+      sftpEnv: cfg.isProd ? 'PROD' : 'TEST'
     };
   } finally {
     await sftp.end().catch(() => {});

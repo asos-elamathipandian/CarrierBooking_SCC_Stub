@@ -491,6 +491,7 @@ app.post('/api/upload-sftp', async (req, res) => {
     const ctrlNum = gen?.ctrlNumber || sessionState.lastCtrlNumber;
     bibleBuilder.updateGenerationLog(fname, ctrlNum, {
       sftp:       result.localMode ? 'local' : 'uploaded',
+      sftpEnv:    result.sftpEnv || null,
       sftpPath:   result.remotePath || null,
       uploadedAt: result.uploadedAt || new Date().toISOString()
     });

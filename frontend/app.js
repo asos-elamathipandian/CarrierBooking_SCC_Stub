@@ -397,7 +397,7 @@ function renderAmendResult(generations, uploadResults, purposeCd) {
     const up    = upMap[gen.filename];
     const upBadge = up
       ? (up.ok
-          ? `<span style="color:#1B5E20;font-size:11px;font-weight:700">✅ ${up.localMode ? 'Saved locally' : 'Uploaded to SFTP'}</span>`
+          ? `<span style="color:#1B5E20;font-size:11px;font-weight:700">✅ ${up.localMode ? 'Saved locally' : `Uploaded to <strong style="color:${up.sftpEnv==='PROD'?'#991B1B':'#0369A1'}">${up.sftpEnv||'SFTP'}</strong>`}</span>`
           : `<span style="color:#922B21;font-size:11px">❌ ${escapeHtml(up.error)}</span>`)
       : '';
     const blob   = new Blob([gen.xml], { type: 'application/xml' });
@@ -647,7 +647,7 @@ function renderResult(generations, uploadResults, elapsedMs) {
     const up     = upMap[gen.filename];
     const upBadge = up
       ? (up.ok
-          ? `<span style="color:#1B5E20;font-size:11px;font-weight:700">✅ ${up.localMode ? 'Saved locally' : 'Uploaded to SFTP'}</span>`
+          ? `<span style="color:#1B5E20;font-size:11px;font-weight:700">✅ ${up.localMode ? 'Saved locally' : `Uploaded to <strong style="color:${up.sftpEnv==='PROD'?'#991B1B':'#0369A1'}">${up.sftpEnv||'SFTP'}</strong>`}</span>`
           : `<span style="color:#922B21;font-size:11px">❌ ${escapeHtml(up.error)}</span>`)
       : '';
     const blob   = new Blob([gen.xml], { type: 'application/xml' });
@@ -719,7 +719,7 @@ async function loadHistory() {
         ? `<a class="download-link" href="/output/${encodeURIComponent(e.filename)}" download="${escapeHtml(e.filename)}" style="font-size:11px">${escapeHtml(e.filename)}</a>`
         : '—';
       const sftpBadge = e.sftp === 'uploaded'
-        ? `<span style="color:#1B5E20;font-weight:700;font-size:11px">✅ Uploaded</span>`
+        ? `<span style="color:#1B5E20;font-weight:700;font-size:11px">✅ Uploaded <span style="font-size:10px;padding:1px 5px;border-radius:8px;background:${e.sftpEnv==='PROD'?'#FEE2E2;color:#991B1B':'#DBEAFE;color:#1D4ED8'}">${e.sftpEnv||'SFTP'}</span></span>`
         : e.sftp === 'local'
           ? `<span style="color:#784212;font-size:11px">📁 Local</span>`
           : `<span style="color:#aaa;font-size:11px">—</span>`;
