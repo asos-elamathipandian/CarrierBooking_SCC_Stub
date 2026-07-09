@@ -223,7 +223,8 @@ async function fetchAsnsByPoRefs(poRefs) {
   }
 
   // ── Query 3: ASN cancellations from bam036e_asn_v1 ─────────────────────
-  // The latest _notification_type per ASN: 'C' = cancelled, 'M' = modified, 'D' = delete.
+  // _notification_type values: 'C' = Created (initial), 'M' = Modified, 'D' = Deleted/Cancelled.
+  // Only 'D' (delete) means the ASN has been cancelled — 'C' is the creation event.
   // Non-fatal — if this query fails we proceed without the cancellation check.
   const cancelledAsnIds = new Set();
   try {
@@ -239,7 +240,7 @@ async function fetchAsnsByPoRefs(poRefs) {
         )
         SELECT _asn_nbr
         FROM latest
-        WHERE _rn = 1 AND _notification_type = 'C'
+        WHERE _rn = 1 AND _notification_type = 'D'
       `;
       console.log(`[Databricks bam036e] checking cancellation status for ${uniqueAsnIds.length} ASN(s)`);
       const cancelRows = await db.query(asnCancelSql);
@@ -260,12 +261,12 @@ async function fetchAsnsByPoRefs(poRefs) {
     const enrich = poEnrichMap[group.poId] || {};
 
     if (cancelledAsnIds.has(String(group.asnId))) {
-      console.warn(`[Databricks ASN] SKIPPED — ASN ${group.asnId} / PO ${group.poId} is cancelled (bam036e _notification_type=C)`);
+      console.warn(`[Databricks ASN] SKIPPED — ASN ${group.asnId} / PO ${group.poId} is cancelled (bam036e _notification_type=D)`);
       cancelledItems.push({
         type:   'ASN',
         asnId:  group.asnId,
         poId:   group.poId,
-        reason: `ASN ${group.asnId} (PO ${group.poId}) is cancelled — latest notification type is C`
+        reason: `ASN ${group.asnId} (PO ${group.poId}) is cancelled — latest notification type is D (deleted)`
       });
       return false;
     }

@@ -53,7 +53,7 @@ A web-based internal tool for ASOS to automate carrier booking requests (VBKREQs
 | **ASN Enrichment** | Fetches shipment and PO detail from Azure Databricks (ADE) |
 | **Bible Build** | Merges supplier template rows with ASN/PO data into a master dataset |
 | **VBKREQ Generation** | Produces E2open-compliant XML with purpose codes: 13 (New), 15 (Re-Submission), 01 (Cancellation) |
-| **Smart Skip** | No VBKREQ raised for cancelled ASNs (`_notification_type=C` in bam036e), cancelled POs (`Status=C`), or ASNs/POs that already have a carrier booking request (`bookingRequested` populated) |
+| **Smart Skip** | No VBKREQ raised for cancelled ASNs (`_notification_type=D` in bam036e), cancelled POs (`Status=C`), or ASNs/POs that already have a carrier booking request (`bookingRequested` populated) |
 | **SFTP Upload** | Transmits XML files directly to E2open/Davis Turner SFTP endpoint |
 | **Re-Submit / Cancel** | Standalone card to look up previous VB Refs by PO and re-submit or cancel without re-uploading a template |
 | **Booking History** | Rolling 3-day log of all generated VBKREQs with download links |
@@ -222,7 +222,7 @@ node backend/test-sftp.js         # Test E2open SFTP
 - Booking grouping: `Single Booking` (one VBKREQ per PO), `Multiple POs-BKxxx` (grouped), `Multiple` (all in one)
 - Databricks dates are stored 1 day ahead — subtracted automatically before use
 - **Cancelled / already-booked items are skipped automatically** — no VBKREQ is generated for:
-  - ASNs where the latest `_notification_type` in `bam036e_asn_v1` is `C` (cancelled)
+  - ASNs where the latest `_notification_type` in `bam036e_asn_v1` is `D` (deleted/cancelled)
   - POs where `Status = C` in `bam033j_purchase_order_v1`
   - ASNs/POs where `bookingRequested` is already populated (booking already exists)
   - Skipped items are reported in the UI with reason details and do not block other POs from proceeding
