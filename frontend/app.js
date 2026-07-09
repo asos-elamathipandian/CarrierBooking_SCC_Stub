@@ -372,7 +372,7 @@ async function runAmendAction(purposeCd) {
           });
           const upData = await upRes.json();
           if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
-          uploadResults.push({ filename: gen.filename, ok: true, localMode: upData.localMode });
+          uploadResults.push({ filename: gen.filename, ok: true, localMode: upData.localMode, sftpEnv: upData.sftpEnv });
         } catch (err) {
           uploadResults.push({ filename: gen.filename, ok: false, error: err.message });
         }
@@ -473,7 +473,7 @@ if (btnRunPipeline) {
         const skipped = skippedPOIds.has(po);
         const item    = cancelledItems.find(c => c.poId === po);
         if (skipped && item?.type === 'ALREADY_BOOKED') {
-          return `<div class="asn-status-row not-found">📋 <strong>PO ${po}</strong> — ASN ${item.asnId} already has a carrier booking — skipped</div>`;
+          return `<div class="asn-status-row not-found">📋 <strong>PO ${po}</strong> — ASN ${item.asnId} already has a carrier booking${item.vbRef ? ` (<strong>${escapeHtml(item.vbRef)}</strong>)` : ''} — skipped</div>`;
         }
         if (skipped) {
           const label = item?.type === 'ASN' ? `ASN ${item.asnId} cancelled` : `PO cancelled (Status=C)`;
@@ -565,7 +565,7 @@ if (btnRunPipeline) {
             });
             const upData = await upRes.json();
             if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
-            return { filename: gen.filename, ok: true, remotePath: upData.remotePath, localMode: upData.localMode };
+            return { filename: gen.filename, ok: true, remotePath: upData.remotePath, localMode: upData.localMode, sftpEnv: upData.sftpEnv };
           } catch (err) {
             if (err.name === 'AbortError') throw err; // bubble up so outer catch handles it
             return { filename: gen.filename, ok: false, error: err.message };

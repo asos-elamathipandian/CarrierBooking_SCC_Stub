@@ -1,18 +1,35 @@
 'use strict';
 
-/**
- * Databricks replacement for the blob-based carrier ASN feed.
- *
- * Queries:
- *   supplychain.conformed.aim_shipment_detail_v1        — shipment / ASN data
- *   sourcingandbuying.conformed.bam033j_purchase_order_v1 — supplier name, factory,
- *                                                           freight terms, EAN, size,
- *                                                           colour, description per SKU
- *
- * Enable by setting  ASN_SOURCE=databricks  in .env.
- */
+const fs   = require('fs');
+const path = require('path');
+const db   = require('./databricks-client');
 
-const db = require('./databricks-client');
+const GEN_LOG_PATH = path.join(__dirname, '..', 'bible', 'generation-log.json');
+
+/**
+ * Returns a Set of ASN IDs whose most recent tool log entry is a cancellation
+ * (purposeCd='01'). Used as fallback when Databricks hasn't yet synced bookingCanceled.
+ */
+function getToolCancelledAsnIds() {
+  try {
+    if (!fs.existsSync(GEN_LOG_PATH)) return new Set();
+    const log     = JSON.parse(fs.readFileSync(GEN_LOG_PATH, 'utf8'));
+    const entries = Array.isArray(log) ? log : (log.entries || []);
+    const latestByAsn = {};
+    for (const e of entries) {
+      for (const asn of (e.asnRefs || [])) {
+        const key = String(asn);
+        if (!latestByAsn[key] || e.timestamp > latestByAsn[key].timestamp)
+          latestByAsn[key] = e;
+      }
+    }
+    return new Set(
+      Object.entries(latestByAsn)
+        .filter(([, e]) => e.purposeCd === '01')
+        .map(([asn]) => asn)
+    );
+  } catch (_) { return new Set(); }
+}
 
 /** Normalise an ISO timestamp / date string to YYYY-MM-DD. */
 function toDateStr(val) {
@@ -80,6 +97,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       s.asnDeliveryDateFinalDest,
       s.asnLoadingType,
       s.bookingRequested,
+      s.bookingCanceled,
       ol.orderId                         AS poId,
       ol.sku,
       TRY_CAST(ol.bookedQty AS DOUBLE)   AS bookedQty
@@ -238,6 +256,7 @@ async function fetchAsnsByPoRefs(poRefs) {
         mode:             row.mode              || '',
         carrier:          row.carrier           || '',
         bookingRequested: row.bookingRequested  || null,
+        bookingCanceled:  row.bookingCanceled   || null,
         expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest || enrich.expectedDeliveryDate),
         lines: []
       };
@@ -313,6 +332,7 @@ async function fetchAsnsByPoRefs(poRefs) {
   }
 
   // ── Separate active vs cancelled ASN/PO groups ───────────────────────────
+  const toolCancelledAsnIds = getToolCancelledAsnIds();
   const cancelledItems = [];
   const allGroups      = Object.values(asnPoMap);
 
@@ -331,15 +351,22 @@ async function fetchAsnsByPoRefs(poRefs) {
     }
 
     if (group.bookingRequested) {
-      const when = toDateStr(group.bookingRequested);
-      console.warn(`[Databricks ASN] SKIPPED — ASN ${group.asnId} / PO ${group.poId} already has a booking request (bookingRequested=${when})`);
-      cancelledItems.push({
-        type:   'ALREADY_BOOKED',
-        asnId:  group.asnId,
-        poId:   group.poId,
-        reason: `ASN ${group.asnId} (PO ${group.poId}) already has a carrier booking request — submitted on ${when}`
-      });
-      return false;
+      const dbCancelled   = !!group.bookingCanceled;
+      const toolCancelled = toolCancelledAsnIds.has(String(group.asnId));
+      if (dbCancelled || toolCancelled) {
+        const reason = dbCancelled ? 'bookingCanceled set in Databricks' : 'cancellation logged in tool (purposeCd=01)';
+        console.log(`[Databricks ASN] ASN ${group.asnId} bookingRequested but cancelled — ${reason} — allowing re-book`);
+      } else {
+        const when = toDateStr(group.bookingRequested);
+        console.warn(`[Databricks ASN] SKIPPED — ASN ${group.asnId} / PO ${group.poId} already has a booking request (bookingRequested=${when})`);
+        cancelledItems.push({
+          type:   'ALREADY_BOOKED',
+          asnId:  group.asnId,
+          poId:   group.poId,
+          reason: `ASN ${group.asnId} (PO ${group.poId}) already has a carrier booking request — submitted on ${when}`
+        });
+        return false;
+      }
     }
 
     if (enrich.poStatus === 'C') {

@@ -169,12 +169,28 @@ app.post('/api/fetch-feeds', async (req, res) => {
       : await blobClient.fetchCarrierFeedsOnly(poRefs);
     sessionState.feedData = feedData;
 
+    // Enrich ALREADY_BOOKED items with the VB Ref from our generation log
+    const cancelledItems = feedData.cancelledItems || [];
+    const genLog = bibleBuilder.getGenerationLog() || [];
+    for (const item of cancelledItems) {
+      if (item.type === 'ALREADY_BOOKED' && item.asnId) {
+        const logEntry = genLog.find(e =>
+          (e.asnRefs || []).map(String).includes(String(item.asnId)) ||
+          (e.poNumbers || []).map(String).includes(String(item.poId))
+        );
+        if (logEntry) {
+          item.vbRef  = logEntry.bookingRef || null;
+          item.reason = `ASN ${item.asnId} (PO ${item.poId}) already has a carrier booking — ${logEntry.bookingRef ? `VB Ref: ${logEntry.bookingRef}` : 'submitted previously'}`;
+        }
+      }
+    }
+
     res.json({
       success: true,
       carrierAsnCount: (feedData.carrierAsnFiles || []).length,
       localMode: feedData.localMode || false,
       errors: feedData.errors || [],
-      cancelledItems: feedData.cancelledItems || [],
+      cancelledItems,
       feedsSummary: [],
       carrierAsnFiles: (feedData.carrierAsnFiles || []).map(f => ({
         filename:  f.filename,
