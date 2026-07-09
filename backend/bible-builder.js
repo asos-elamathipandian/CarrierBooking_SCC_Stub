@@ -398,23 +398,10 @@ async function build(supplierData, feedData) {
     }
   }
 
-  // ── Extra SKUs on carrier feed but not in supplier template ─────────────────
-  const extraSkuWarnings = [];
-  if (hasCarrierData) {
-    for (const [poNum, skuMap] of Object.entries(carrierAsnIndex)) {
-      for (const sku of Object.keys(skuMap)) {
-        if (!coveredKeys.has(`${poNum}_${sku}`)) {
-          const c = carrierAsnIndex[poNum][sku];
-          extraSkuWarnings.push(`PO ${poNum} — SKU ${sku} auto-booked from ASN (qty: ${carrierAsnIndex[poNum][sku].quantity || 0}) — not in supplier template`);
-        }
-      }
-    }
-  }
-
   // Write Excel
   await writeExcel(masterRows, supplierRows, carrierAsnFiles);
 
-  return { masterRows, filePath: BIBLE_FILE, warnings: skuWarnings, extraSkuWarnings };
+  return { masterRows, filePath: BIBLE_FILE, warnings: skuWarnings, extraSkuWarnings: [] };
 }
 
 async function writeExcel(masterRows, supplierRows, carrierAsnFiles) {

@@ -531,16 +531,7 @@ if (btnRunPipeline) {
       if (buildData.warnings?.length) {
         warningsHtml += `<div style="margin-bottom:8px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">⚠️ <strong>${buildData.warnings.length} SKU(s) excluded</strong> — not on carrier ASN:<br/>${buildData.warnings.map(w => `&nbsp;• ${w}`).join('<br/>')}</div>`;
       }
-      if (buildData.extraSkuWarnings?.length) {
-        warningsHtml += `<details style="margin-bottom:8px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px">
-          <summary style="font-size:12px;cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px">
-            <span style="font-size:10px;color:#888">▶</span>
-            ⚠️ <strong>${buildData.extraSkuWarnings.length} extra carrier ASN SKU(s)</strong> not in supplier template (Booking_Qty=0)
-            <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
-          </summary>
-          <div style="font-size:12px;margin-top:6px;padding-top:6px;border-top:1px solid #F9E4B7">${buildData.extraSkuWarnings.map(w => `&nbsp;• ${escapeHtml(w)}`).join('<br/>')}</div>
-        </details>`;
-      }
+
       psSetResult('psBuildWarnings', warningsHtml);
       progSet(2, 'done', '🗂 Built ✅');
 

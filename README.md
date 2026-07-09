@@ -48,7 +48,7 @@ A web-based internal tool for ASOS to automate carrier booking requests (VBKREQs
 
 | Feature | Description |
 |---|---|
-| **Supplier Template Upload** | Parse single-sheet Excel (PO Header) from suppliers; SKUs and quantities auto-booked from Databricks ASN feed |
+| **Supplier Template Upload** | Parse single-sheet Excel (PO Header) from suppliers; SKU quantities sourced from `bam033j.PODtl[].PhysicalQtyOrdered` (Databricks) — supplier template does not need to supply per-SKU quantities |
 | **SharePoint Auto-Sync** | Scheduled pull of the latest supplier Excel from a SharePoint folder (Graph API) |
 | **ASN Enrichment** | Fetches shipment and PO detail from Azure Databricks (ADE) |
 | **Bible Build** | Merges supplier template rows with ASN/PO data into a master dataset |
@@ -72,7 +72,8 @@ A web-based internal tool for ASOS to automate carrier booking requests (VBKREQs
           ↓
 4. Step 2 — Pipeline:
      a. Fetch ASN from Databricks (aim_shipment_detail_v1)
-     b. Enrich with PO data (bam033j_purchase_order_v1)
+     b. Enrich with PO data + per-SKU quantities (bam033j_purchase_order_v1 — PODtl[].PhysicalQtyOrdered)
+     c. Fetch ASN cancellation status + booked unit_qty (bam036e_asn_v1 — ASNInItem[].unit_qty; _notification_type=D = cancelled)
      c. Build master dataset (Bible)
      d. Generate VBKREQ XML (purposeCd = 13)
      e. Upload to E2open SFTP
@@ -111,7 +112,7 @@ A web-based internal tool for ASOS to automate carrier booking requests (VBKREQs
 ### Azure Services
 | Service | Purpose |
 |---|---|
-| **Azure Databricks (ADE)** | Source of ASN and PO data (`aim_shipment_detail_v1`, `bam033j_purchase_order_v1`) |
+| **Azure Databricks (ADE)** | Source of ASN and PO data (`aim_shipment_detail_v1`, `bam033j_purchase_order_v1`, `bam036e_asn_v1`) |
 | **Azure Blob Storage** | Legacy PO/ASN XML feed source (`bam033v`, `bam036` containers) |
 | **Microsoft SharePoint** | Supplier template storage (auto-synced via Graph API) |
 | **Microsoft Graph API** | SharePoint file access (`Sites.Read.All` app permission) |
@@ -211,6 +212,51 @@ App runs at **http://localhost:3000**
 node backend/test-sharepoint.js   # Test SharePoint / Graph API
 node backend/test-sftp.js         # Test E2open SFTP
 ```
+
+---
+
+## Databricks Field Sources
+
+### `supplychain.conformed.aim_shipment_detail_v1` — ASN / Shipment data
+| Field | VBKREQ usage |
+|---|---|
+| `asnId` | ASN reference (SI attribute) |
+| `mode` | Mode of transport |
+| `portOfLoad` | Shipping point (SL) fallback |
+| `firstDestination` / `finalDestination` | FC destination (FD / F1) |
+| `asnEstimatedShipmentDate` / `latestPlannedShipmentDate` | Ship date (238) |
+| `asnDeliveryDateFinalDest` | Expected delivery (065) |
+| `bookingRequested` | Smart Skip — if populated, ASN already booked |
+| `orderLineItems[].bookedQty` | **Booking_Qty (BKQ)** fallback 2 — null for most ASNs; bam036e unit_qty preferred |
+
+### `sourcingandbuying.conformed.bam033j_purchase_order_v1` — PO detail
+| Field | VBKREQ usage |
+|---|---|
+| `SupplierID` / `SupplierName` | SU trade partner |
+| `Factory` / `FactoryDesc` | FA trade partner |
+| `LadingPort` | SL shipping point LOCODE |
+| `FreightTermsDescription` | Incoterms |
+| `ExFactoryDate` (−1 day) | Ship date (238) |
+| `ExpectedDeliveryDateFirstLocation` (−1 day) | Expected delivery (065) |
+| `Status` | Smart Skip — `C` = PO cancelled |
+| `PODtl[].OriginCountryID` | Country of origin (4B) |
+| `PODtl[].OptionItemID` | Product style (PT reference) |
+| `PODtl[].SKUItemID` | SKU identifier matched to ASN line |
+| `PODtl[].PhysicalQtyOrdered` | **Booking_Qty (BKQ)** fallback 3 — PO ordered qty, last resort if both ASN sources are null |
+
+> Note: bam033j dates are stored 1 calendar day ahead — 1 day is subtracted automatically.
+
+### `supplychain.conformed.bam036e_asn_v1` — ASN notification log
+| `_notification_type` | Meaning |
+|---|---|
+| `C` | Created (initial notification — ASN is active) |
+| `M` | Modified (ASN updated — still active) |
+| `D` | **Deleted/Cancelled** — Smart Skip triggers, no VBKREQ raised |
+
+| Nested field | Usage |
+|---|---|
+| `AdvancedShipmentNotification.ASNInDesc.ASNInPO[].ASNInItem[].item_id` | SKU identifier |
+| `AdvancedShipmentNotification.ASNInDesc.ASNInPO[].ASNInItem[].unit_qty` | **Booking_Qty (BKQ)** — primary source for actual booked units per SKU |
 
 ---
 
