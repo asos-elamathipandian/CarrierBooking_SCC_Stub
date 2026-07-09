@@ -315,9 +315,9 @@ async function build(supplierData, feedData) {
           Supplier_PostalCd:  carrierPoMeta[poNum]?.supplierPostal  || '',
           Supplier_CountryCd: carrierPoMeta[poNum]?.supplierCountry || '',
 
-          // Factory — inherit from supplier rows for this PO if available
-          Factory_Name:       poHdr.Factory_Name      || '',
-          Factory_ID:         poHdr.Factory_ID        || '',
+          // Factory — from Databricks bam033j enrichment, with supplier header as fallback
+          Factory_Name:       carrierPoMeta[poNum]?.factoryName  || poHdr.Factory_Name      || '',
+          Factory_ID:         carrierPoMeta[poNum]?.factoryID    || poHdr.Factory_ID        || '',
           Factory_Street1:    poHdr.Factory_Street1   || '',
           Factory_Street2:    poHdr.Factory_Street2   || '',
           Factory_Street3:    poHdr.Factory_Street3   || '',
