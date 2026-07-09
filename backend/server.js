@@ -141,7 +141,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
 
     res.json({
       success: true,
-      rowCount: safeRows.length,
+      rowCount: allRows.filter(r => !r._headerOnly).length,
       fileCount: files.length,
       poCount: poRefs.length,
       bookingCount: groupKeys.size,

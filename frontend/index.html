@@ -530,6 +530,7 @@
     .src-ui          { background: #D97706; color: #fff; }
     .src-db-shipment { background: #0C4A6E; color: #fff; }
     .src-db-po       { background: #065f46; color: #fff; }
+    .src-db-asn      { background: #1D4ED8; color: #fff; }
     .rg-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; font-size: 11px; align-items: center; }
     .rg-note {
       font-size: 12px; color: #555; background: #FFFDE7;
@@ -572,6 +573,43 @@
     </div>
     <div class="step-body">
 
+      <!-- Auto sync section label -->
+      <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:8px">AUTO PULL FROM SHAREPOINT &nbsp;<span style="font-weight:400;color:#94A3B8">— Supplier emails the purchase orders and the files are automatically retrieved, also stored in SharePoint during the scheduled CRON job</span></div>
+
+      <!-- SharePoint auto-sync status -->
+      <div id="spSyncBanner" style="display:none;margin-top:14px;padding:10px 14px;background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:8px;font-size:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span id="spScheduleLabel" style="color:#0369A1;font-size:11px;background:#DBEAFE;padding:2px 7px;border-radius:10px"></span>
+          <span id="spSyncStatus" style="color:#555">Checking…</span>
+          <button class="btn" id="btnSpSyncNow" style="padding:4px 12px;font-size:11px;background:#0369A1;color:#fff;border-color:#0369A1;margin-left:auto">↻ Sync Now — Instantly pulls latest from SharePoint</button>
+        </div>
+        <div id="spSyncFiles" style="margin-top:6px"></div>
+        <details id="spHistoryDetails" style="display:none;margin-top:8px">
+          <summary style="cursor:pointer;color:#0369A1;font-size:11px;user-select:none">Run History (last 10)</summary>
+          <div id="spSyncHistory" style="margin-top:6px;overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead>
+                <tr style="background:#E0F2FE;color:#0C4A6E">
+                  <th style="padding:4px 8px;text-align:left;white-space:nowrap">Date &amp; Time</th>
+                  <th style="padding:4px 8px;text-align:left">Outcome</th>
+                  <th style="padding:4px 8px;text-align:right">Rows</th>
+                  <th style="padding:4px 8px;text-align:right">POs</th>
+                  <th style="padding:4px 8px;text-align:left">Files</th>
+                </tr>
+              </thead>
+              <tbody id="spHistoryBody"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+
+      <!-- OR divider -->
+      <div style="display:flex;align-items:center;gap:10px;margin:14px 0">
+        <div style="flex:1;height:1px;background:#CBD5E1"></div>
+        <div style="font-size:12px;font-weight:700;color:#64748B;background:#F8FAFC;padding:4px 14px;border:1.5px solid #CBD5E1;border-radius:20px">OR</div>
+        <div style="flex:1;height:1px;background:#CBD5E1"></div>
+      </div>
+
       <!-- Manual upload section -->
       <div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:10px;padding:12px 14px">
         <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:10px">MANUAL UPLOAD &nbsp;<span style="font-weight:400;color:#94A3B8">— you have the file locally</span></div>
@@ -607,43 +645,6 @@
         </button>
       </div>
       </div><!-- end manual upload section -->
-
-      <!-- OR divider -->
-      <div style="display:flex;align-items:center;gap:10px;margin:14px 0">
-        <div style="flex:1;height:1px;background:#CBD5E1"></div>
-        <div style="font-size:12px;font-weight:700;color:#64748B;background:#F8FAFC;padding:4px 14px;border:1.5px solid #CBD5E1;border-radius:20px">OR</div>
-        <div style="flex:1;height:1px;background:#CBD5E1"></div>
-      </div>
-
-      <!-- Auto sync section label -->
-      <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:8px">AUTO PULL FROM SHAREPOINT &nbsp;<span style="font-weight:400;color:#94A3B8">— Supplier emails the purchase orders and the files are automatically retrieved, also stored in SharePoint during the scheduled CRON job</span></div>
-
-      <!-- SharePoint auto-sync status -->
-      <div id="spSyncBanner" style="display:none;margin-top:14px;padding:10px 14px;background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:8px;font-size:12px">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span id="spScheduleLabel" style="color:#0369A1;font-size:11px;background:#DBEAFE;padding:2px 7px;border-radius:10px"></span>
-          <span id="spSyncStatus" style="color:#555">Checking…</span>
-          <button class="btn" id="btnSpSyncNow" style="padding:4px 12px;font-size:11px;background:#0369A1;color:#fff;border-color:#0369A1;margin-left:auto">↻ Sync Now — Instantly pulls latest from SharePoint</button>
-        </div>
-        <div id="spSyncFiles" style="margin-top:6px"></div>
-        <details id="spHistoryDetails" style="display:none;margin-top:8px">
-          <summary style="cursor:pointer;color:#0369A1;font-size:11px;user-select:none">Run History (last 10)</summary>
-          <div id="spSyncHistory" style="margin-top:6px;overflow-x:auto">
-            <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead>
-                <tr style="background:#E0F2FE;color:#0C4A6E">
-                  <th style="padding:4px 8px;text-align:left;white-space:nowrap">Date &amp; Time</th>
-                  <th style="padding:4px 8px;text-align:left">Outcome</th>
-                  <th style="padding:4px 8px;text-align:right">Rows</th>
-                  <th style="padding:4px 8px;text-align:right">POs</th>
-                  <th style="padding:4px 8px;text-align:left">Files</th>
-                </tr>
-              </thead>
-              <tbody id="spHistoryBody"></tbody>
-            </table>
-          </div>
-        </details>
-      </div>
     </div>
       <div class="status-box" id="status1"></div>
       <div id="refsPreview"></div>
@@ -809,6 +810,7 @@
         <span class="src-badge src-supplier">Supplier Template</span>
         <span class="src-badge src-db-shipment" title="supplychain.conformed.aim_shipment_detail_v1">Databricks-aim_shipment_detail_v1</span>
         <span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span>
+        <span class="src-badge src-db-asn" title="supplychain.conformed.bam036e_asn_v1">Databricks-bam036e_asn_v1</span>
         <span class="src-badge src-lookup">Internal Lookup Table</span>
         <span class="src-badge src-system">System Generated</span>
         <span class="src-badge src-ui">User Selection (UI)</span>
@@ -914,7 +916,7 @@
           <tr><td><code>Measure G</code> — Gross Weight (KG)</td><td>Sum of <code>Carton_Weight_KG × No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span> / <span class="src-badge src-lookup">Carton lookup</span></td><td>Carton weight from CARTON_TYPES if not in sheet</td></tr>
           <tr><td><code>Measure VOL</code> — Volume (M³)</td><td>Sum of <code>(L×W×H ÷ 1,000,000) × No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span> / <span class="src-badge src-lookup">Carton lookup</span></td><td>Dimensions from CARTON_TYPES lookup by Carton_Type</td></tr>
           <tr><td><code>Measure QUR</code> — Carton Qty</td><td>Sum of <code>No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Summed per ASN</td></tr>
-          <tr><td><code>Measure BKQ</code> — Booking Qty (units)</td><td>Sum of <code>Booking_Qty</code> per line</td><td><span class="src-badge src-db-shipment" title="supplychain.conformed.bam036e_asn_v1">Databricks-bam036e_asn_v1</span> / <span class="src-badge src-db-shipment" title="supplychain.conformed.aim_shipment_detail_v1">Databricks-aim_shipment_detail_v1</span> / <span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>Priority: <strong>1)</strong> <code>bam036e ASNInItem.unit_qty</code> &rarr; <strong>2)</strong> <code>aim_shipment_detail orderLineItems.bookedQty</code> &rarr; <strong>3)</strong> <code>bam033j PODtl.PhysicalQtyOrdered</code></td></tr>
+          <tr><td><code>Measure BKQ</code> — Booking Qty (units)</td><td>Sum of <code>Booking_Qty</code> per line</td><td><span class="src-badge src-db-asn" title="supplychain.conformed.bam036e_asn_v1">Databricks-bam036e_asn_v1</span> / <span class="src-badge src-db-shipment" title="supplychain.conformed.aim_shipment_detail_v1">Databricks-aim_shipment_detail_v1</span> / <span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>Priority: <strong>1)</strong> <code>bam036e ASNInItem.unit_qty</code> &rarr; <strong>2)</strong> <code>aim_shipment_detail orderLineItems.bookedQty</code> &rarr; <strong>3)</strong> <code>bam033j PODtl.PhysicalQtyOrdered</code></td></tr>
           <tr><td><code>Order @Key / OrderID</code></td><td><code>PO_Number</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>One Order element per PO within the ASN</td></tr>
         </tbody>
       </table></div>
@@ -927,7 +929,7 @@
         <tbody>
           <tr style="background:#FEF2F2">
             <td><strong>ASN Cancelled</strong></td>
-            <td><code>supplychain.conformed.bam036e_asn_v1</code></td>
+            <td><span class="src-badge src-db-asn" title="supplychain.conformed.bam036e_asn_v1">Databricks-bam036e_asn_v1</span></td>
             <td>Latest <code>_notification_type</code> for the ASN is <code>D</code> (deleted/cancelled)</td>
             <td>🚫 &ldquo;ASN {id} cancelled — booking skipped&rdquo;</td>
           </tr>
@@ -945,7 +947,7 @@
           </tr>
         </tbody>
       </table></div>
-      <div class="rg-note">ℹ The cancellation check against <code>bam036e_asn_v1</code> is non-fatal — if the query fails, the pipeline continues without the cancellation filter and logs a warning to the server console. The <code>Already Booked</code> and <code>PO Cancelled</code> checks use data already retrieved by the main ASN/PO queries and have no additional overhead.</div>
+      <div class="rg-note">ℹ The <code>bam036e_asn_v1</code> query is non-fatal — if it fails, the pipeline continues without the cancellation filter and <code>Booking_Qty</code> falls back to <code>aim_shipment_detail orderLineItems.bookedQty</code> → <code>bam033j PODtl.PhysicalQtyOrdered</code>. A warning is logged to the server console. The <code>Already Booked</code> and <code>PO Cancelled</code> checks use data already retrieved by the main ASN/PO queries and have no additional overhead.</div>
 
       <!-- Section: Cancel Booking -->
       <div class="rg-section-title" style="background:linear-gradient(90deg,#7F1D1D,#991B1B);color:#fff">✕ Cancel Booking — Standalone Cancellation Flow</div>
@@ -992,7 +994,7 @@
           <tr><td><code>Reference DSC</code> — Description</td><td><code>Description</code> (<code>OptionDescription</code>)</td><td><span class="src-badge src-db-po" title="sourcingandbuying.conformed.bam033j_purchase_order_v1">Databricks-bam033j_purchase_order_v1</span></td><td>Item description from PO SKU detail</td></tr>
           <tr><td><code>Reference 98</code> — Carton Type</td><td><code>Carton_Type</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Default: BDCM1; drives dimension lookup</td></tr>
           <tr><td><code>Reference LN/WD/HT</code> — Dimensions</td><td><code>Carton_Length/Width/Height_cm</code></td><td><span class="src-badge src-lookup">Carton Lookup</span></td><td>Auto-filled via VLOOKUP from CARTON_TYPES table; supplier can override</td></tr>
-          <tr><td><code>Measure BKQ</code> — Booking Qty</td><td><code>Booking_Qty</code> (<code>unit_qty</code> → <code>bookedQty</code> → <code>PhysicalQtyOrdered</code>)</td><td><span class="src-badge src-db-shipment" title="supplychain.conformed.bam036e_asn_v1">Databricks-bam036e_asn_v1</span></td><td>Primary: <code>bam036e ASNInItem.unit_qty</code>; fallback 1: <code>aim_shipment_detail bookedQty</code>; fallback 2: <code>bam033j PODtl.PhysicalQtyOrdered</code></td></tr>
+          <tr><td><code>Measure BKQ</code> — Booking Qty</td><td><code>Booking_Qty</code> (<code>unit_qty</code> → <code>bookedQty</code> → <code>PhysicalQtyOrdered</code>)</td><td><span class="src-badge src-db-asn" title="supplychain.conformed.bam036e_asn_v1">Databricks-bam036e_asn_v1</span></td><td>Primary: <code>bam036e ASNInItem.unit_qty</code>; fallback 1: <code>aim_shipment_detail bookedQty</code>; fallback 2: <code>bam033j PODtl.PhysicalQtyOrdered</code></td></tr>
           <tr><td><code>Measure G</code> — Gross Weight</td><td><code>Carton_Weight_KG × No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span> / <span class="src-badge src-lookup">Carton lookup</span></td><td>Per-line value</td></tr>
           <tr><td><code>Measure N</code> — Net Weight</td><td><code>Unit_Weight_KG</code></td><td><span class="src-badge src-supplier">Supplier Template</span></td><td>Per-unit weight; one value per line</td></tr>
           <tr><td><code>Measure VOL</code> — Volume</td><td><code>(L×W×H ÷ 1,000,000) × No_of_Cartons</code></td><td><span class="src-badge src-supplier">Supplier Template</span> / <span class="src-badge src-lookup">Carton lookup</span></td><td>Per-line value in M³</td></tr>

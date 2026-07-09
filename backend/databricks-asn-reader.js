@@ -110,7 +110,8 @@ async function fetchAsnsByPoRefs(poRefs) {
   // ── Query 2: PO enrichment from bam033j_purchase_order_v1 ────────────────
   // Separate query — if it fails we still have shipment data above
   const poEnrichMap = {}; // OrderNo -> { SupplierID, SupplierName, LadingPort, Incoterms }
-  const poSkuQtyMap = {}; // OrderNo -> { sku -> PhysicalQtyOrdered }
+  const poSkuQtyMap  = {}; // OrderNo -> { sku -> PhysicalQtyOrdered }
+  const poSkuDescMap = {}; // OrderNo -> { sku -> OptionDescription }
   try {
     const poSql = `
       SELECT
@@ -182,15 +183,20 @@ async function fetchAsnsByPoRefs(poRefs) {
         QUALIFY ROW_NUMBER() OVER (PARTITION BY OrderNo ORDER BY _IngestedDate DESC) = 1
       )
       SELECT b.OrderNo, d.SKUItemID AS sku,
-             TRY_CAST(d.PhysicalQtyOrdered AS DOUBLE) AS qty
+             TRY_CAST(d.PhysicalQtyOrdered AS DOUBLE) AS qty,
+             d.OptionDescription AS description
       FROM latest b
       LATERAL VIEW EXPLODE(b.PODtl) AS d
       WHERE d.SKUItemID IS NOT NULL
     `;
     const qtyRows = await db.query(qtySkuSql);
     for (const r of (qtyRows || [])) {
-      if (!poSkuQtyMap[r.OrderNo]) poSkuQtyMap[r.OrderNo] = {};
-      if (r.sku) poSkuQtyMap[r.OrderNo][String(r.sku)] = r.qty || 0;
+      if (!poSkuQtyMap[r.OrderNo])  poSkuQtyMap[r.OrderNo]  = {};
+      if (!poSkuDescMap[r.OrderNo]) poSkuDescMap[r.OrderNo] = {};
+      if (r.sku) {
+        poSkuQtyMap[r.OrderNo][String(r.sku)]  = r.qty         || 0;
+        poSkuDescMap[r.OrderNo][String(r.sku)] = r.description || '';
+      }
     }
     console.log(`[Databricks PO] per-SKU qty fetched for ${Object.keys(poSkuQtyMap).length} PO(s), ${(qtyRows||[]).length} SKU row(s)`);
     if (qtyRows && qtyRows.length > 0) {
@@ -201,6 +207,9 @@ async function fetchAsnsByPoRefs(poRefs) {
   }
 
   // ── Group shipment rows by (asnId, poId) ──────────────────────────────────
+  // asnSkuQtyMap is populated by Query 3 (bam036e) which runs after grouping;
+  // a second pass below overwrites quantities once bam036e data is available.
+  const asnSkuQtyMap = {}; // asnId -> poId -> sku -> unit_qty (filled by Query 3)
   const asnPoMap = {};
   for (const row of rows) {
     const key = `${row.asnId}::${row.poId}`;
@@ -236,16 +245,13 @@ async function fetchAsnsByPoRefs(poRefs) {
     asnPoMap[key].lines.push({
       sku:         row.sku                  || '',
       ean:         '',
-      description: '',
+      description: poSkuDescMap[row.poId]?.[String(row.sku)] || '',
       size:        '',
       colour:      '',
       style:       enrich.optionID || '',
       packFormat:  row.asnLoadingType === 'H' ? 'H' : 'F',
       country:     row.countryOfManufacture || enrich.country || '',
-      quantity:    asnSkuQtyMap[row.asnId]?.[row.poId]?.[String(row.sku)]
-                   ?? row.bookedQty
-                   ?? poSkuQtyMap[row.poId]?.[String(row.sku)]
-                   ?? 0,
+      quantity:    row.bookedQty ?? poSkuQtyMap[row.poId]?.[String(row.sku)] ?? 0,
       expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest || enrich.expectedDeliveryDate)
     });
   }
@@ -255,7 +261,6 @@ async function fetchAsnsByPoRefs(poRefs) {
   // ASNInDesc.ASNInPO[].ASNInItem[].unit_qty — actual booked qty per SKU in the ASN.
   // Non-fatal — if this query fails we proceed without the cancellation/qty data.
   const cancelledAsnIds = new Set();
-  const asnSkuQtyMap    = {}; // asnId -> poId -> sku -> unit_qty
 
   try {
     const uniqueAsnIds = [...new Set(Object.values(asnPoMap).map(g => g.asnId).filter(Boolean))];
@@ -297,6 +302,14 @@ async function fetchAsnsByPoRefs(poRefs) {
     }
   } catch (err) {
     console.warn(`[Databricks bam036e] query failed (continuing without it): ${err.message}`);
+  }
+
+  // ── Second pass: apply bam036e unit_qty over the fallback quantities ──────
+  for (const group of Object.values(asnPoMap)) {
+    for (const line of group.lines) {
+      const bam036eQty = asnSkuQtyMap[group.asnId]?.[group.poId]?.[line.sku];
+      if (bam036eQty !== undefined) line.quantity = bam036eQty;
+    }
   }
 
   // ── Separate active vs cancelled ASN/PO groups ───────────────────────────

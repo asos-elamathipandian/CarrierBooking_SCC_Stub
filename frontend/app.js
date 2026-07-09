@@ -605,14 +605,10 @@ if (btnRunPipeline) {
 function renderSupplierSummary(poCount, bookingCount, skuRowCount) {
   const panel = document.getElementById('supplierParsePanel');
   if (!panel) return;
-  const skuNote = skuRowCount === 0
-    ? `<div style="font-size:12px;color:#1e7e34;margin-top:6px">✅ SKUs will be auto-booked from the Databricks ASN feed for each PO.</div>`
-    : `<div class="parse-stat-badge" style="font-size:14px;padding:8px 18px">📋 <strong>${skuRowCount}</strong> SKU row${skuRowCount !== 1 ? 's' : ''}</div>`;
   panel.innerHTML = `
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 4px">
       <div class="parse-stat-badge" style="font-size:14px;padding:8px 18px">📦 <strong>${poCount}</strong> PO${poCount !== 1 ? 's' : ''} parsed</div>
       <div class="parse-stat-badge" style="font-size:14px;padding:8px 18px">🚚 <strong>${bookingCount}</strong> carrier booking${bookingCount !== 1 ? 's' : ''} will be generated</div>
-      ${skuNote}
     </div>`;
   panel.style.display = 'block';
 }
