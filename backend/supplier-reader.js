@@ -7,7 +7,7 @@ const REQUIRED_HEADER_COLS = [
   'PO_Number',
   'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date',
   'Booking_Group',
-  'No_of_Cartons', 'Unit_Weight_KG', 'Carton_Type'
+  'No_of_Cartons', 'Unit_Weight_KG'
 ];
 
 // Required fields that must come from PO Lines (used only by legacy single-sheet fallback)
@@ -33,6 +33,7 @@ const COLUMN_ALIASES = {
   'Total no. of Cartons of booking':   'No_of_Cartons',
   'Total items weight of booking':     'Unit_Weight_KG',
   'Header_Booking_Qty (total units in booking)': 'Header_Booking_Qty',
+  'Total booked units of a booking':              'Header_Booking_Qty',
 };
 
 /**

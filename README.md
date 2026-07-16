@@ -48,7 +48,7 @@ A web-based internal tool for ASOS to automate carrier booking requests (VBKREQs
 
 | Feature | Description |
 |---|---|
-| **Supplier Template Upload** | Parse single-sheet Excel (PO Header) from suppliers; SKU quantities sourced from `bam033j.PODtl[].PhysicalQtyOrdered` (Databricks) — supplier template does not need to supply per-SKU quantities |
+| **Supplier Template Upload** | Parse single-sheet Excel (PO Header) emailed by suppliers to InboundService@asos.com; mandatory fields: PO_Number, Booking_Group, dates, Total booked units, cartons, weight; defaulted: Carton_Type (BDCM1), Pack_Type, Collection_Type, Hazardous, Traffic_Mode (CFS) |
 | **SharePoint Auto-Sync** | Scheduled pull of the latest supplier Excel from a SharePoint folder (Graph API) |
 | **ASN Enrichment** | Fetches shipment and PO detail from Azure Databricks (ADE) |
 | **Bible Build** | Merges supplier template rows with ASN/PO data into a master dataset |
@@ -64,21 +64,25 @@ A web-based internal tool for ASOS to automate carrier booking requests (VBKREQs
 ## Booking Workflow
 
 ```
-1. Supplier uploads Excel template to SharePoint
+1. Supplier emails Excel template to InboundService@asos.com
           ↓
-2. Auto-sync (09:00 / 13:00) or manual "Sync Now" fetches latest file
+2. Scheduled cron job (09:00 / 13:00) uploads email attachment to SharePoint
           ↓
-3. Step 1 — Parse supplier template (PO refs extracted)
+3. Auto-sync fetches latest file from SharePoint
           ↓
-4. Step 2 — Pipeline:
+4. Step 1 — Parse supplier template (PO refs, booking qty, carton data extracted)
+          ↓
+5. Step 2 — Pipeline:
      a. Fetch ASN from Databricks (aim_shipment_detail_v1)
-     b. Enrich with PO data + per-SKU quantities (bam033j_purchase_order_v1 — PODtl[].PhysicalQtyOrdered)
-     c. Fetch ASN cancellation status + booked unit_qty (bam036e_asn_v1 — ASNInItem[].unit_qty; _notification_type=D = cancelled)
-     c. Build master dataset (Bible)
-     d. Generate VBKREQ XML (purposeCd = 13)
-     e. Upload to E2open SFTP
+     b. Enrich with PO data + per-SKU quantities (bam033j_purchase_order_v1)
+     c. Fetch ASN cancellation status + booked unit_qty (bam036e_asn_v1)
+     d. Build master dataset (Bible)
+     e. Generate VBKREQ XML (purposeCd = 13)
+        - Header BKQ = supplier "Total booked units" field (flags discrepancy vs ASN line sum)
+        - Line-level N, G, VOL, QUR computed from carton type dimensions
+     f. Upload to E2open SFTP
           ↓
-5. Re-Submit (15) or Cancel (01) via standalone card if needed
+6. Re-Submit (15) or Cancel (01) via standalone card if needed
 ```
 
 ---

@@ -97,6 +97,12 @@ function buildHtml(entries, runTime) {
       <td>${(e.asnRefs || []).join('<br>') || '—'}</td>
       <td style="font-size:11px;color:#555">${e.filename || ''}</td>
       <td>${e.bookingGroup || ''}</td>
+      <td style="${e.purposeCd==='01'?'color:#c0392b':e.purposeCd==='15'?'color:#d97706':'color:#1e7e34'};font-weight:bold">${
+        e.purposeCd === '01' ? 'Cancellation'
+        : e.purposeCd === '15'
+          ? 'Re-submission' + (e.resubmissionReason ? '<br/><span style="font-size:10px;font-weight:normal">' + e.resubmissionReason + '</span>' : '')
+          : 'New'
+      }</td>
       <td>${fmtDate(e.cargoReadyDate)}</td>
       <td style="text-align:center">${e.noOfCartons != null ? e.noOfCartons : '—'}</td>
       <td style="text-align:center">${e.totalWeight != null ? e.totalWeight : '—'}</td>
@@ -122,6 +128,7 @@ function buildHtml(entries, runTime) {
           <th>ASN Ref(s)</th>
           <th>Filename</th>
           <th>Booking Group</th>
+          <th>Purpose</th>
           <th>Cargo Ready Date</th>
           <th>No. of Cartons</th>
           <th>Total Weight&nbsp;(KG)</th>

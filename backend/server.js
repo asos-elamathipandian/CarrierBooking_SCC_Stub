@@ -485,6 +485,143 @@ app.post('/api/generate-vbkreq', async (req, res) => {
     sessionState.lastFilename     = generations[0]?.filename     || null;
     sessionState.lastCtrlNumber   = generations[0]?.ctrlNumber   || null;
 
+    // ── Auto re-submission: already-booked POs with changed supplier data ────
+    // Only trigger when processing fresh new submissions (purposeCd='13').
+    // If the supplier re-sends the same PO with different values (qty, dates, etc.)
+    // and that PO was previously booked by this tool, automatically raise Cd 15.
+    if (purposeCd === '13') {
+      const alreadyBookedPOIds = [...new Set(
+        (sessionState.feedData?.cancelledItems || [])
+          .filter(c => c.type === 'ALREADY_BOOKED')
+          .map(c => String(c.poId || '').trim())
+          .filter(Boolean)
+      )];
+
+      if (alreadyBookedPOIds.length > 0) {
+        const logEntries = bibleBuilder.getGenerationLog();
+        const supplierRows = sessionState.supplierData?.rows || [];
+
+        const RESUB_FIELDS = [
+          { key: 'Header_Booking_Qty',                  label: 'Total Units'         },
+          { key: 'No_of_Cartons',                       label: 'Cartons'             },
+          { key: 'Unit_Weight_KG',                      label: 'Unit Weight'         },
+          { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo Ready Date'    },
+          { key: 'Carrier_Booking_Request_Date',        label: 'Booking Request Date'},
+          { key: 'Traffic_Mode',                        label: 'Traffic Mode'        },
+          { key: 'Carton_Type',                         label: 'Carton Type'         },
+        ];
+
+        // Group already-booked supplier rows by Booking_Group
+        const abSupRows = supplierRows.filter(r => alreadyBookedPOIds.includes(String(r.PO_Number || '').trim()));
+        const abGroupMap = new Map();
+        for (const sRow of abSupRows) {
+          const gk = resolveGroupKey(sRow);
+          if (!abGroupMap.has(gk)) abGroupMap.set(gk, []);
+          abGroupMap.get(gk).push(sRow);
+        }
+
+        for (const [abGroup, abRows] of abGroupMap) {
+          const abPONums = [...new Set(abRows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))];
+
+          // Find most recent non-cancelled log entry for these POs
+          const prevEntry = logEntries
+            .filter(e => e.purposeCd !== '01' && (e.poNumbers || []).some(p => abPONums.includes(String(p))))
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+
+          if (!prevEntry?.masterRows?.length) {
+            console.log(`[Auto-resub] PO ${abPONums.join(',')} booked outside this tool — skipping auto re-sub`);
+            continue;
+          }
+
+          // Detect changed fields between new supplier row and stored master row
+          const prevFirst = prevEntry.masterRows[0];
+          const newFirst  = abRows[0];
+          const changes = RESUB_FIELDS
+            .filter(f => {
+              const nv = String(newFirst[f.key] || '').trim();
+              const pv = String(prevFirst[f.key] || '').trim();
+              return nv && pv && nv !== pv;
+            })
+            .map(f => `${f.label}: ${String(prevFirst[f.key] || '').trim()} -> ${String(newFirst[f.key] || '').trim()}`);
+
+          if (changes.length === 0) {
+            console.log(`[Auto-resub] PO ${abPONums.join(',')} already booked — no changes detected, staying skipped`);
+            continue;
+          }
+
+          console.log(`[Auto-resub] PO ${abPONums.join(',')} changes detected: ${changes.join('; ')} — raising Cd 15`);
+
+          // Build re-sub rows: start from stored master rows, overlay new supplier values
+          const resubRows = prevEntry.masterRows.map(r => ({
+            ...r,
+            Booking_Ref:                         prevEntry.bookingRef,
+            Header_Booking_Qty:                  parseFloat(newFirst.Header_Booking_Qty)  || r.Header_Booking_Qty  || 0,
+            No_of_Cartons:                       parseFloat(newFirst.No_of_Cartons)       || r.No_of_Cartons       || 0,
+            PO_Header_Cartons:                   parseFloat(newFirst.No_of_Cartons)       || r.PO_Header_Cartons   || 0,
+            Unit_Weight_KG:                      parseFloat(newFirst.Unit_Weight_KG)      || r.Unit_Weight_KG      || 0,
+            PO_Header_UnitWeight:                parseFloat(newFirst.Unit_Weight_KG)      || r.PO_Header_UnitWeight|| 0,
+            Cargo_Ready_Planned_Collection_Date: newFirst.Cargo_Ready_Planned_Collection_Date || r.Cargo_Ready_Planned_Collection_Date,
+            Carrier_Booking_Request_Date:        newFirst.Carrier_Booking_Request_Date        || r.Carrier_Booking_Request_Date,
+            Traffic_Mode:                        newFirst.Traffic_Mode || r.Traffic_Mode,
+            Carton_Type:                         newFirst.Carton_Type  || r.Carton_Type,
+          }));
+
+          const abLabel = abGroup === '__ALL__' ? 'Multiple' : abGroup.startsWith('PO__') ? abGroup.replace('PO__', '') : abGroup;
+          const { xml: abXml, filename: abFilename, ctrlNumber: abCtrl, version: abVer,
+                  headerBkq: ab_hbkq, lineBkqSum: ab_lbkq, bkqDiscrepancy: ab_disc }
+            = await vbkreqBuilder.build(resubRows, '15');
+
+          // Save to local output dir (SFTP upload via normal upload-sftp flow)
+          const abOutPath = path.join(outputDir, abFilename);
+          fs.writeFileSync(abOutPath, abXml, 'utf8');
+
+          const abSeenPOs = new Set(); let abCartons = 0, abWeight = 0;
+          for (const r of resubRows) {
+            if (!abSeenPOs.has(r.PO_Number)) {
+              abSeenPOs.add(r.PO_Number);
+              abCartons += parseFloat(r.PO_Header_Cartons || r.No_of_Cartons) || 0;
+              abWeight  += parseFloat(r.PO_Header_UnitWeight || r.Unit_Weight_KG) || 0;
+            }
+          }
+          const abFirst = resubRows[0] || {};
+          bibleBuilder.appendGenerationLog({
+            timestamp:          new Date().toISOString(),
+            bookingRef:         prevEntry.bookingRef,
+            poNumbers:          abPONums,
+            asnRefs:            prevEntry.asnRefs || [],
+            filename:           abFilename,
+            ctrlNumber:         abCtrl,
+            group:              abLabel,
+            purposeCd:          '15',
+            resubmissionReason: changes.join('; '),
+            sftp:               null,
+            supplier:           abFirst.Supplier_Name || prevEntry.supplier || '',
+            bookingGroup:       abFirst.Booking_Group || abLabel,
+            cargoReadyDate:     abFirst.Cargo_Ready_Planned_Collection_Date || '',
+            noOfCartons:        abCartons || null,
+            totalWeight:        abWeight  || null,
+            headerBkq:          ab_hbkq,
+            lineBkqSum:         ab_lbkq,
+            bkqDiscrepancy:     ab_disc,
+            masterRows:         resubRows,
+          });
+
+          generations.push({
+            group:              abLabel,
+            xml:                abXml,
+            filename:           abFilename,
+            ctrlNumber:         abCtrl,
+            version:            abVer,
+            poNumbers:          abPONums,
+            asnRefs:            prevEntry.asnRefs || [],
+            bookingRef:         prevEntry.bookingRef,
+            autoResubmit:       true,
+            resubmissionReason: changes.join('; '),
+          });
+        }
+      }
+    }
+
     res.json({ success: true, generations });
   } catch (err) {
     console.error('generate-vbkreq error:', err);
