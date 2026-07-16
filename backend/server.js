@@ -481,7 +481,6 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       }
 
       const { xml, filename, ctrlNumber, version, bookingRef: vbRef, headerBkq, lineBkqSum, bkqDiscrepancy } = await vbkreqBuilder.build(groupRows, effectivePurposeCd);
-      const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
       const asnRefs   = [...new Set(groupRows.map(r => r.ASN_Ref).filter(Boolean))];
       const bookingRef = vbRef || groupRows[0]?.Booking_Ref || '';
       // Human-readable label: strip the internal PO__ prefix used for Single Booking keys
