@@ -296,11 +296,10 @@ async function build() {
     { key: 'Remarks',          label: 'Remarks',                 width: 18, type: 'optional' },
   ];
   const hLastCol = wsH.getColumn(hCols.length).letter;
-  const hLegendRow  = 1;
-  const hGroupRow   = addLegend(wsH, hLegendRow);   // row 2 = group label bar
-  addGroupRow(wsH, hCols, hGroupRow);               // row 2 = ◀ MANDATORY ▶ | ◀ DEFAULTED ▶ | ...
-  const hHeaderRow  = hGroupRow + 1;                // row 3 = column headers
-  const hFirstDataR = applyHeaderRow(wsH, hCols, hHeaderRow); // row 4+ = data
+  const hGroupRow   = 1;                             // row 1 = group label bar
+  addGroupRow(wsH, hCols, hGroupRow);                // row 1 = ◀ MANDATORY ▶ | ◀ DEFAULTED ▶ | ...
+  const hHeaderRow  = hGroupRow + 1;                 // row 2 = column headers
+  const hFirstDataR = applyHeaderRow(wsH, hCols, hHeaderRow); // row 3+ = data
   // Centre-align all data columns; include wrapText so header cells retain their wrapping
   hCols.forEach((_, i) => {
     wsH.getColumn(i + 1).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
