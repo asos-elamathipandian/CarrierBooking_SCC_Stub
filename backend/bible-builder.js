@@ -245,6 +245,7 @@ async function build(supplierData, feedData) {
         No_of_Cartons:   skuCartons,
         Unit_Weight_KG:  unitWeight,
         Booking_Qty:     skuQty,
+        Header_Booking_Qty: parseFloat(sRow.Header_Booking_Qty) || 0,
 
         // Calculated
         Gross_Weight_KG: parseFloat((cWt * skuCartons).toFixed(4)),

@@ -6,3 +6,5 @@ ctrl-counter.json
 .env
 bible/
 output/
+# Office temporary lock files (created when a file is open)
+~$*

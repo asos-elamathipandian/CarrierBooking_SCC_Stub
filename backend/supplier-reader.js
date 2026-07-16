@@ -6,7 +6,7 @@ const ExcelJS = require('exceljs');
 const REQUIRED_HEADER_COLS = [
   'PO_Number',
   'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date',
-  'Traffic_Mode', 'Booking_Group',
+  'Booking_Group',
   'No_of_Cartons', 'Unit_Weight_KG', 'Carton_Type'
 ];
 
@@ -30,8 +30,9 @@ function cellVal(cell) {
 // Maps user-friendly column display labels (as written in the Excel header) back to
 // the internal field names used throughout the codebase.
 const COLUMN_ALIASES = {
-  'Total no. of Cartons of booking': 'No_of_Cartons',
-  'Total items weight of booking':   'Unit_Weight_KG',
+  'Total no. of Cartons of booking':   'No_of_Cartons',
+  'Total items weight of booking':     'Unit_Weight_KG',
+  'Header_Booking_Qty (total units in booking)': 'Header_Booking_Qty',
 };
 
 /**

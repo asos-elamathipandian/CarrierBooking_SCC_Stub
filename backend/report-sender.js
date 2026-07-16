@@ -100,7 +100,13 @@ function buildHtml(entries, runTime) {
       <td>${fmtDate(e.cargoReadyDate)}</td>
       <td style="text-align:center">${e.noOfCartons != null ? e.noOfCartons : '—'}</td>
       <td style="text-align:center">${e.totalWeight != null ? e.totalWeight : '—'}</td>
-      <td style="color:${e.sftp === 'uploaded' ? '#1e7e34' : '#c0392b'};font-weight:bold">
+      <td style="${e.bkqDiscrepancy ? 'color:#c0392b;font-weight:bold;background:#fff5f5' : e.headerBkq != null ? 'color:#1e7e34' : 'color:#555'}">${
+        e.bkqDiscrepancy
+          ? `&#9888; Mismatch — Header: ${e.headerBkq} units | ASN lines: ${e.lineBkqSum} units`
+          : e.headerBkq != null
+            ? `&#10004; ${e.headerBkq} units (header matches ASN lines: ${e.lineBkqSum} units)`
+            : `${e.lineBkqSum != null ? e.lineBkqSum + ' units (ASN lines only — no header override)' : '\u2014'}`
+      }</td>      <td style="color:${e.sftp === 'uploaded' ? '#1e7e34' : '#c0392b'};font-weight:bold">
         ${e.sftp === 'uploaded' ? '&#10004; Uploaded' : e.sftp || 'Pending'}
       </td>
       <td style="color:#555;white-space:nowrap">${new Date(e.timestamp).toLocaleString('en-GB')}</td>
@@ -119,6 +125,7 @@ function buildHtml(entries, runTime) {
           <th>Cargo Ready Date</th>
           <th>No. of Cartons</th>
           <th>Total Weight&nbsp;(KG)</th>
+          <th>BKQ (Header vs Lines)</th>
           <th>SFTP Status</th>
           <th>Generated At</th>
         </tr></thead>

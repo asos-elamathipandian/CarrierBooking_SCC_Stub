@@ -441,7 +441,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
 
     const generations = [];
     for (const [group, groupRows] of groupMap) {
-      const { xml, filename, ctrlNumber, version, bookingRef: vbRef } = await vbkreqBuilder.build(groupRows, purposeCd);
+      const { xml, filename, ctrlNumber, version, bookingRef: vbRef, headerBkq, lineBkqSum, bkqDiscrepancy } = await vbkreqBuilder.build(groupRows, purposeCd);
       const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
       const asnRefs   = [...new Set(groupRows.map(r => r.ASN_Ref).filter(Boolean))];
       const bookingRef = vbRef || groupRows[0]?.Booking_Ref || '';
@@ -472,6 +472,9 @@ app.post('/api/generate-vbkreq', async (req, res) => {
         cargoReadyDate: _first.Cargo_Ready_Planned_Collection_Date || _first.CargoReadyDate || '',
         noOfCartons:    _totalCartons || null,
         totalWeight:    _totalWeight  || null,
+        headerBkq,
+        lineBkqSum,
+        bkqDiscrepancy,
         masterRows:     groupRows
       });
       generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers, asnRefs, bookingRef });
@@ -713,7 +716,7 @@ app.post('/api/cancel-booking', async (req, res) => {
     const generations = [];
     for (const [bookingRef, entry] of matchedByRef) {
       const workingRows = entry.masterRows.map(r => ({ ...r, Booking_Ref: bookingRef }));
-      const { xml, filename, ctrlNumber, version } = await vbkreqBuilder.build(workingRows, actionPurpose);
+      const { xml, filename, ctrlNumber, version, headerBkq: cancelHeaderBkq, lineBkqSum: cancelLineBkqSum, bkqDiscrepancy: cancelBkqDiscrepancy } = await vbkreqBuilder.build(workingRows, actionPurpose);
       const poNums  = entry.poNumbers || [];
       const asnRefs = entry.asnRefs   || [];
       const groupLabel = entry.group || bookingRef;
@@ -742,6 +745,9 @@ app.post('/api/cancel-booking', async (req, res) => {
         cargoReadyDate: _cancelFirst.Cargo_Ready_Planned_Collection_Date || _cancelFirst.CargoReadyDate || '',
         noOfCartons:    _cancelCartons || null,
         totalWeight:    _cancelWeight  || null,
+        headerBkq:      cancelHeaderBkq,
+        lineBkqSum:     cancelLineBkqSum,
+        bkqDiscrepancy: cancelBkqDiscrepancy,
         masterRows:     workingRows
       });
       generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers: poNums, asnRefs, bookingRef });

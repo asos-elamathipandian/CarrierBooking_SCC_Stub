@@ -380,12 +380,46 @@ async function build(masterRows, purposeCd) {
     totalVol     = parseFloat(dVol.toFixed(4));
     totalCartons = parseFloat(dCartons.toFixed(4));
   } else {
-    totalNet     = parseFloat(masterRows.reduce((s, r) => s + r._net,     0).toFixed(4));
-    totalGross   = parseFloat(masterRows.reduce((s, r) => s + r._gross,   0).toFixed(4));
-    totalVol     = parseFloat(masterRows.reduce((s, r) => s + r._vol,     0).toFixed(4));
-    totalCartons = parseFloat(masterRows.reduce((s, r) => s + r._cartons, 0).toFixed(4));
+    // Fallback: sum per-row values but deduplicate cartons/vol/gross by PO to avoid
+    // multiplying PO-level carton count by the number of SKU rows.
+    const seenFbPOs = new Set();
+    let fbNet = 0, fbGross = 0, fbVol = 0, fbCartons = 0;
+    for (const row of masterRows) {
+      fbNet += row._net;
+      if (!seenFbPOs.has(row.PO_Number)) {
+        seenFbPOs.add(row.PO_Number);
+        fbCartons += row._cartons;
+        fbVol     += row._vol;
+        fbGross   += (row._net + (parseFloat(row.Carton_Weight_KG) || (CARTON_TYPES[row.Carton_Type] || {}).weight || 0) * row._cartons);
+      }
+    }
+    // Recompute gross using all net weights + PO-level carton weights
+    const totalAllNet = parseFloat(masterRows.reduce((s, r) => s + r._net, 0).toFixed(4));
+    totalNet     = totalAllNet;
+    totalGross   = parseFloat((totalAllNet + masterRows
+      .filter((r, i, a) => a.findIndex(x => x.PO_Number === r.PO_Number) === i)
+      .reduce((s, r) => s + ((parseFloat(r.Carton_Weight_KG) || (CARTON_TYPES[r.Carton_Type] || {}).weight || 0) * r._cartons), 0)
+    ).toFixed(4));
+    totalVol     = parseFloat(fbVol.toFixed(4));
+    totalCartons = parseFloat(fbCartons.toFixed(4));
   }
   const totalBkq = parseFloat(masterRows.reduce((s, r) => s + r._bkq, 0).toFixed(6));
+
+  // Header BKQ: use supplier-provided Header_Booking_Qty (sum per unique PO) if populated,
+  // otherwise fall back to sum of line-level _bkq from Databricks.
+  const seenBkqPOs = new Set();
+  let headerBkqSum = 0;
+  for (const row of masterRows) {
+    const hbq = parseFloat(row.Header_Booking_Qty) || 0;
+    if (hbq > 0 && !seenBkqPOs.has(row.PO_Number)) {
+      seenBkqPOs.add(row.PO_Number);
+      headerBkqSum += hbq;
+    }
+  }
+  const useHeaderBkq = headerBkqSum > 0;
+  const finalHeaderBkq = useHeaderBkq ? parseFloat(headerBkqSum.toFixed(6)) : totalBkq;
+  // Discrepancy flag: header BKQ supplied but differs from Databricks line sum
+  const bkqDiscrepancy = useHeaderBkq && Math.abs(finalHeaderBkq - totalBkq) > 0.0001;
 
   const doc = bpMsg.ele('Document', { DocType: 'BOOK', Key: bookingRef });
   doc.ele('Reference', { RefTypeCd: 'ACE', SourceRefTypeCd: '128' }).txt(bookingRef);
@@ -394,7 +428,7 @@ async function build(masterRows, purposeCd) {
   doc.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(totalGross.toFixed(4));
   doc.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(totalVol.toFixed(4));
   doc.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt(totalCartons.toFixed(4));
-  doc.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(totalBkq.toFixed(6));
+  doc.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(finalHeaderBkq.toFixed(6));
 
   // Group by PO — one Order per PO, line items carry the ASN ref
   const poGroups = {};
@@ -434,21 +468,26 @@ async function build(masterRows, purposeCd) {
       li.ele('Reference', { RefTypeCd: 'HZ',  SourceRefTypeCd: '128' }).txt(hazRef2);
       if (description) li.ele('Reference', { RefTypeCd: 'DSC', SourceRefTypeCd: '128' }).txt(description);
       li.ele('Reference', { RefTypeCd: '98',  SourceRefTypeCd: '128' }).txt(cartonType);
-      // Line-level dimensions and weights hardcoded to 1 — totals remain accurate at Document level
-      li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt('1');
-      li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt('1');
-      li.ele('Reference', { RefTypeCd: 'HT',  SourceRefTypeCd: '128' }).txt('1');
+      // Line-level dimensions from carton type lookup (cm)
+      li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt(cL ? cL.toFixed(2) : '0.00');
+      li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt(cW ? cW.toFixed(2) : '0.00');
+      li.ele('Reference', { RefTypeCd: 'HT',  SourceRefTypeCd: '128' }).txt(cH ? cH.toFixed(2) : '0.00');
+      // Line-level measures: QUR=1 carton per SKU line; N/G/VOL computed per carton
+      const lineN   = parseFloat((row._net).toFixed(4));                          // Unit_Weight_KG × BKQ
+      const lineCWt = parseFloat(row.Carton_Weight_KG) || ct.weight || 0;
+      const lineG   = parseFloat((lineN + lineCWt).toFixed(4));                   // N + 1 carton weight
+      const lineVol = parseFloat((cL * cW * cH / 1000000).toFixed(4));           // 1 carton volume (m3)
       li.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(row._bkq.toFixed(6));
-      li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt('1');
-      li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt('1');
-      li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt('1');
-      li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt('1');
+      li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(lineG.toFixed(4));
+      li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(lineN.toFixed(4));
+      li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(lineVol.toFixed(4));
+      li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt('1.0000');
       li.ele('TradePartner', { RoleCd: 'FS' }).ele('TradePartnerID', { Qualifier: '93' }).txt(lineFC);
     }
   }
 
   const xml = root.end({ prettyPrint: true });
-  return { xml, filename, ctrlNumber, version, bookingRef };
+  return { xml, filename, ctrlNumber, version, bookingRef, headerBkq: finalHeaderBkq, lineBkqSum: totalBkq, bkqDiscrepancy };
 }
 
 module.exports = { build, CARTON_TYPES };
