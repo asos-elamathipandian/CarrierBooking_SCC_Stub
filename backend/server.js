@@ -439,9 +439,48 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       groupMap.get(group).push(row);
     }
 
+    const RESUB_FIELDS = [
+      { key: 'Header_Booking_Qty',                  label: 'Total Units'          },
+      { key: 'No_of_Cartons',                       label: 'Cartons'              },
+      { key: 'Unit_Weight_KG',                      label: 'Unit Weight'          },
+      { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo Ready Date'     },
+      { key: 'Carrier_Booking_Request_Date',        label: 'Booking Request Date' },
+      { key: 'Traffic_Mode',                        label: 'Traffic Mode'         },
+      { key: 'Carton_Type',                         label: 'Carton Type'          },
+    ];
+
     const generations = [];
     for (const [group, groupRows] of groupMap) {
-      const { xml, filename, ctrlNumber, version, bookingRef: vbRef, headerBkq, lineBkqSum, bkqDiscrepancy } = await vbkreqBuilder.build(groupRows, purposeCd);
+      const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
+
+      // ── Auto-upgrade to Cd 15 if this PO was previously submitted with different values ──
+      let effectivePurposeCd = purposeCd;
+      let autoResubmitReason = null;
+      if (purposeCd === '13') {
+        const logEntries = bibleBuilder.getGenerationLog();
+        const prevEntry  = logEntries
+          .filter(e => e.purposeCd !== '01' && (e.poNumbers || []).some(p => poNumbers.includes(String(p))))
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+        if (prevEntry?.masterRows?.length) {
+          const prevFirst = prevEntry.masterRows[0];
+          const newFirst  = groupRows[0] || {};
+          const changes   = RESUB_FIELDS
+            .filter(f => {
+              const nv = String(newFirst[f.key]  || '').trim();
+              const pv = String(prevFirst[f.key] || '').trim();
+              return nv && pv && nv !== pv;
+            })
+            .map(f => `${f.label}: ${String(prevFirst[f.key]||'').trim()} -> ${String(newFirst[f.key]||'').trim()}`);
+          if (changes.length > 0) {
+            effectivePurposeCd = '15';
+            autoResubmitReason = changes.join('; ');
+            groupRows.forEach(r => { r.Booking_Ref = prevEntry.bookingRef; });
+            console.log(`[Auto-resub] PO ${poNumbers.join(',')} — ${autoResubmitReason}`);
+          }
+        }
+      }
+
+      const { xml, filename, ctrlNumber, version, bookingRef: vbRef, headerBkq, lineBkqSum, bkqDiscrepancy } = await vbkreqBuilder.build(groupRows, effectivePurposeCd);
       const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
       const asnRefs   = [...new Set(groupRows.map(r => r.ASN_Ref).filter(Boolean))];
       const bookingRef = vbRef || groupRows[0]?.Booking_Ref || '';
@@ -459,25 +498,28 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       }
       const _first = groupRows[0] || {};
       bibleBuilder.appendGenerationLog({
-        timestamp:      new Date().toISOString(),
+        timestamp:          new Date().toISOString(),
         bookingRef,
         poNumbers,
         asnRefs,
         filename,
         ctrlNumber,
-        group:          groupLabel,
-        sftp:           null,
-        supplier:       _first.Supplier || _first.Supplier_Name || _first.supplierName || '',
-        bookingGroup:   _first.Booking_Group || groupLabel,
-        cargoReadyDate: _first.Cargo_Ready_Planned_Collection_Date || _first.CargoReadyDate || '',
-        noOfCartons:    _totalCartons || null,
-        totalWeight:    _totalWeight  || null,
+        group:              groupLabel,
+        purposeCd:          effectivePurposeCd,
+        resubmissionReason: autoResubmitReason,
+        sftp:               null,
+        supplier:           _first.Supplier || _first.Supplier_Name || _first.supplierName || '',
+        bookingGroup:       _first.Booking_Group || groupLabel,
+        cargoReadyDate:     _first.Cargo_Ready_Planned_Collection_Date || _first.CargoReadyDate || '',
+        noOfCartons:        _totalCartons || null,
+        totalWeight:        _totalWeight  || null,
         headerBkq,
         lineBkqSum,
         bkqDiscrepancy,
-        masterRows:     groupRows
+        masterRows:         groupRows
       });
-      generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers, asnRefs, bookingRef });
+      generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers, asnRefs, bookingRef,
+        autoResubmit: !!autoResubmitReason, resubmissionReason: autoResubmitReason });
     }
 
     sessionState.lastGenerations  = generations;

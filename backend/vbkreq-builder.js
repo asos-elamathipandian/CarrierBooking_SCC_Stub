@@ -192,14 +192,17 @@ async function build(masterRows, purposeCd) {
   for (const row of masterRows) {
     const ct = CARTON_TYPES[row.Carton_Type] || {};
     const noCartons = parseFloat(row.No_of_Cartons) || 0;
-    const unitWt = parseFloat(row.Unit_Weight_KG) || 0;
+    const unitWt    = parseFloat(row.Unit_Weight_KG) || 0;  // template total net weight for booking
+    const hdrBkq   = parseFloat(row.Header_Booking_Qty) || 0;
     const bkq = parseFloat(row.Booking_Qty) || 0;
     const cL = parseFloat(row.Carton_Length_cm) || ct.L || 0;
     const cW = parseFloat(row.Carton_Width_cm) || ct.W || 0;
     const cH = parseFloat(row.Carton_Height_cm) || ct.H || 0;
     const cWt = parseFloat(row.Carton_Weight_KG) || ct.weight || 0;
 
-    row._net     = parseFloat((unitWt * bkq).toFixed(4));              // N = Unit_Weight_KG × Booking_Qty
+    // Derive per-unit weight: template provides TOTAL net weight; divide by header BKQ to get per-unit
+    const perUnitWt = (hdrBkq > 0) ? unitWt / hdrBkq : unitWt;
+    row._net     = parseFloat((perUnitWt * bkq).toFixed(4));              // N = per-unit × line BKQ
     row._gross   = parseFloat((row._net + (cWt * noCartons)).toFixed(4)); // G = N + (Carton_Weight × Cartons)
     row._vol     = parseFloat(((cL * cW * cH / 1000000) * noCartons).toFixed(4));
     row._cartons = noCartons;
@@ -365,14 +368,11 @@ async function build(masterRows, purposeCd) {
       if (seenPOs.has(row.PO_Number)) continue;
       seenPOs.add(row.PO_Number);
       const poCartons = parseFloat(row.PO_Header_Cartons)    || 0;
-      const poUnitWt  = parseFloat(row.PO_Header_UnitWeight) || 0;
+      const poUnitWt  = parseFloat(row.PO_Header_UnitWeight) || 0;  // total net weight from template
       const poCt      = CARTON_TYPES[row.PO_Header_CartonType] || CARTON_TYPES['BDCM1'];
-      const poBkq     = masterRows
-        .filter(r => r.PO_Number === row.PO_Number)
-        .reduce((s, r) => s + (parseFloat(r.Booking_Qty) || 0), 0);
       dCartons += poCartons;
-      dNet     += poUnitWt * poBkq;
-      dGross   += (poUnitWt * poBkq) + (poCt.weight * poCartons);
+      dNet     += poUnitWt;                                           // N = total weight directly
+      dGross   += poUnitWt + (poCt.weight * poCartons);              // G = N + carton_weight × cartons
       dVol     += (poCt.L * poCt.W * poCt.H / 1000000) * poCartons;
     }
     totalNet     = parseFloat(dNet.toFixed(4));
