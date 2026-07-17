@@ -21,6 +21,17 @@ const spClient             = require('./sharepoint-client');
 const spScheduler          = require('./sharepoint-scheduler');
 
 const app = express();
+
+// Helper: find the original v1.0 booking timestamp for OSBT/OSBK preservation
+function findOriginalTimestamp(bookingRef, logEntries) {
+  const orig = (logEntries || [])
+    .filter(e => e.bookingRef === bookingRef && (!e.purposeCd || e.purposeCd === '13'))
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))[0];
+  if (!orig) return null;
+  const d = new Date(orig.timestamp);
+  const pad = v => String(v).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())} ${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
 const PORT = 3000;
 
 app.use(cors());
@@ -449,6 +460,10 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       { key: 'Carton_Type',                         label: 'Carton Type'          },
     ];
 
+    // Helper: find the original v1.0 booking timestamp for a given bookingRef (YYYYMMDD HHMMSS)
+    // (defined at module scope — see top of file)
+
+
     const generations = [];
     for (const [group, groupRows] of groupMap) {
       const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
@@ -480,7 +495,11 @@ app.post('/api/generate-vbkreq', async (req, res) => {
         }
       }
 
-      const { xml, filename, ctrlNumber, version, bookingRef: vbRef, headerBkq, lineBkqSum, bkqDiscrepancy } = await vbkreqBuilder.build(groupRows, effectivePurposeCd);
+      const { xml, filename, ctrlNumber, version, bookingRef: vbRef, headerBkq, lineBkqSum, bkqDiscrepancy } = await vbkreqBuilder.build(
+        groupRows,
+        effectivePurposeCd,
+        { originalTimestamp: effectivePurposeCd !== '13' ? findOriginalTimestamp(groupRows[0]?.Booking_Ref, bibleBuilder.getGenerationLog()) : null }
+      );
       const asnRefs   = [...new Set(groupRows.map(r => r.ASN_Ref).filter(Boolean))];
       const bookingRef = vbRef || groupRows[0]?.Booking_Ref || '';
       // Human-readable label: strip the internal PO__ prefix used for Single Booking keys
@@ -894,7 +913,11 @@ app.post('/api/cancel-booking', async (req, res) => {
     const generations = [];
     for (const [bookingRef, entry] of matchedByRef) {
       const workingRows = entry.masterRows.map(r => ({ ...r, Booking_Ref: bookingRef }));
-      const { xml, filename, ctrlNumber, version, headerBkq: cancelHeaderBkq, lineBkqSum: cancelLineBkqSum, bkqDiscrepancy: cancelBkqDiscrepancy } = await vbkreqBuilder.build(workingRows, actionPurpose);
+      const { xml, filename, ctrlNumber, version, headerBkq: cancelHeaderBkq, lineBkqSum: cancelLineBkqSum, bkqDiscrepancy: cancelBkqDiscrepancy } = await vbkreqBuilder.build(
+        workingRows,
+        actionPurpose,
+        { originalTimestamp: findOriginalTimestamp(bookingRef, bibleBuilder.getGenerationLog()) }
+      );
       const poNums  = entry.poNumbers || [];
       const asnRefs = entry.asnRefs   || [];
       const groupLabel = entry.group || bookingRef;

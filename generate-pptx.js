@@ -263,14 +263,21 @@ function dnarrow(s,x,y) {
     ['Ship Date (Ex-Factory)',      '<Status DateTypeCd="238">',           '2026-08-05  (bam033j ExFactoryDate minus 1 day)',                          C.accent],
     ['Expected Delivery',           '<Status DateTypeCd="065">',           '2026-08-20  (bam033j ExpectedDeliveryDateFirstLocation minus 1 day)',      C.accent],
     ['Destination FC LOCODE',       '<Status Location LocTypeCd="E/D">',   'GBBSY=FC01  |  GBLIC=FC02  |  GBHEM=FC03  |  DEBER=FC04',                 C.mint  ],
-    ['System Timestamps',           '<Status DateTypeCd 211/OSBT/OSBK/SBK>','Current datetime at generation  (auto-populated by tool)',              C.mint  ],
+    ['System Timestamps',           '<Status DateTypeCd 211/OSBT/OSBK/SBK>','211 & SBK = current generation time.  OSBT & OSBK = original v1.0 booking time (preserved on re-submit/cancel)', C.mint  ],
     // -- Document totals --
     ['Booking Ref + Version',       '<Document> <Reference ACE/V0>',       'VB-000349  /  1.0  (auto-incrementing; 2.0 on re-submit)',                 C.mint  ],
-    ['Booking Qty (BKQ)',           '<Measure Qualifier="BKQ" UOMCd="UN">', '500 units  (bam036e ASNInItem.unit_qty primary; bam033j fallback)',        C.accent],
-    ['Net Weight (N)',              '<Measure Qualifier="N" UOMCd="KG">',  '145.00 KG  =  Unit_Weight_KG x Booking_Qty',                              C.mint  ],
-    ['Gross Weight (G)',            '<Measure Qualifier="G" UOMCd="KG">',  '159.80 KG  =  Net + (Carton_Weight_KG x No_of_Cartons)',                  C.mint  ],
-    ['Volume (VOL)',                '<Measure Qualifier="VOL" UOMCd="M3">', '0.864 M3  =  (Length x Width x Height / 1,000,000) x No_of_Cartons',    C.mint  ],
-    ['No. of Cartons (QUR)',        '<Measure Qualifier="QUR" UOMCd="CT">', '12 CT  =  No_of_Cartons from supplier template',                          C.pink  ],
+    // Header-level measures (Document) — sourced from supplier template
+    ['Header BKQ',                  '<Measure Qualifier="BKQ" UOMCd="UN">', 'Template: Total booked units of a booking  |  Fallback: sum of ASN line BKQs (bam036e)', C.pink],
+    ['Header N (Net Weight)',        '<Measure Qualifier="N" UOMCd="KG">',  'Template: Total items weight of booking  (total net weight filled directly by supplier)',  C.pink],
+    ['Header G (Gross Weight)',      '<Measure Qualifier="G" UOMCd="KG">',  'N  +  (Carton_Weight_KG x No_of_Cartons)  |  carton weight from CARTON_TYPES lookup',     C.mint],
+    ['Header VOL',                  '<Measure Qualifier="VOL" UOMCd="M3">', '(L x W x H / 1,000,000) x No_of_Cartons  |  dimensions from CARTON_TYPES by Carton_Type',C.mint],
+    ['Header QUR (Cartons)',        '<Measure Qualifier="QUR" UOMCd="CT">', 'Template: Total no. of Cartons of booking',                                C.pink  ],
+    // Line-level measures (LineItem) — computed per SKU
+    ['Line BKQ (per SKU)',          '<Measure Qualifier="BKQ" UOMCd="UN">', 'bam036e ASNInItem.unit_qty (primary)  |  bam033j PhysicalQtyOrdered (fallback)',          C.accent],
+    ['Line N (per SKU)',            '<Measure Qualifier="N" UOMCd="KG">',  '(Template N / Header BKQ) x line BKQ  =  per-unit weight x line booking qty',             C.mint  ],
+    ['Line G (per SKU)',            '<Measure Qualifier="G" UOMCd="KG">',  'Line N  +  Carton_Weight_KG x 1  (1 carton per SKU line)',                                C.mint  ],
+    ['Line VOL (per SKU)',          '<Measure Qualifier="VOL" UOMCd="M3">', '(L x W x H / 1,000,000) x 1  (1 carton per SKU line)',                                   C.mint  ],
+    ['Line QUR (per SKU)',          '<Measure Qualifier="QUR" UOMCd="CT">', '1.0000  (always 1 carton per SKU line)',                                                   C.mint  ],
   ];
 
   const colW = [2.85, 3.55, 5.7];
@@ -306,7 +313,7 @@ function dnarrow(s,x,y) {
   // Line-item note
   const noteY = startY + 0.36 + tRows.length * rowH + 0.04;
   s.addShape(pptx.ShapeType.roundRect, {x:startX,y:noteY,w:12.62,h:0.35, fill:{color:C.lightBg}, line:{color:C.accent}, rectRadius:0.05});
-  s.addText('Line-item level also includes per-SKU: ASN Ref (SI) | SKU (SK) | Colour (CL) | Size (IZ) | Pack Type (PAC) | Carton Type (98) | Product Style (PT) | Description (DSC) | FC per line (FS)', {
+  s.addText('Line-item level also includes per-SKU identifiers: ASN Ref (SI) | SKU (SK) | Colour (CL) | Size (IZ) | Pack Type (PAC) | Carton Type (98) | Product Style (PT) | Description (DSC) | FC per line (FS)', {
     x:startX+0.1, y:noteY, w:12.42, h:0.35, fontSize:10, color:C.blue, fontFace:'Calibri', valign:'middle', wrap:true
   });
 }

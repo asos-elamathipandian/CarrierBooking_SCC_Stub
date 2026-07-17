@@ -152,13 +152,17 @@ function hazardousCode(val) {
 /**
  * Build VBKREQ XML from masterRows array.
  * purposeCd: '13' = Request (default), '15' = Re-Submission, '01' = Cancellation
+ * options.originalTimestamp: 'YYYYMMDD HHMMSS' — if provided, OSBT/OSBK use this (original v1 booking time)
  */
-async function build(masterRows, purposeCd) {
+async function build(masterRows, purposeCd, options = {}) {
   if (!masterRows || masterRows.length === 0) throw new Error('No master rows to generate VBKREQ');
 
   const pcd = purposeCd || '13';
   const ctrlNumber = getCtrlNumber();
   const now = nowDateTimeStr();
+  // OSBT / OSBK always reflect the very first v1.0 booking timestamp so the carrier
+  // can trace back to the original booking event on re-submissions and cancellations.
+  const osbtTime = options.originalTimestamp || now;
   const filenameTs = nowFilenameStr();
   const filename = `DAVIESTN_E2ASOS_VBKREQ_1.0_${filenameTs}${ctrlNumber.replace('ASOSBOOK-', '')}.xml`;
 
@@ -341,14 +345,14 @@ async function build(masterRows, purposeCd) {
   const stD = bpMsg.ele('Status');
   stD.ele('Location', { LocTypeCd: 'D' }).ele('LocationID', { Qualifier: 'UN' }).txt(destLocode);
 
-  bpMsg.ele('Status').ele('Date', { DateTypeCd: '211', TimeZone: 'LT' }).txt(now);
-  bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBT', TimeZone: 'LT' }).txt(now);
+  bpMsg.ele('Status').ele('Date', { DateTypeCd: '211',  TimeZone: 'LT' }).txt(now);       // XML creation time (always current)
+  bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBT', TimeZone: 'LT' }).txt(osbtTime);  // original v1 booking time
 
   if (shipDate) bpMsg.ele('Status').ele('Date', { DateTypeCd: '238' }).txt(shipDate);
   if (expectedDeliveryDate) bpMsg.ele('Status').ele('Date', { DateTypeCd: '065' }).txt(expectedDeliveryDate);
 
-  bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBK' }).txt(now);
-  bpMsg.ele('Status').ele('Date', { DateTypeCd: 'SBK' }).txt(now);
+  bpMsg.ele('Status').ele('Date', { DateTypeCd: 'OSBK' }).txt(osbtTime);  // original v1 booking time
+  bpMsg.ele('Status').ele('Date', { DateTypeCd: 'SBK'  }).txt(now);       // booking re-confirmed at current time
 
   // Cancellation date — only for PurposeCd 01
   if (pcd === '01') {

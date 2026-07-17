@@ -376,6 +376,7 @@ async function build(supplierData, feedData) {
           PO_Header_Cartons:    hdrCartons,
           PO_Header_UnitWeight: hdrUnitWt,
           PO_Header_CartonType: hdrCartonType,
+          Header_Booking_Qty:   parseFloat(poHdr.Header_Booking_Qty) || 0,
 
           Pack_Type:       carrierLine.packFormat === 'H' ? 'Hanging' : (poHdr.Pack_Type || 'Bulk Flat'),
           Collection_Type: poHdr.Collection_Type || 'Delivery',
