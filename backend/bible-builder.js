@@ -358,19 +358,19 @@ async function build(supplierData, feedData) {
           Colour_Code:   carrierLine.colour || '',
           Size_Code:     carrierLine.size   || '',
 
-          // Line-item level — use defaults (1 carton / 0.21 kg / BDCM1) per SKU
-          Carton_Type:      'BDCM1',
-          Carton_Length_cm:  CARTON_TYPES['BDCM1'].L,
-          Carton_Width_cm:   CARTON_TYPES['BDCM1'].W,
-          Carton_Height_cm:  CARTON_TYPES['BDCM1'].H,
-          Carton_Weight_KG:  CARTON_TYPES['BDCM1'].weight,
+          // Line-item level — use header carton type from supplier (falls back to BDCM1)
+          Carton_Type:      hdrCartonType,
+          Carton_Length_cm:  ct.L      || CARTON_TYPES['BDCM1'].L,
+          Carton_Width_cm:   ct.W      || CARTON_TYPES['BDCM1'].W,
+          Carton_Height_cm:  ct.H      || CARTON_TYPES['BDCM1'].H,
+          Carton_Weight_KG:  ct.weight || CARTON_TYPES['BDCM1'].weight,
           No_of_Cartons:     1,
           Unit_Weight_KG:    0.21,
           Booking_Qty:       carrierLine.quantity || 0,
 
-          Gross_Weight_KG:   parseFloat((CARTON_TYPES['BDCM1'].weight * 1).toFixed(4)),
+          Gross_Weight_KG:   parseFloat(((ct.weight || CARTON_TYPES['BDCM1'].weight) * 1).toFixed(4)),
           Net_Weight_KG:     parseFloat((0.21 * (carrierLine.quantity || 0)).toFixed(4)),
-          Volume_M3:         parseFloat(((CARTON_TYPES['BDCM1'].L * CARTON_TYPES['BDCM1'].W * CARTON_TYPES['BDCM1'].H / 1000000) * 1).toFixed(4)),
+          Volume_M3:         parseFloat((((ct.L || CARTON_TYPES['BDCM1'].L) * (ct.W || CARTON_TYPES['BDCM1'].W) * (ct.H || CARTON_TYPES['BDCM1'].H) / 1000000) * 1).toFixed(4)),
 
           // PO Header-level carton values — used for VBKREQ document totals
           PO_Header_Cartons:    hdrCartons,
