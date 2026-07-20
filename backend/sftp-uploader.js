@@ -131,8 +131,9 @@ async function uploadBatch(files) {
   if (keyPath)        authOpts.privateKey = fs.readFileSync(keyPath);
   if (cfg.passphrase) authOpts.passphrase = cfg.passphrase;
 
-  const sftp = new SftpClient();
+  const sftp    = new SftpClient();
   const results = [];
+  const CONCURRENCY = 5; // simultaneous puts on the same connection
 
   try {
     await sftp.connect({
@@ -145,23 +146,28 @@ async function uploadBatch(files) {
       retry_minTimeout: 2000
     });
 
-    for (const { filename, xmlContent } of files) {
-      const remotePath = cfg.uploadPath.endsWith('/')
-        ? `${cfg.uploadPath}${filename}`
-        : `${cfg.uploadPath}/${filename}`;
-      try {
-        const buffer = Buffer.from(xmlContent, 'utf8');
-        await sftp.put(buffer, remotePath);
-        saveLocally(filename, xmlContent); // keep local copy
-        results.push({
-          filename, ok: true, remotePath,
-          bytesSent: buffer.length,
-          uploadedAt: new Date().toISOString(),
-          sftpEnv: cfg.isProd ? 'PROD' : 'TEST'
-        });
-      } catch (err) {
-        results.push({ filename, ok: false, error: err.message });
-      }
+    // Upload in chunks of CONCURRENCY simultaneous puts
+    for (let i = 0; i < files.length; i += CONCURRENCY) {
+      const chunk = files.slice(i, i + CONCURRENCY);
+      const chunkResults = await Promise.all(chunk.map(async ({ filename, xmlContent }) => {
+        const remotePath = cfg.uploadPath.endsWith('/')
+          ? `${cfg.uploadPath}${filename}`
+          : `${cfg.uploadPath}/${filename}`;
+        try {
+          const buffer = Buffer.from(xmlContent, 'utf8');
+          await sftp.put(buffer, remotePath);
+          saveLocally(filename, xmlContent);
+          return {
+            filename, ok: true, remotePath,
+            bytesSent: buffer.length,
+            uploadedAt: new Date().toISOString(),
+            sftpEnv: cfg.isProd ? 'PROD' : 'TEST'
+          };
+        } catch (err) {
+          return { filename, ok: false, error: err.message };
+        }
+      }));
+      results.push(...chunkResults);
     }
   } finally {
     await sftp.end().catch(() => {});

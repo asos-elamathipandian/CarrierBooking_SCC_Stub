@@ -449,6 +449,8 @@ if (btnRunPipeline) {
 
     const progress = document.getElementById('pipelineProgress');
     if (progress) progress.style.display = '';
+    const _timeReset = document.getElementById('pipelineTotalTime');
+    if (_timeReset) _timeReset.textContent = '';
     progSet(1, 'pending', '📡 Fetch ASN');
     progSet(2, 'pending', '🗂 Build');
     progSet(3, 'pending', '⚡ Generate');
@@ -561,26 +563,40 @@ if (btnRunPipeline) {
       progSet(3, 'done', '⚡ Generated ✅');
 
       // ── 4. Upload ─────────────────────────────────────────────────────────
-      progSet(4, 'active', '🚀 Uploading…');
-      const batchRes  = await fetch(`${API}/upload-sftp-batch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: state.generations.map(g => ({ filename: g.filename, xmlContent: g.xml })) }),
-        signal
-      });
-      const batchData = await batchRes.json();
-      if (!batchRes.ok) throw new Error(batchData.error || 'Batch upload failed');
-      const results = (batchData.results || []).map(r => ({
-        filename: r.filename, ok: r.ok,
-        remotePath: r.remotePath, localMode: r.localMode, sftpEnv: r.sftpEnv,
-        error: r.error
-      }));
-      const ok   = results.filter(r => r.ok);
-      const fail = results.filter(r => !r.ok);
-      progSet(4, fail.length === 0 ? 'done' : 'error', fail.length === 0 ? '🚀 Uploaded ✅' : '🚀 Upload ⚠️');
+      let results = [];
+      if (state.generations.length === 0) {
+        // All POs skipped — nothing to upload
+        progSet(4, 'skip', '🚀 Upload — skipped');
+        const _timeEl = document.getElementById('pipelineTotalTime');
+        const _elapsed = Date.now() - pipelineStart;
+        const _elStr = _elapsed < 60000 ? `${(_elapsed/1000).toFixed(1)}s` : `${Math.floor(_elapsed/60000)}m ${Math.round((_elapsed%60000)/1000)}s`;
+        if (_timeEl) _timeEl.textContent = `⏱ Total: ${_elStr}`;
+      } else {
+        progSet(4, 'active', '🚀 Uploading…');
+        const batchRes  = await fetch(`${API}/upload-sftp-batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: state.generations.map(g => ({ filename: g.filename, xmlContent: g.xml })) }),
+          signal
+        });
+        const batchData = await batchRes.json();
+        if (!batchRes.ok) throw new Error(batchData.error || 'Batch upload failed');
+        results = (batchData.results || []).map(r => ({
+          filename: r.filename, ok: r.ok,
+          remotePath: r.remotePath, localMode: r.localMode, sftpEnv: r.sftpEnv,
+          error: r.error
+        }));
+        const ok   = results.filter(r => r.ok);
+        const fail = results.filter(r => !r.ok);
+        progSet(4, fail.length === 0 ? 'done' : 'error', fail.length === 0 ? '🚀 Uploaded ✅' : '🚀 Upload ⚠️');
+        const _elapsed = Date.now() - pipelineStart;
+        const _elStr = _elapsed < 60000 ? `${(_elapsed/1000).toFixed(1)}s` : `${Math.floor(_elapsed/60000)}m ${Math.round((_elapsed%60000)/1000)}s`;
+        const _timeEl = document.getElementById('pipelineTotalTime');
+        if (_timeEl) _timeEl.textContent = `⏱ Total: ${_elStr}`;
 
-      const badge = document.getElementById('badgePipeline');
-      if (badge) { badge.className = 'step-badge ' + (fail.length === 0 ? 'done' : 'active'); if (fail.length === 0) badge.textContent = '✓'; }
+        const badge = document.getElementById('badgePipeline');
+        if (badge) { badge.className = 'step-badge ' + (fail.length === 0 ? 'done' : 'active'); if (fail.length === 0) badge.textContent = '✓'; }
+      }
       renderResult(state.generations, results, Date.now() - pipelineStart, state.skippedGroups);
       loadHistory();
 

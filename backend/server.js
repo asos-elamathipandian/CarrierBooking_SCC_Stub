@@ -460,6 +460,24 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       { key: 'Carton_Type',                         label: 'Carton Type'          },
     ];
 
+    // Normalize a field value to a stable comparable string.
+    // Dates (Date objects, ISO strings, DD/MM/YYYY) are all reduced to YYYY-MM-DD.
+    function normField(v) {
+      if (v === null || v === undefined) return '';
+      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      const s = String(v).trim();
+      if (!s) return '';
+      // DD/MM/YYYY
+      const dm = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (dm) return `${dm[3]}-${dm[2]}-${dm[1]}`;
+      // ISO datetime — take date part only
+      if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
+      // Already YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      // Anything else (numeric strings, text) — return as-is
+      return s;
+    }
+
     // Helper: find the original v1.0 booking timestamp for a given bookingRef (YYYYMMDD HHMMSS)
     // (defined at module scope — see top of file)
 
@@ -482,11 +500,11 @@ app.post('/api/generate-vbkreq', async (req, res) => {
           const newFirst  = groupRows[0] || {};
           const changes   = RESUB_FIELDS
             .filter(f => {
-              const nv = String(newFirst[f.key]  || '').trim();
-              const pv = String(prevFirst[f.key] || '').trim();
+              const nv = normField(newFirst[f.key]);
+              const pv = normField(prevFirst[f.key]);
               return nv && pv && nv !== pv;
             })
-            .map(f => `${f.label}: ${String(prevFirst[f.key]||'').trim()} -> ${String(newFirst[f.key]||'').trim()}`);
+            .map(f => `${f.label}: ${normField(prevFirst[f.key])} -> ${normField(newFirst[f.key])}`);
           if (changes.length > 0) {
             effectivePurposeCd = '15';
             autoResubmitReason = changes.join('; ');
