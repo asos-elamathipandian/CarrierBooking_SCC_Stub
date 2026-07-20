@@ -22,6 +22,7 @@ const sp             = require('./sharepoint-client');
 const supplierReader  = require('./supplier-reader');
 const emailIngestor  = require('./email-ingestor');
 const reportSender   = require('./report-sender');
+const db             = require('./databricks-client');
 
 const SYNC_DIR        = path.join(__dirname, '..', 'bible', 'sharepoint-sync');
 const STATUS_FILE     = path.join(__dirname, '..', 'bible', 'sp-sync-status.json');
@@ -244,6 +245,18 @@ function start(sessionState) {
       );
     });
     console.log(`[SP Scheduler] Scheduled at cron "${expr}" (from SP_SCHEDULE=${timesStr})`);
+
+    // Schedule a Databricks warm-up ping 10 minutes before each run
+    const [mStr, hStr] = expr.split(' ');
+    const m = parseInt(mStr, 10);
+    const h = parseInt(hStr, 10);
+    const warmM = m >= 10 ? m - 10 : 60 - (10 - m);
+    const warmH = m >= 10 ? h : (h - 1 + 24) % 24;
+    const warmExpr = `${warmM} ${warmH} * * *`;
+    cron.schedule(warmExpr, () => {
+      db.ping().catch(() => {}); // non-fatal
+    });
+    console.log(`[SP Scheduler] Databricks warm-up ping scheduled at cron "${warmExpr}" (10 min before run)`);
   }
 
   // ── Catch-up sync on startup ──────────────────────────────────────────────

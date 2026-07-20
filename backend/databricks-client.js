@@ -79,4 +79,20 @@ async function query(sql, params) {
   }
 }
 
-module.exports = { query, getConfig };
+/**
+ * Fire a lightweight SELECT 1 to wake the Databricks cluster.
+ * Non-fatal — logs but never throws.
+ */
+async function ping() {
+  const cfg = getConfig();
+  if (!cfg) return; // not configured — nothing to ping
+  try {
+    console.log('[Databricks] Warm-up ping…');
+    await query('SELECT 1 AS ping');
+    console.log('[Databricks] Warm-up ping complete — cluster is ready.');
+  } catch (err) {
+    console.warn('[Databricks] Warm-up ping failed (non-fatal):', err.message);
+  }
+}
+
+module.exports = { query, getConfig, ping };
