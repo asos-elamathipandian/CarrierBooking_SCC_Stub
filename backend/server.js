@@ -452,12 +452,12 @@ app.post('/api/generate-vbkreq', async (req, res) => {
 
     const RESUB_FIELDS = [
       { key: 'Header_Booking_Qty',                  label: 'Total Units'          },
-      { key: 'No_of_Cartons',                       label: 'Cartons'              },
-      { key: 'Unit_Weight_KG',                      label: 'Unit Weight'          },
+      { key: 'PO_Header_Cartons',                   label: 'Cartons'              },
+      { key: 'PO_Header_UnitWeight',                label: 'Unit Weight'          },
       { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo Ready Date'     },
       { key: 'Carrier_Booking_Request_Date',        label: 'Booking Request Date' },
       { key: 'Traffic_Mode',                        label: 'Traffic Mode'         },
-      { key: 'Carton_Type',                         label: 'Carton Type'          },
+      { key: 'PO_Header_CartonType',                label: 'Carton Type'          },
     ];
 
     // Normalize a field value to a stable comparable string.
