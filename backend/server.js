@@ -464,7 +464,8 @@ app.post('/api/generate-vbkreq', async (req, res) => {
     // (defined at module scope — see top of file)
 
 
-    const generations = [];
+    const generations   = [];
+    const skippedGroups = []; // same PO, no field changes — skip entirely
     for (const [group, groupRows] of groupMap) {
       const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
 
@@ -491,6 +492,12 @@ app.post('/api/generate-vbkreq', async (req, res) => {
             autoResubmitReason = changes.join('; ');
             groupRows.forEach(r => { r.Booking_Ref = prevEntry.bookingRef; });
             console.log(`[Auto-resub] PO ${poNumbers.join(',')} — ${autoResubmitReason}`);
+          } else {
+            // Same PO, no changes — skip, do not generate a new VBKREQ
+            const groupLabel = group === '__ALL__' ? 'Multiple' : group.startsWith('PO__') ? group.replace('PO__', '') : group;
+            console.log(`[Skip] PO ${poNumbers.join(',')} already booked with no changes — skipping`);
+            skippedGroups.push({ poNumbers, bookingRef: prevEntry.bookingRef, group: groupLabel });
+            continue;
           }
         }
       }
@@ -682,7 +689,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       }
     }
 
-    res.json({ success: true, generations });
+    res.json({ success: true, generations, skippedGroups });
   } catch (err) {
     console.error('generate-vbkreq error:', err);
     res.status(500).json({ error: err.message });

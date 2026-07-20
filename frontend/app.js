@@ -554,6 +554,7 @@ if (btnRunPipeline) {
       if (!genRes.ok) throw new Error(genData.error || 'Generate failed');
 
       state.generations  = genData.generations || [];
+      state.skippedGroups = genData.skippedGroups || [];
       state.lastXml      = state.generations[0]?.xml      || null;
       state.lastFilename = state.generations[0]?.filename || null;
 
@@ -580,7 +581,7 @@ if (btnRunPipeline) {
 
       const badge = document.getElementById('badgePipeline');
       if (badge) { badge.className = 'step-badge ' + (fail.length === 0 ? 'done' : 'active'); if (fail.length === 0) badge.textContent = '✓'; }
-      renderResult(state.generations, results, Date.now() - pipelineStart);
+      renderResult(state.generations, results, Date.now() - pipelineStart, state.skippedGroups);
       loadHistory();
 
     } catch (err) {
@@ -621,18 +622,19 @@ function escapeHtml(s) {
 }
 
 // ── Pipeline result table ─────────────────────────────────────────────────────
-function renderResult(generations, uploadResults, elapsedMs) {
+function renderResult(generations, uploadResults, elapsedMs, skippedGroups) {
   const panel = document.getElementById('resultPanel');
-  if (!panel || !generations?.length) return;
+  if (!panel || (!generations?.length && !skippedGroups?.length)) return;
 
   const thStyle = 'background:#1F4E79;color:#fff;padding:7px 10px;text-align:left;font-size:12px;white-space:nowrap';
   const tdStyle = 'padding:7px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top;font-size:12px';
   const upMap   = Object.fromEntries((uploadResults || []).map(r => [r.filename, r]));
 
-  const bookedPOs = new Set(generations.flatMap(g => g.poNumbers || []));
-  const totalPOs  = (state.poRefs || []).length;
-  const allBooked = totalPOs > 0 && bookedPOs.size >= totalPOs;
-  const elapsed   = elapsedMs != null
+  const bookedPOs  = new Set(generations.flatMap(g => g.poNumbers || []));
+  const skippedPOs = new Set((skippedGroups || []).flatMap(g => g.poNumbers || []));
+  const totalPOs   = (state.poRefs || []).length;
+  const allBooked  = totalPOs > 0 && (bookedPOs.size + skippedPOs.size) >= totalPOs;
+  const elapsed    = elapsedMs != null
     ? (elapsedMs < 60000
         ? `${(elapsedMs / 1000).toFixed(1)}s`
         : `${Math.floor(elapsedMs / 60000)}m ${Math.round((elapsedMs % 60000) / 1000)}s`)
@@ -662,6 +664,17 @@ function renderResult(generations, uploadResults, elapsedMs) {
     </tr>`;
   }).join('');
 
+  const skippedRows = (skippedGroups || []).map(g => {
+    const pos   = (g.poNumbers || []).map(p => `<div>${escapeHtml(p)}</div>`).join('') || '—';
+    const vbRef = escapeHtml(g.bookingRef || '—');
+    return `<tr style="background:#F8FAFC">
+      <td style="${tdStyle};color:#6B7280">${pos}</td>
+      <td style="${tdStyle};color:#9CA3AF">—</td>
+      <td style="${tdStyle};font-family:monospace;color:#6B7280">${vbRef}</td>
+      <td style="${tdStyle}"><span style="color:#6B7280;font-size:11px">⏭ Already booked — no changes detected</span></td>
+    </tr>`;
+  }).join('');
+
   const fileNames = state.supplierFileNames || [];
   const taggedLinks = fileNames.length
     ? fileNames.map((name, idx) => {
@@ -670,12 +683,18 @@ function renderResult(generations, uploadResults, elapsedMs) {
       }).join('')
     : '';
 
-  const genCount = generations.length;
+  const genCount     = generations.length;
+  const skipCount    = (skippedGroups || []).length;
+  const summaryLabel = [
+    genCount  ? `<strong>${genCount}</strong> booking message${genCount !== 1 ? 's' : ''} generated` : '',
+    skipCount ? `<strong>${skipCount}</strong> skipped (no changes)` : ''
+  ].filter(Boolean).join(', ');
+
   panel.innerHTML = `
     <details>
       <summary style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;margin-bottom:6px">
         <span style="font-size:10px;color:#888">▶</span>
-        <strong>${genCount}</strong> carrier booking message${genCount !== 1 ? 's' : ''} generated
+        ${summaryLabel}
         <span style="font-size:11px;color:#888;font-style:italic">— click to expand</span>
       </summary>
       ${summaryBanner}
@@ -686,7 +705,7 @@ function renderResult(generations, uploadResults, elapsedMs) {
           <th style="${thStyle}">VB Ref</th>
           <th style="${thStyle}">VBKREQ File</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${rows}${skippedRows}</tbody>
       </table>
       ${taggedLinks ? `<div style="font-size:12px"><strong>Tagged supplier template(s) with VB Ref:</strong><div style="margin-top:6px">${taggedLinks}</div></div>` : ''}
     </details>`;
