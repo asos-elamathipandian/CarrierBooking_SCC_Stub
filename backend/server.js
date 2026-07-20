@@ -720,6 +720,40 @@ app.post('/api/upload-sftp', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// POST /api/upload-sftp-batch
+// Upload multiple XMLs over a single shared SFTP connection
+// ─────────────────────────────────────────────
+app.post('/api/upload-sftp-batch', async (req, res) => {
+  try {
+    const { files } = req.body; // [{ filename, xmlContent }]
+    if (!Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'files array is required' });
+    }
+
+    const results = await sftpUploader.uploadBatch(files);
+
+    // Update generation log for each uploaded file
+    for (const r of results) {
+      const gen = (sessionState.lastGenerations || []).find(g => g.filename === r.filename);
+      const ctrlNum = gen?.ctrlNumber || null;
+      if (r.filename && ctrlNum !== undefined) {
+        bibleBuilder.updateGenerationLog(r.filename, ctrlNum, {
+          sftp:       r.ok ? (r.localMode ? 'local' : 'uploaded') : 'error',
+          sftpEnv:    r.sftpEnv || null,
+          sftpPath:   r.remotePath || null,
+          uploadedAt: r.uploadedAt || new Date().toISOString()
+        });
+      }
+    }
+
+    res.json({ results });
+  } catch (err) {
+    console.error('upload-sftp-batch error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
 // GET /api/tagged-template
 // Build and return supplier Excel with VBKREQ_Ref column mapped to each PO
 // ─────────────────────────────────────────────

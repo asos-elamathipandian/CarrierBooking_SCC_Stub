@@ -476,15 +476,11 @@ async function build(masterRows, purposeCd, options = {}) {
       li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt(cL ? cL.toFixed(2) : '0.00');
       li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt(cW ? cW.toFixed(2) : '0.00');
       li.ele('Reference', { RefTypeCd: 'HT',  SourceRefTypeCd: '128' }).txt(cH ? cH.toFixed(2) : '0.00');
-      // Line-level measures: QUR=1 carton per SKU line; N/G/VOL computed per carton
-      const lineN   = parseFloat((row._net).toFixed(4));                          // Unit_Weight_KG × BKQ
-      const lineCWt = parseFloat(row.Carton_Weight_KG) || ct.weight || 0;
-      const lineG   = parseFloat((lineN + lineCWt).toFixed(4));                   // N + 1 carton weight
-      const lineVol = parseFloat((cL * cW * cH / 1000000).toFixed(4));           // 1 carton volume (m3)
+      // Line-level measures: BKQ uses real qty; N/G/VOL/QUR all defaulted to 1 (header totals carry the real values)
       li.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(row._bkq.toFixed(6));
-      li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(lineG.toFixed(4));
-      li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt(lineN.toFixed(4));
-      li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt(lineVol.toFixed(4));
+      li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt('1.0000');
+      li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt('1.0000');
+      li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt('1.0000');
       li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt('1.0000');
       li.ele('TradePartner', { RoleCd: 'FS' }).ele('TradePartnerID', { Qualifier: '93' }).txt(lineFC);
     }

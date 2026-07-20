@@ -98,4 +98,76 @@ async function upload(filename, xmlContent) {
   }
 }
 
-module.exports = { upload };
+/**
+ * Upload multiple files over a SINGLE shared SFTP connection.
+ * files: Array of { filename, xmlContent }
+ * Returns Array of { filename, ok, remotePath, bytesSent, uploadedAt, sftpEnv, localMode, error }
+ */
+async function uploadBatch(files) {
+  if (!files || files.length === 0) return [];
+
+  const cfg = loadConfig();
+
+  // No SFTP configured — fall back to saving all files locally
+  if (!cfg) {
+    return files.map(({ filename, xmlContent }) => {
+      const result = saveLocally(filename, xmlContent);
+      return { filename, ok: true, ...result };
+    });
+  }
+
+  const keyPath = cfg.privateKeyPath
+    ? (path.isAbsolute(cfg.privateKeyPath)
+        ? cfg.privateKeyPath
+        : path.join(__dirname, '..', cfg.privateKeyPath))
+    : null;
+
+  if (keyPath && !fs.existsSync(keyPath)) {
+    throw new Error(`Private key file not found: ${keyPath}`);
+  }
+
+  const authOpts = {};
+  if (cfg.password)   authOpts.password   = cfg.password;
+  if (keyPath)        authOpts.privateKey = fs.readFileSync(keyPath);
+  if (cfg.passphrase) authOpts.passphrase = cfg.passphrase;
+
+  const sftp = new SftpClient();
+  const results = [];
+
+  try {
+    await sftp.connect({
+      host: cfg.host,
+      port: parseInt(cfg.port, 10),
+      username: cfg.username,
+      ...authOpts,
+      readyTimeout: 20000,
+      retries: 2,
+      retry_minTimeout: 2000
+    });
+
+    for (const { filename, xmlContent } of files) {
+      const remotePath = cfg.uploadPath.endsWith('/')
+        ? `${cfg.uploadPath}${filename}`
+        : `${cfg.uploadPath}/${filename}`;
+      try {
+        const buffer = Buffer.from(xmlContent, 'utf8');
+        await sftp.put(buffer, remotePath);
+        saveLocally(filename, xmlContent); // keep local copy
+        results.push({
+          filename, ok: true, remotePath,
+          bytesSent: buffer.length,
+          uploadedAt: new Date().toISOString(),
+          sftpEnv: cfg.isProd ? 'PROD' : 'TEST'
+        });
+      } catch (err) {
+        results.push({ filename, ok: false, error: err.message });
+      }
+    }
+  } finally {
+    await sftp.end().catch(() => {});
+  }
+
+  return results;
+}
+
+module.exports = { upload, uploadBatch };

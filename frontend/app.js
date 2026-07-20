@@ -362,21 +362,16 @@ async function runAmendAction(purposeCd) {
       const genData = await genRes.json();
     if (!genRes.ok) throw new Error(genData.error || (isResub ? 'Re-submission generation failed' : 'Cancel generation failed'));
       const gens = genData.generations || [];
-      const uploadResults = [];
-      for (const gen of gens) {
-        try {
-          const upRes  = await fetch(`${API}/upload-sftp`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml })
-          });
-          const upData = await upRes.json();
-          if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
-          uploadResults.push({ filename: gen.filename, ok: true, localMode: upData.localMode, sftpEnv: upData.sftpEnv });
-        } catch (err) {
-          uploadResults.push({ filename: gen.filename, ok: false, error: err.message });
-        }
-      }
+      const upRes  = await fetch(`${API}/upload-sftp-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: gens.map(g => ({ filename: g.filename, xmlContent: g.xml })) })
+      });
+      const upData = await upRes.json();
+      if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
+      const uploadResults = (upData.results || []).map(r => ({
+        filename: r.filename, ok: r.ok, localMode: r.localMode, sftpEnv: r.sftpEnv, error: r.error
+      }));
     renderAmendResult(gens, uploadResults, purposeCd);
       loadHistory();
     } catch (err) {
@@ -554,24 +549,19 @@ if (btnRunPipeline) {
 
       // ── 4. Upload ─────────────────────────────────────────────────────────
       progSet(4, 'active', '🚀 Uploading…');
-      const results = await Promise.all(
-        state.generations.map(async gen => {
-          try {
-            const upRes  = await fetch(`${API}/upload-sftp`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filename: gen.filename, xmlContent: gen.xml }),
-              signal
-            });
-            const upData = await upRes.json();
-            if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
-            return { filename: gen.filename, ok: true, remotePath: upData.remotePath, localMode: upData.localMode, sftpEnv: upData.sftpEnv };
-          } catch (err) {
-            if (err.name === 'AbortError') throw err; // bubble up so outer catch handles it
-            return { filename: gen.filename, ok: false, error: err.message };
-          }
-        })
-      );
+      const batchRes  = await fetch(`${API}/upload-sftp-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: state.generations.map(g => ({ filename: g.filename, xmlContent: g.xml })) }),
+        signal
+      });
+      const batchData = await batchRes.json();
+      if (!batchRes.ok) throw new Error(batchData.error || 'Batch upload failed');
+      const results = (batchData.results || []).map(r => ({
+        filename: r.filename, ok: r.ok,
+        remotePath: r.remotePath, localMode: r.localMode, sftpEnv: r.sftpEnv,
+        error: r.error
+      }));
       const ok   = results.filter(r => r.ok);
       const fail = results.filter(r => !r.ok);
       progSet(4, fail.length === 0 ? 'done' : 'error', fail.length === 0 ? '🚀 Uploaded ✅' : '🚀 Upload ⚠️');
