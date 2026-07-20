@@ -74,6 +74,23 @@ function setLoading(btn, loading) {
   }
 }
 
+function renderPoTags(poRefs) {
+  const tags    = document.getElementById('blobPoRefTags');
+  const count   = document.getElementById('poRefsCount');
+  const details = document.getElementById('poRefsDetails');
+  if (tags) {
+    tags.innerHTML = (poRefs && poRefs.length)
+      ? poRefs.map(r => `<span class="tag">PO: ${r}</span>`).join('')
+      : '<span style="color:#aaa;font-size:12px">No PO refs found.</span>';
+  }
+  if (count) {
+    count.textContent = (poRefs && poRefs.length)
+      ? `${poRefs.length} PO${poRefs.length !== 1 ? 's' : ''}`
+      : 'none';
+  }
+  if (details) details.removeAttribute('open');
+}
+
 // ── Drop zone & file input ────────────────────────────────────────────────────
 function applyFilesToZone(files) {
   if (!files || files.length === 0) return;
@@ -159,12 +176,7 @@ btnParseSupplier.addEventListener('click', async () => {
     state.supplierFileNames = [...supplierFileInput.files].map(f => f.name);
 
     // Auto-populate PO refs in the blob fetch panel
-    const blobPoRefTags = document.getElementById('blobPoRefTags');
-    if (blobPoRefTags) {
-      blobPoRefTags.innerHTML = state.poRefs.length
-        ? state.poRefs.map(r => `<span class="tag">PO: ${r}</span>`).join('')
-        : '<span style="color:#aaa;font-size:12px">No PO refs found in template.</span>';
-    }
+    renderPoTags(state.poRefs);
 
     const fileCountNote = data.fileCount > 1 ? ` from <strong>${data.fileCount}</strong> files` : '';
     let html = `✅ Parsed successfully${fileCountNote}.`;

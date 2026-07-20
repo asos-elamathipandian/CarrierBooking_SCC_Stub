@@ -109,6 +109,14 @@ function parseSingleSheet(sheet) {
       validationErrors.push(`Row ${obj._rowNum}: Collection_Time is required when Collection_Type is "Collection"`);
     }
 
+    // Enforce whole number for booking units
+    const rawBkq = parseFloat(obj.Header_Booking_Qty);
+    if (!isNaN(rawBkq) && rawBkq !== Math.floor(rawBkq)) {
+      const rounded = Math.round(rawBkq);
+      validationErrors.push(`Row ${obj._rowNum}: Total booked units (${rawBkq}) must be a whole number — rounded to ${rounded}`);
+      obj.Header_Booking_Qty = rounded;
+    }
+
     rows.push(obj);
   }
 
@@ -155,6 +163,14 @@ function parseHeaderOnly(workbook) {
     if (String(obj.Collection_Type || '').trim() === 'Collection' &&
         (!obj.Collection_Time || String(obj.Collection_Time).trim() === '')) {
       validationErrors.push(`Row ${obj._rowNum}: Collection_Time is required when Collection_Type is "Collection"`);
+    }
+
+    // Enforce whole number for booking units
+    const rawBkq = parseFloat(obj.Header_Booking_Qty);
+    if (!isNaN(rawBkq) && rawBkq !== Math.floor(rawBkq)) {
+      const rounded = Math.round(rawBkq);
+      validationErrors.push(`Row ${obj._rowNum}: Total booked units (${rawBkq}) must be a whole number — rounded to ${rounded}`);
+      obj.Header_Booking_Qty = rounded;
     }
 
     rows.push({ ...obj, _headerOnly: true });
