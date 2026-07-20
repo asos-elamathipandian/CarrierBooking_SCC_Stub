@@ -376,6 +376,11 @@ async function build() {
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'No of Cartons required',
       error: 'Enter a whole number greater than 0'
     };
+    wsH.getCell(r, hIdx['Header_Booking_Qty']).dataValidation = {
+      type: 'whole', operator: 'greaterThan', formulae: [0], allowBlank: false,
+      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Booking Units required',
+      error: 'Enter a whole number greater than 0 (no decimals)'
+    };
     wsH.getCell(r, hIdx['Unit_Weight_KG']).dataValidation = {
       type: 'decimal', operator: 'greaterThan', formulae: [0], allowBlank: false,
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Unit Weight required',
