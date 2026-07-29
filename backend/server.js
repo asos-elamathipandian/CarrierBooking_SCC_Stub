@@ -1175,6 +1175,231 @@ app.get('/api/download-template', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// GET /api/reference.doc
+// Download the reference guide as a Word document
+// ─────────────────────────────────────────────
+app.get('/api/reference.doc', (req, res) => {
+  const S = {
+    h1:    'font-family:Calibri,sans-serif;font-size:20pt;font-weight:bold;color:#0B1E3A;margin:0 0 4pt',
+    h2:    'font-family:Calibri,sans-serif;font-size:13pt;font-weight:bold;color:#0B1E3A;text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid #E2E8F0;padding-bottom:3pt;margin:16pt 0 6pt',
+    h2alt: 'font-family:Calibri,sans-serif;font-size:13pt;font-weight:bold;color:#fff;text-transform:uppercase;letter-spacing:.6px;padding:4pt 8pt;margin:16pt 0 6pt',
+    p:     'font-family:Calibri,sans-serif;font-size:10pt;color:#0F172A;line-height:1.6;margin:4pt 0',
+    tbl:   'border-collapse:collapse;width:100%;font-family:Calibri,sans-serif;font-size:9pt',
+    th:    'background:#0B1E3A;color:#fff;padding:5pt 8pt;text-align:left;font-size:8pt;font-weight:bold;border:1px solid #0B1E3A',
+    td:    'padding:5pt 8pt;border:1px solid #E2E8F0;vertical-align:top;color:#0F172A',
+    tdr:   'padding:5pt 8pt;border:1px solid #E2E8F0;vertical-align:top;color:#0F172A;background:#FEF2F2',
+    tdb:   'padding:5pt 8pt;border:1px solid #E2E8F0;vertical-align:top;color:#0F172A;background:#EFF6FF',
+    code:  'font-family:Courier New,monospace;font-size:8pt;background:#EFF6FF;color:#1E3A5F;padding:0 3pt',
+    note:  'font-family:Calibri,sans-serif;font-size:9pt;color:#555;background:#FFFDE7;border-left:3pt solid #F59E0B;padding:6pt 10pt;margin:6pt 0',
+    noteG: 'font-family:Calibri,sans-serif;font-size:9pt;color:#14532D;background:#F0FDF4;border-left:3pt solid #16A34A;padding:6pt 10pt;margin:6pt 0',
+    noteB: 'font-family:Calibri,sans-serif;font-size:9pt;color:#1E40AF;background:#EFF6FF;border-left:3pt solid #2563EB;padding:6pt 10pt;margin:6pt 0',
+    bRed:  'font-family:Calibri,sans-serif;font-size:8pt;font-weight:bold;color:#fff;background:#DC2626;padding:1pt 5pt;border-radius:3pt',
+    bGry:  'font-family:Calibri,sans-serif;font-size:8pt;font-weight:bold;color:#fff;background:#475569;padding:1pt 5pt;border-radius:3pt',
+    bPur:  'font-family:Calibri,sans-serif;font-size:8pt;font-weight:bold;color:#fff;background:#6D28D9;padding:1pt 5pt;border-radius:3pt',
+    bAmb:  'font-family:Calibri,sans-serif;font-size:8pt;font-weight:bold;color:#fff;background:#D97706;padding:1pt 5pt;border-radius:3pt',
+    bNvy:  'font-family:Calibri,sans-serif;font-size:8pt;font-weight:bold;color:#fff;background:#0C4A6E;padding:1pt 5pt;border-radius:3pt',
+    bGrn:  'font-family:Calibri,sans-serif;font-size:8pt;font-weight:bold;color:#fff;background:#065f46;padding:1pt 5pt;border-radius:3pt',
+    bBlu:  'font-family:Calibri,sans-serif;font-size:8pt;font-weight:bold;color:#fff;background:#1D4ED8;padding:1pt 5pt;border-radius:3pt',
+  };
+  const c = t => `<code style="${S.code}">${t}</code>`;
+  const sSupplier = `<span style="${S.bRed}">Supplier Template</span>`;
+  const sSystem   = `<span style="${S.bGry}">System Generated</span>`;
+  const sLookup   = `<span style="${S.bPur}">Internal Lookup</span>`;
+  const sUI       = `<span style="${S.bAmb}">User Selection (UI)</span>`;
+  const sShipment = `<span style="${S.bNvy}">Databricks-aim_shipment_detail_v1</span>`;
+  const sPO       = `<span style="${S.bGrn}">Databricks-bam033j_purchase_order_v1</span>`;
+  const sASN      = `<span style="${S.bBlu}">Databricks-bam036e_asn_v1</span>`;
+
+  const html = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="UTF-8"/>
+<meta name=ProgId content=Word.Document/>
+<meta name=Generator content="Microsoft Word 15"/>
+<title>VBKREQ Reference Guide</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+</head>
+<body style="font-family:Calibri,sans-serif;margin:2cm 2.5cm">
+
+<h1 style="${S.h1}">📖 Reference Guide — Field Mapping &amp; Flow</h1>
+<p style="${S.p}">CarrierBookingStub — VBKREQ Generator &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'})}</p>
+<hr style="border:1px solid #E2E8F0;margin:8pt 0"/>
+
+<!-- ── How it works ── -->
+<h2 style="${S.h2}">📋 How This Tool Works</h2>
+<p style="${S.p}">This tool generates a <strong>VBKREQ XML</strong> (Vendor Booking Request) for submission to E2open TA and DavisTurner.</p>
+<p style="${S.p}"><strong>Booking — Steps 1 &amp; 2:</strong> Upload Supplier Excel → Fetch Databricks ASN → Build Master Workbook → Generate VBKREQ XML → Upload to E2open SFTP</p>
+<p style="${S.p}"><strong>Cancellation (standalone, no re-upload needed):</strong> Enter PO or VB Ref → Look up stored booking data → Build cancellation VBKREQ (01 + 177) → Upload to E2open SFTP</p>
+<p style="${S.p}"><strong>Step 1 — Supplier Excel:</strong> One row per PO in the PO Header sheet. Mandatory fields: ${c('PO_Number')}, ${c('Cargo_Ready_Planned_Collection_Date')}, ${c('Carrier_Booking_Request_Date')}, ${c('Traffic_Mode')}, ${c('Booking_Group')}, ${c('No_of_Cartons')}, ${c('Unit_Weight_KG')}, ${c('Carton_Type')}. No PO Lines sheet required — SKUs pulled from Databricks ASN feed.</p>
+<p style="${S.p}"><strong>Booking_Group:</strong> Single Booking = one VBKREQ per PO; Multiple POs-BK001…BK025 = POs sharing same code merged; Multiple = all POs combined.</p>
+<p style="${S.p}"><strong>Factory_ID 9999:</strong> Dummy factory — address validation skipped, VBKREQ generated without factory address.</p>
+<p style="${S.p}"><strong>Step 2 — Pipeline:</strong> Select Purpose Code (13 = New, 15 = Re-Submission) then click Build VB &amp; Upload to SFTP. All four stages run automatically.</p>
+<div style="${S.noteG}">📧 <strong>Booking Report Email:</strong> Sent after each scheduled SharePoint sync (09:00 &amp; 13:00) to REPORT_TO. Manual UI bookings appear in the next scheduled report. Always On must be enabled on Azure App Service. Mail.Send permission required on the App Registration.</div>
+<div style="${S.noteB}">📋 <strong>Smart Skip</strong> — no VBKREQ raised for: ASNs with bam036e _notification_type=D; POs with Status=C; ASNs/POs where bookingRequested is already populated.</div>
+<p style="${S.p}"><strong>Cancel Booking:</strong> Enter PO or VB Ref, click Look Up, then Cancel &amp; Upload. Builds PurposeCd=01 with DateTypeCd=177, reuses original VB Ref. No template re-upload needed.</p>
+<div style="${S.note}">⚠ Legacy bookings (pre-current version) show No stored data — re-run pipeline once with original template to refresh.</div>
+
+<!-- ── XML Envelope ── -->
+<h2 style="${S.h2}">XML Envelope &amp; Transmission</h2>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">XML Element / Attribute</th><th style="${S.th}">Value / Field</th><th style="${S.th}">Source</th><th style="${S.th}">Notes</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}">${c('XMLTransmission @CtrlNumber')}</td><td style="${S.td}">Auto-incrementing integer (ctrl-counter.json)</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Unique per generation</td></tr>
+<tr><td style="${S.td}">${c('XMLTransmission @Sender')}</td><td style="${S.td}">${c('DAVIESTN')}</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Hardcoded. ⚠ E2open rejects if E2ASOS set as Sender.</td></tr>
+<tr><td style="${S.td}">${c('XMLTransmission @Receiver')}</td><td style="${S.td}">${c('E2ASOS')}</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Hardcoded E2open receiver.</td></tr>
+<tr><td style="${S.td}">${c('XMLTransmission @Timestamp')}</td><td style="${S.td}">Current date/time at generation</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Format: YYYYMMDD HH:MM:SS</td></tr>
+<tr><td style="${S.td}">${c('BpMessage @PurposeCd')}</td><td style="${S.td}">13 / 15 / 01</td><td style="${S.td}">${sUI}</td><td style="${S.td}"><strong>13</strong>=New; <strong>15</strong>=Re-Submission; <strong>01</strong>=Cancellation (Cancel card only)</td></tr>
+</tbody></table>
+
+<!-- ── Supplier Template ── -->
+<h2 style="${S.h2}">Supplier Template — Sheet Structure &amp; Booking_Group</h2>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">Sheet</th><th style="${S.th}">Rows</th><th style="${S.th}">Key Columns</th><th style="${S.th}">Notes</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}"><strong>PO Header</strong></td><td style="${S.td}">One row per PO</td><td style="${S.td}">PO_Number, Cargo_Ready_Planned_Collection_Date, Carrier_Booking_Request_Date, Traffic_Mode, Booking_Group, No_of_Cartons, Unit_Weight_KG, Carton_Type, Pack_Type, Collection_Type, Hazardous, Carton_Length/Width/Height/Weight_cm, Collection_Time, Remarks</td><td style="${S.td}">All carton fields mandatory. No PO Lines sheet.</td></tr>
+<tr><td style="${S.td}"><strong>CARTON_LOOKUP</strong></td><td style="${S.td}">Reference (hidden)</td><td style="${S.td}">Carton_Type, Weight_KG, Length/Width/Height_cm</td><td style="${S.td}">Drives dropdown and auto-fill</td></tr>
+</tbody></table>
+<br/>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">Booking_Group Value</th><th style="${S.th}">Behaviour</th><th style="${S.th}">Result</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}">${c('Single Booking')}</td><td style="${S.td}">Each PO generates its own VBKREQ</td><td style="${S.td}">N VBKREQs for N POs</td></tr>
+<tr><td style="${S.td}">${c('Multiple POs-BK001')} … ${c('Multiple POs-BK025')}</td><td style="${S.td}">All POs sharing same BK code merged</td><td style="${S.td}">One VBKREQ per unique BK code</td></tr>
+<tr><td style="${S.td}">${c('Multiple')}</td><td style="${S.td}">All POs combined into one VBKREQ</td><td style="${S.td}">One VBKREQ for entire upload</td></tr>
+</tbody></table>
+
+<!-- ── Booking Header ── -->
+<h2 style="${S.h2}">Booking Header — References, Mode &amp; Transport</h2>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">XML Element</th><th style="${S.th}">Field / Value</th><th style="${S.th}">Source</th><th style="${S.th}">Notes</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}">${c('<Mode>')}</td><td style="${S.td}">${c('Mode_Of_Transport')} → E2 code</td><td style="${S.td}">${sShipment}</td><td style="${S.td}">Sea→10, Air→40, Road→30, Rail→50, Eco→70. Not mandatory in template.</td></tr>
+<tr><td style="${S.td}">${c('Reference QY')} — Traffic Mode</td><td style="${S.td}">${c('Traffic_Mode')} (CFS / CY)</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Mandatory. Default: CFS.</td></tr>
+<tr><td style="${S.td}">${c('Reference 4B')} — Country of Origin</td><td style="${S.td}">${c('Country_Of_Origin')}</td><td style="${S.td}">${sPO}</td><td style="${S.td}">Line-level; falls back to Factory_CountryCd</td></tr>
+<tr><td style="${S.td}">${c('Reference BH')} — Hazardous</td><td style="${S.td}">${c('Hazardous')} → Y / N</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">N/A and blank → N. Default: N/A.</td></tr>
+<tr><td style="${S.td}">${c('Reference CC')} — Cargo Category</td><td style="${S.td}">Green</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Hardcoded ASOS standard</td></tr>
+<tr><td style="${S.td}">${c('Reference CD')} — Collection/Delivery</td><td style="${S.td}">${c('Collection_Type')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Collection or Delivery. Default: Delivery.</td></tr>
+<tr><td style="${S.td}">${c('Reference CT')} — Collection Time</td><td style="${S.td}">${c('Collection_Time')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Only emitted when Collection_Type=Collection or time provided (HH:MM)</td></tr>
+<tr><td style="${S.td}">${c('Remark BRC')} — Booking Comments</td><td style="${S.td}">${c('Remarks')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Optional</td></tr>
+</tbody></table>
+
+<!-- ── Trade Partners ── -->
+<h2 style="${S.h2}">Trade Partners</h2>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">Role</th><th style="${S.th}">XML Element</th><th style="${S.th}">Field / Value</th><th style="${S.th}">Source</th><th style="${S.th}">Notes</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}"><strong>SU</strong> — Supplier</td><td style="${S.td}">${c('TradePartnerName')}</td><td style="${S.td}">${c('Supplier_Name')}</td><td style="${S.td}">${sPO}</td><td style="${S.td}">From SupplierName in PO table</td></tr>
+<tr><td style="${S.td}"><strong>SU</strong> — Supplier</td><td style="${S.td}">${c('TradePartnerID')}</td><td style="${S.td}">${c('Supplier_ID')}</td><td style="${S.td}">${sPO}</td><td style="${S.td}">From SupplierID in PO table</td></tr>
+<tr><td style="${S.td}"><strong>FA</strong> — Factory</td><td style="${S.td}">${c('TradePartnerName')}</td><td style="${S.td}">${c('Factory_Name')}</td><td style="${S.td}">${sPO}</td><td style="${S.td}">From FactoryDesc in PO table</td></tr>
+<tr><td style="${S.td}"><strong>FA</strong> — Factory</td><td style="${S.td}">${c('TradePartnerID')}</td><td style="${S.td}">${c('Factory_ID')}</td><td style="${S.td}">${sPO}</td><td style="${S.td}">From Factory (cast to string)</td></tr>
+<tr><td style="${S.td}"><strong>FA</strong> — Factory</td><td style="${S.td}">${c('TradePartnerAddress')}</td><td style="${S.td}">—</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">No factory address in Databricks — omitted from VBKREQ</td></tr>
+<tr><td style="${S.td}"><strong>FD</strong> — FC Destination</td><td style="${S.td}">${c('TradePartnerName')}</td><td style="${S.td}">${c('FC_Name')} (FC_MASTER)</td><td style="${S.td}">${sLookup}</td><td style="${S.td}">FC_MASTER keyed on FC_ID (e.g. FC01 = ASOS Barnsley)</td></tr>
+<tr><td style="${S.td}"><strong>FD</strong> — FC Destination</td><td style="${S.td}">${c('TradePartnerID')}</td><td style="${S.td}">${c('FC_ID')}</td><td style="${S.td}">${sShipment}</td><td style="${S.td}">From finalDestination / firstDestination</td></tr>
+<tr><td style="${S.td}"><strong>FD</strong> — FC Destination</td><td style="${S.td}">${c('TradePartnerAddress')}</td><td style="${S.td}">FC street/city/postal/country</td><td style="${S.td}">${sLookup}</td><td style="${S.td}">FC_MASTER in bible-builder.js — verify addresses</td></tr>
+<tr><td style="${S.td}"><strong>CA</strong> — Carrier</td><td style="${S.td}">${c('TradePartnerID')}</td><td style="${S.td}">3</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Hardcoded DavisTurner carrier ID</td></tr>
+<tr><td style="${S.td}"><strong>SL</strong> — Loading Port</td><td style="${S.td}">${c('TradePartnerID')}</td><td style="${S.td}">${c('Loading_Port_LOCODE')}</td><td style="${S.td}">${sPO}</td><td style="${S.td}">From LadingPort UN/LOCODE in PO table</td></tr>
+</tbody></table>
+
+<!-- ── Dates & Locations ── -->
+<h2 style="${S.h2}">Status — Dates &amp; Locations</h2>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">Status Element</th><th style="${S.th}">Field / Value</th><th style="${S.th}">Source</th><th style="${S.th}">Notes</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}">${c('Date 018')} — Cargo Ready</td><td style="${S.td}">${c('Cargo_Ready_Planned_Collection_Date')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">DD/MM/YYYY → YYYYMMDD</td></tr>
+<tr><td style="${S.td}">${c('Date 081')} — Booking Request</td><td style="${S.td}">${c('Carrier_Booking_Request_Date')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">DD/MM/YYYY → YYYYMMDD</td></tr>
+<tr><td style="${S.td}">${c('Location L')} — Loading Port</td><td style="${S.td}">${c('Loading_Port_LOCODE')}</td><td style="${S.td}">${sPO}</td><td style="${S.td}">UN/LOCODE from LadingPort</td></tr>
+<tr><td style="${S.td}">${c('Location E')} — Export Port</td><td style="${S.td}">FC_LOCODE lookup by FC_ID</td><td style="${S.td}">${sLookup}</td><td style="${S.td}">FC01/FC02 → GBBSY</td></tr>
+<tr><td style="${S.td}">${c('Location D')} — Destination</td><td style="${S.td}">FC_LOCODE lookup by FC_ID</td><td style="${S.td}">${sLookup}</td><td style="${S.td}">Same as Location E</td></tr>
+<tr><td style="${S.td}">${c('Date 211')} — Booking Req DateTime</td><td style="${S.td}">Current timestamp</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Format: YYYYMMDD HH:MM:SS</td></tr>
+<tr><td style="${S.td}">${c('Date OSBT')}</td><td style="${S.td}">Current timestamp</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Format: YYYYMMDD HH:MM:SS</td></tr>
+<tr><td style="${S.td}">${c('Date 065')} — Expected Delivery</td><td style="${S.td}">${c('Expected_Delivery_Date')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Optional</td></tr>
+<tr><td style="${S.td}">${c('Date OSBK')} — Booking Confirmed</td><td style="${S.td}">Current timestamp</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">System time when XML is built</td></tr>
+<tr><td style="${S.td}">${c('Date SBK')}</td><td style="${S.td}">Current timestamp</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Same as OSBK</td></tr>
+<tr style="background:#FFF5F5"><td style="${S.td}">${c('Date 177')} — Cancellation Date</td><td style="${S.td}">Current timestamp at cancellation</td><td style="${S.td}">${sSystem}</td><td style="${S.td}"><strong>Only for PurposeCd=01.</strong> Injected after SBK date.</td></tr>
+</tbody></table>
+
+<!-- ── Document ── -->
+<h2 style="${S.h2}">Document — Booking Summary (one per ASN)</h2>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">XML Element</th><th style="${S.th}">Field / Value</th><th style="${S.th}">Source</th><th style="${S.th}">Notes</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}">${c('Document @Key')}</td><td style="${S.td}">${c('Booking_Ref')} (e.g. VB-1000000001)</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Auto-incrementing. Cancellation reuses original VB Ref.</td></tr>
+<tr><td style="${S.td}">${c('Reference ACE')} — Booking Ref</td><td style="${S.td}">${c('Booking_Ref')}</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Same as Document Key</td></tr>
+<tr><td style="${S.td}">${c('Reference V0')} — Version</td><td style="${S.td}">1.0 (new) / increments on PurposeCd 15</td><td style="${S.td}">${sSystem}</td><td style="${S.td}">Stored in ctrl-counter.json</td></tr>
+<tr><td style="${S.td}">${c('Measure N')} — Net Weight (KG)</td><td style="${S.td}">Sum of ${c('Unit_Weight_KG')} per line</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Summed per ASN</td></tr>
+<tr><td style="${S.td}">${c('Measure G')} — Gross Weight (KG)</td><td style="${S.td}">Sum of ${c('Carton_Weight_KG × No_of_Cartons')}</td><td style="${S.td}">${sSupplier} / ${sLookup}</td><td style="${S.td}">Carton weight from CARTON_TYPES if absent</td></tr>
+<tr><td style="${S.td}">${c('Measure VOL')} — Volume (M³)</td><td style="${S.td}">Sum of (L×W×H ÷ 1,000,000) × No_of_Cartons</td><td style="${S.td}">${sSupplier} / ${sLookup}</td><td style="${S.td}">Dimensions from CARTON_TYPES lookup</td></tr>
+<tr><td style="${S.td}">${c('Measure QUR')} — Carton Qty</td><td style="${S.td}">Sum of ${c('No_of_Cartons')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Summed per ASN</td></tr>
+<tr><td style="${S.td}">${c('Measure BKQ')} — Booking Qty (units)</td><td style="${S.td}">Sum of ${c('Booking_Qty')} per line</td><td style="${S.td}">${sASN} / ${sShipment} / ${sPO}</td><td style="${S.td}"><strong>Priority:</strong> 1) bam036e unit_qty → 2) aim_shipment bookedQty → 3) bam033j PhysicalQtyOrdered</td></tr>
+<tr><td style="${S.td}">${c('Order @Key / OrderID')}</td><td style="${S.td}">${c('PO_Number')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">One Order element per PO within the ASN</td></tr>
+</tbody></table>
+
+<!-- ── Smart Skip ── -->
+<h2 style="font-family:Calibri,sans-serif;font-size:13pt;font-weight:bold;color:#fff;background:#1D4ED8;text-transform:uppercase;letter-spacing:.6px;padding:4pt 8pt;margin:16pt 0 6pt">📋 Smart Skip — Cancelled &amp; Already-Booked Items</h2>
+<p style="${S.p}">The tool automatically skips ASN/PO combinations matching any of the following conditions:</p>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">Condition</th><th style="${S.th}">Data Source</th><th style="${S.th}">Check</th><th style="${S.th}">UI Indicator</th>
+</tr></thead><tbody>
+<tr style="background:#FEF2F2"><td style="${S.td}"><strong>ASN Cancelled</strong></td><td style="${S.td}">${sASN}</td><td style="${S.td}">Latest ${c('_notification_type')} = ${c('D')}</td><td style="${S.td}">🚫 ASN cancelled — booking skipped</td></tr>
+<tr style="background:#FEF2F2"><td style="${S.td}"><strong>PO Cancelled</strong></td><td style="${S.td}">${sPO}</td><td style="${S.td}">${c('Status = C')} on PO record</td><td style="${S.td}">🚫 PO cancelled (Status=C) — booking skipped</td></tr>
+<tr style="background:#EFF6FF"><td style="${S.td}"><strong>Already Booked</strong></td><td style="${S.td}">${sShipment}</td><td style="${S.td}">${c('bookingRequested')} is non-null</td><td style="${S.td}">📋 ASN already has a carrier booking — skipped</td></tr>
+</tbody></table>
+<div style="${S.note}">ℹ bam036e_asn_v1 query is non-fatal — pipeline continues without cancellation filter if it fails, falling back to aim_shipment bookedQty → bam033j PhysicalQtyOrdered.</div>
+
+<!-- ── Cancel Booking ── -->
+<h2 style="font-family:Calibri,sans-serif;font-size:13pt;font-weight:bold;color:#fff;background:#991B1B;text-transform:uppercase;letter-spacing:.6px;padding:4pt 8pt;margin:16pt 0 6pt">✕ Cancel Booking — Standalone Cancellation Flow</h2>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">Step</th><th style="${S.th}">Detail</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}"><strong>1 · Enter input</strong></td><td style="${S.td}">One or more PO numbers or VB Refs (e.g. 500034236929 or VB-1000000025) — comma or newline separated.</td></tr>
+<tr><td style="${S.td}"><strong>2 · Look Up</strong></td><td style="${S.td}">Fetches from generation log. ✅ Ready to cancel = stored data present; ⚠ No stored data = re-run pipeline first.</td></tr>
+<tr><td style="${S.td}"><strong>3 · Cancel &amp; Upload</strong></td><td style="${S.td}">Builds PurposeCd=01, reuses original VB Ref, injects DateTypeCd=177 after SBK date, uploads to SFTP.</td></tr>
+<tr><td style="${S.td}"><strong>Generation Log</strong></td><td style="${S.td}">Stored in bible/generation-log.json. Makes cancellation self-contained and independent of current session.</td></tr>
+</tbody></table>
+
+<!-- ── Booking Report Email ── -->
+<h2 style="font-family:Calibri,sans-serif;font-size:13pt;font-weight:bold;color:#fff;background:#166534;text-transform:uppercase;letter-spacing:.6px;padding:4pt 8pt;margin:16pt 0 6pt">📧 Booking Report Email — Scheduled Summary</h2>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">Topic</th><th style="${S.th}">Detail</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}"><strong>Trigger</strong></td><td style="${S.td}">After each SharePoint sync (09:00 &amp; 13:00). Covers all VBKREQs since last report (tracked in bible/report-state.json).</td></tr>
+<tr><td style="${S.td}"><strong>Manual UI bookings</strong></td><td style="${S.td}">Not emailed immediately — appear in next scheduled report.</td></tr>
+<tr><td style="${S.td}"><strong>Report columns</strong></td><td style="${S.td}">Supplier | PO Number(s) | VB Ref | ASN Ref(s) | VBKREQ Filename | Booking Group | Cargo Ready Date | No. of Cartons | Total Weight (KG) | SFTP Status | Generated At</td></tr>
+<tr><td style="${S.td}"><strong>Configuration</strong></td><td style="${S.td}">${c('REPORT_TO')} — recipient address(es); ${c('REPORT_FROM')} — sender mailbox</td></tr>
+<tr><td style="${S.td}"><strong>Azure App Service</strong></td><td style="${S.td}"><strong>Always On must be enabled</strong> (Basic tier+). Without it node-cron idles and no reports fire.</td></tr>
+<tr><td style="${S.td}"><strong>App Registration</strong></td><td style="${S.td}">${c('Mail.Send')} application permission required in addition to ${c('Mail.ReadWrite')}.</td></tr>
+</tbody></table>
+
+<!-- ── Line Item ── -->
+<h2 style="${S.h2}">Line Item — SKU Level (one per SKU per PO)</h2>
+<table style="${S.tbl}"><thead><tr>
+  <th style="${S.th}">XML Element</th><th style="${S.th}">Field / Value</th><th style="${S.th}">Source</th><th style="${S.th}">Notes</th>
+</tr></thead><tbody>
+<tr><td style="${S.td}">${c('LineItem @Key')}</td><td style="${S.td}">PO_Number + "_" + SKU + "_" + ASN_Ref</td><td style="${S.td}">${sShipment} + ${sSupplier}</td><td style="${S.td}">Composite key</td></tr>
+<tr><td style="${S.td}">${c('Attribute SI')} — ASN Ref</td><td style="${S.td}">${c('ASN_Ref')} (asnId)</td><td style="${S.td}">${sShipment}</td><td style="${S.td}">Shipment advice ID</td></tr>
+<tr><td style="${S.td}">${c('Attribute SK')} — SKU</td><td style="${S.td}">${c('SKU')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">ASOS product SKU</td></tr>
+<tr><td style="${S.td}">${c('Attribute UA')} — EAN/Barcode</td><td style="${S.td}">${c('EAN_Barcode')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Optional; also from ${sPO} (EANItemID)</td></tr>
+<tr><td style="${S.td}">${c('Reference PAC')} — Pack Type</td><td style="${S.td}">${c('Pack_Type')} (Flat / Bulk Flat / Hanging)</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Default: Bulk Flat</td></tr>
+<tr><td style="${S.td}">${c('Reference PT')} — Product Style</td><td style="${S.td}">${c('Product_Style')} (OptionItemID)</td><td style="${S.td}">${sPO}</td><td style="${S.td}">Style code from PO SKU detail</td></tr>
+<tr><td style="${S.td}">${c('Reference DSC')} — Description</td><td style="${S.td}">${c('Description')} (OptionDescription)</td><td style="${S.td}">${sPO}</td><td style="${S.td}">Item description from PO SKU detail</td></tr>
+<tr><td style="${S.td}">${c('Reference 98')} — Carton Type</td><td style="${S.td}">${c('Carton_Type')}</td><td style="${S.td}">${sSupplier}</td><td style="${S.td}">Default: BDCM1; drives dimension lookup</td></tr>
+<tr><td style="${S.td}">${c('Reference LN/WD/HT')} — Dimensions</td><td style="${S.td}">${c('Carton_Length/Width/Height_cm')}</td><td style="${S.td}">${sLookup}</td><td style="${S.td}">Auto-filled from CARTON_TYPES; supplier can override</td></tr>
+<tr><td style="${S.td}">${c('Measure BKQ')} — Booking Qty</td><td style="${S.td}">${c('Booking_Qty')}</td><td style="${S.td}">${sASN}</td><td style="${S.td}">1) bam036e unit_qty → 2) aim_shipment bookedQty → 3) bam033j PhysicalQtyOrdered</td></tr>
+<tr><td style="${S.td}">${c('TradePartner FS')} — Final Store/FC</td><td style="${S.td}">${c('F1_ID')} (firstDestination)</td><td style="${S.td}">${sShipment}</td><td style="${S.td}">ASOS fulfilment centre ID per line</td></tr>
+</tbody></table>
+<div style="${S.note}">⚠ FC_MASTER addresses in backend/bible-builder.js are placeholders — verify before go-live. FC_LOCODE in vbkreq-builder.js maps FC01/FC02/P005 → GBBSY.</div>
+
+</body>
+</html>`;
+
+  res.setHeader('Content-Type', 'application/msword');
+  res.setHeader('Content-Disposition', 'attachment; filename="VBKREQ-Reference-Guide.doc"');
+  res.send(html);
+});
+
+// ─────────────────────────────────────────────
 // Serve frontend for all other routes
 // ─────────────────────────────────────────────
 app.get('*', (req, res) => {

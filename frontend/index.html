@@ -448,7 +448,6 @@
 
     /* ── Reference Guide — Floating Button + Drawer ── */
     .readme-fab {
-      position: fixed; bottom: 24px; right: 24px; z-index: 500;
       width: 52px; height: 52px; border-radius: 50%;
       background: linear-gradient(135deg, var(--navy), var(--blue));
       color: #fff; border: none; cursor: pointer;
@@ -457,17 +456,30 @@
       transition: transform .2s, box-shadow .2s;
     }
     .readme-fab:hover { transform: scale(1.1) translateY(-2px); box-shadow: 0 8px 24px rgba(11,30,58,.5); }
+    .readme-fab-wrap {
+      position: fixed; bottom: 24px; right: 24px; z-index: 500;
+      display: flex; align-items: center;
+    }
     .readme-fab-label {
-      position: fixed; bottom: 28px; right: 84px; z-index: 500;
+      position: absolute; right: 52px; bottom: 50%;
+      transform: translateY(50%);
       background: var(--navy); color: #fff;
       font-size: 11px; font-weight: 700; letter-spacing: .4px;
-      padding: 5px 10px; border-radius: 6px; white-space: nowrap;
+      /* right padding bridges gap to button so hover doesn't break mid-travel */
+      padding: 8px 18px 8px 12px; border-radius: 6px; white-space: nowrap;
       opacity: 0; pointer-events: none;
-      transition: opacity .2s;
+      /* delay hiding by 200ms so cursor has time to reach the label */
+      transition: opacity .15s ease 0s;
       box-shadow: 0 2px 8px rgba(0,0,0,.25);
     }
-    .readme-fab:hover + .readme-fab-label,
-    .readme-fab-label:hover { opacity: 1; }
+    .readme-fab-wrap:hover .readme-fab-label {
+      opacity: 1; pointer-events: all;
+      transition: opacity .1s ease 0s;
+    }
+    /* keep label visible when hovering label itself (cursor travelled over) */
+    .readme-fab-label:hover { opacity: 1; pointer-events: all; }
+    /* delay the fade-out so there's time to move cursor across */
+    .readme-fab-wrap:not(:hover) .readme-fab-label { transition: opacity .2s ease .2s; }
     .readme-drawer-overlay {
       position: fixed; inset: 0; z-index: 600;
       background: rgba(0,0,0,.35); backdrop-filter: blur(2px);
@@ -759,8 +771,10 @@
 </main>
 
 <!-- ── README Floating Button ── -->
-<button class="readme-fab" onclick="openReadme()" title="Reference Guide">📖</button>
-<span class="readme-fab-label">README / Ref Guide</span>
+<div class="readme-fab-wrap">
+  <span class="readme-fab-label">Reference Guide &nbsp;|&nbsp; <a href="/api/reference.doc" style="color:#fff;text-decoration:underline">Download .doc ⬇</a></span>
+  <button class="readme-fab" onclick="openReadme()" title="Reference Guide">📖</button>
+</div>
 
 <!-- ── README Drawer ── -->
 <div class="readme-drawer-overlay" id="readmeOverlay" onclick="closeReadme()"></div>
