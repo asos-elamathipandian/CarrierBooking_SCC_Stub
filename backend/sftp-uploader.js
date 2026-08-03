@@ -17,10 +17,25 @@ function loadConfig() {
   const passphrase = isProd ? (process.env.PROD_SFTP_PASSPHRASE || null) : (process.env.SFTP_PRIVATE_KEY_PASSPHRASE || null);
   const uploadPath = isProd ? (process.env.PROD_SFTP_REMOTE_DIR || '/inbound/vbkreq/') : (process.env.SFTP_UPLOAD_PATH || '/inbound/vbkreq/');
 
-  if (!host || !username) return null; // local mode — SFTP not configured
-  if (!password && !keyPath) return null; // need at least one auth method
+  const keyContent = isProd
+    ? (process.env.PROD_SFTP_PRIVATE_KEY_CONTENT || null)
+    : (process.env.SFTP_PRIVATE_KEY_CONTENT || null);
 
-  return { host, port, username, password, privateKeyPath: keyPath || null, passphrase, uploadPath, isProd };
+  if (!host || !username) return null;
+  if (!password && !keyPath && !keyContent) return null;
+
+  return { host, port, username, password, privateKeyPath: keyPath || null, privateKeyContent: keyContent || null, passphrase, uploadPath, isProd };
+}
+
+// Resolves key from base64 env var (preferred on Azure) or file path
+function resolveKeyMaterial(cfg) {
+  if (cfg.privateKeyContent) return Buffer.from(cfg.privateKeyContent, 'base64').toString('utf8');
+  if (!cfg.privateKeyPath) return null;
+  const abs = path.isAbsolute(cfg.privateKeyPath)
+    ? cfg.privateKeyPath
+    : path.join(__dirname, '..', cfg.privateKeyPath);
+  if (!fs.existsSync(abs)) throw new Error(`Private key file not found: ${abs}`);
+  return fs.readFileSync(abs);
 }
 
 /**
@@ -48,20 +63,12 @@ async function upload(filename, xmlContent) {
   const cfg = loadConfig();
   if (!cfg) return saveLocally(filename, xmlContent);
 
-  const keyPath = cfg.privateKeyPath
-    ? (path.isAbsolute(cfg.privateKeyPath)
-        ? cfg.privateKeyPath
-        : path.join(__dirname, '..', cfg.privateKeyPath))
-    : null;
-
-  if (keyPath && !fs.existsSync(keyPath)) {
-    throw new Error(`Private key file not found: ${keyPath}`);
-  }
+  const keyMaterial = resolveKeyMaterial(cfg);
 
   const authOpts = {};
-  if (cfg.password)    authOpts.password   = cfg.password;
-  if (keyPath)         authOpts.privateKey = fs.readFileSync(keyPath);
-  if (cfg.passphrase)  authOpts.passphrase = cfg.passphrase;
+  if (cfg.password)   authOpts.password   = cfg.password;
+  if (keyMaterial)    authOpts.privateKey = keyMaterial;
+  if (cfg.passphrase) authOpts.passphrase = cfg.passphrase;
 
   const sftp = new SftpClient();
 
@@ -116,19 +123,11 @@ async function uploadBatch(files) {
     });
   }
 
-  const keyPath = cfg.privateKeyPath
-    ? (path.isAbsolute(cfg.privateKeyPath)
-        ? cfg.privateKeyPath
-        : path.join(__dirname, '..', cfg.privateKeyPath))
-    : null;
-
-  if (keyPath && !fs.existsSync(keyPath)) {
-    throw new Error(`Private key file not found: ${keyPath}`);
-  }
+  const keyMaterial = resolveKeyMaterial(cfg);
 
   const authOpts = {};
   if (cfg.password)   authOpts.password   = cfg.password;
-  if (keyPath)        authOpts.privateKey = fs.readFileSync(keyPath);
+  if (keyMaterial)    authOpts.privateKey = keyMaterial;
   if (cfg.passphrase) authOpts.passphrase = cfg.passphrase;
 
   const sftp    = new SftpClient();

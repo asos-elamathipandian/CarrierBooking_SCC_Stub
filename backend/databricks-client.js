@@ -1,7 +1,7 @@
 'use strict';
 
 const { DBSQLClient } = require('@databricks/sql');
-const { AzureCliCredential, InteractiveBrowserCredential, ChainedTokenCredential } = require('@azure/identity');
+const { ClientSecretCredential, AzureCliCredential, InteractiveBrowserCredential, ChainedTokenCredential } = require('@azure/identity');
 
 /**
  * Databricks SQL connector.
@@ -33,10 +33,16 @@ function getConfig() {
 async function resolveToken(cfg) {
   if (cfg.token && !cfg.token.startsWith('REPLACE_')) return cfg.token;
 
-  const credential = new ChainedTokenCredential(
-    new AzureCliCredential({ tenantId: TENANT_ID }),
-    new InteractiveBrowserCredential({ tenantId: TENANT_ID })
-  );
+  // Build credential chain: service principal first (works on App Service), then CLI, then browser (local only)
+  const creds = [];
+  if (process.env.SP_CLIENT_ID && process.env.SP_CLIENT_SECRET && process.env.SP_TENANT_ID) {
+    creds.push(new ClientSecretCredential(process.env.SP_TENANT_ID, process.env.SP_CLIENT_ID, process.env.SP_CLIENT_SECRET));
+  }
+  creds.push(new AzureCliCredential({ tenantId: TENANT_ID }));
+  if (process.env.NODE_ENV !== 'production') {
+    creds.push(new InteractiveBrowserCredential({ tenantId: TENANT_ID }));
+  }
+  const credential = new ChainedTokenCredential(...creds);
   const tokenResponse = await credential.getToken(`${DATABRICKS_RESOURCE}/.default`);
   if (!tokenResponse?.token) throw new Error('Failed to obtain Azure AD token for Databricks');
   return tokenResponse.token;
