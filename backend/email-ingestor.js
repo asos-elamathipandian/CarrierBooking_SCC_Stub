@@ -130,20 +130,27 @@ async function listUnreadMessages(mailbox) {
 /**
  * Fetch file attachments for a message and return only .xlsx / .xlsm ones.
  * If EMAIL_ATTACHMENT_MATCH is set, only attachments whose filename contains
- * that string (case-insensitive) are accepted.
+ * at least one configured token (case-insensitive) are accepted.
+ *
+ * EMAIL_ATTACHMENT_MATCH supports either:
+ *   - a single token: "Supplier PO sheet"
+ *   - a comma-separated list: "Supplier PO sheet,IDEATEKS IRSALIYE"
  * Graph API returns contentBytes (base64) inline for attachments ≤ 3 MB.
  */
 async function getExcelAttachments(mailbox, messageId) {
   const path = `/users/${encodeURIComponent(mailbox)}/messages/${messageId}/attachments`;
   const data = await graphRequest('GET', path);
   const all  = (data && Array.isArray(data.value)) ? data.value : [];
-  const match = (process.env.EMAIL_ATTACHMENT_MATCH || '').trim().toLowerCase();
+  const matchTokens = String(process.env.EMAIL_ATTACHMENT_MATCH || '')
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
   return all.filter(a => {
     if (a['@odata.type'] !== '#microsoft.graph.fileAttachment') return false;
     if (!a.contentBytes) return false;
     const name = (a.name || '').toLowerCase();
     if (!/\.(xlsx|xlsm)$/i.test(name)) return false;
-    if (match && !name.includes(match)) return false;
+    if (matchTokens.length && !matchTokens.some(token => name.includes(token))) return false;
     return true;
   });
 }

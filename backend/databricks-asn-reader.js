@@ -418,5 +418,83 @@ async function fetchAsnsByPoRefs(poRefs) {
   };
 }
 
-module.exports = { fetchAsnsByPoRefs };
+/**
+ * Resolve PO references from ASN references using latest shipment detail records.
+ * Returns { asnToPoMap, poRefs, errors } where asnToPoMap[asn] = [po1, po2, ...].
+ */
+async function resolvePoRefsByAsnRefs(asnRefs) {
+  const cleanAsns = [...new Set((asnRefs || []).map(a => String(a || '').trim()).filter(Boolean))];
+  if (!cleanAsns.length) return { asnToPoMap: {}, poRefs: [], errors: [] };
+
+  // Keep the query safe by allowing common ASN characters (letters, numbers,
+  // underscore, dash, slash, dot) while rejecting everything else.
+  const safeAsns = cleanAsns.filter(a => /^[A-Za-z0-9_./-]+$/.test(a));
+  const rejected = cleanAsns.filter(a => !safeAsns.includes(a));
+
+  if (!safeAsns.length) {
+    return {
+      asnToPoMap: {},
+      poRefs: [],
+      errors: rejected.map(a => `ASN ${a}: invalid format`)
+    };
+  }
+
+  const asnList = safeAsns.map(a => `'${a}'`).join(', ');
+  const sql = `
+    WITH latest AS (
+      SELECT asnId, orderLineItems,
+             ROW_NUMBER() OVER (PARTITION BY asnId ORDER BY _IngestedDate DESC) AS _rn
+      FROM supplychain.conformed.aim_shipment_detail_v1
+      WHERE asnId IN (${asnList})
+    )
+    SELECT s.asnId, ol.orderId AS poId
+    FROM latest s
+    LATERAL VIEW EXPLODE(s.orderLineItems) AS ol
+    WHERE s._rn = 1
+      AND ol.orderId IS NOT NULL
+  `;
+
+  let rows;
+  try {
+    rows = await db.query(sql);
+  } catch (err) {
+    return {
+      asnToPoMap: {},
+      poRefs: [],
+      errors: [`Databricks ASN->PO resolution failed: ${err.message}`]
+    };
+  }
+
+  const asnToPoSet = {};
+  for (const asn of safeAsns) asnToPoSet[asn] = new Set();
+  for (const r of (rows || [])) {
+    const asn = String(r.asnId || '').trim();
+    const po  = String(r.poId  || '').trim();
+    if (!asn || !po) continue;
+    if (!asnToPoSet[asn]) asnToPoSet[asn] = new Set();
+    asnToPoSet[asn].add(po);
+  }
+
+  const asnToPoMap = {};
+  const poSet = new Set();
+  const errors = [];
+
+  for (const asn of cleanAsns) {
+    const poList = [...(asnToPoSet[asn] || new Set())];
+    if (!poList.length) {
+      errors.push(`ASN ${asn}: no PO found in Databricks`);
+      continue;
+    }
+    asnToPoMap[asn] = poList;
+    poList.forEach(po => poSet.add(po));
+  }
+
+  for (const asn of rejected) {
+    errors.push(`ASN ${asn}: invalid format`);
+  }
+
+  return { asnToPoMap, poRefs: [...poSet], errors };
+}
+
+module.exports = { fetchAsnsByPoRefs, resolvePoRefsByAsnRefs };
 

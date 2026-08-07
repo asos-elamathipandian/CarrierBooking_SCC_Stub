@@ -1,0 +1,56 @@
+{
+  "ASN_Number": [
+    "ASN Number",
+    "ASN No"
+  ],
+  "PO_Number": [
+    "PO Number",
+    "PO No"
+  ],
+  "Cargo_Ready_Planned_Collection_Date": [
+    "Cargo Ready Date",
+    "Planned Collection Date"
+  ],
+  "Carrier_Booking_Request_Date": [
+    "Booking Request Date"
+  ],
+  "Booking_Group": [
+    "Booking Group"
+  ],
+  "No_of_Cartons": [
+    "Box Qty",
+    "Total Cartons",
+    "Carton Count"
+  ],
+  "Unit_Weight_KG": [
+    "KOLI TOTAL KG",
+    "Total Items Weight (KG)",
+    "Net Weight (KG)"
+  ],
+  "Header_Booking_Qty": [
+    "Unit Qty",
+    "Booked Units",
+    "Total Units"
+  ],
+  "Traffic_Mode": [
+    "Traffic Mode"
+  ],
+  "Carton_Type": [
+    "Carton Type"
+  ],
+  "Collection_Type": [
+    "Collection Type"
+  ],
+  "Collection_Time": [
+    "Collection Time"
+  ],
+  "Pack_Type": [
+    "Pack Type"
+  ],
+  "Hazardous": [
+    "Hazardous Goods"
+  ],
+  "Remarks": [
+    "Comments"
+  ]
+}

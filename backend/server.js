@@ -94,6 +94,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
     let allRows = [];
     let allValidationErrors = [];
     let allHeaderPoRefs = [];
+    let allHeaderAsnRefs = [];
 
     for (const file of files) {
       const parsed = await supplierReader.parse(file.buffer);
@@ -108,7 +109,11 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
         (parsed.validationErrors || []).map(e => `[${file.originalname}] ${e}`)
       );
       allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
+      allHeaderAsnRefs.push(...(parsed.headerAsnRefs || []));
     }
+
+    // NOTE: ASN->PO resolution is intentionally deferred to /api/fetch-feeds
+    // so Step 1 parse does not depend on Databricks permissions/connectivity.
 
     sessionState.supplierData = { rows: allRows, validationErrors: allValidationErrors };
     sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
@@ -134,6 +139,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
 
     // Compute distinct POs from BOOKING_HEADER (authoritative, even if SKU_LINES is empty)
     const poRefs = [...new Set(allHeaderPoRefs.map(p => String(p).trim()).filter(Boolean))];
+    const asnRefs = [...new Set(allHeaderAsnRefs.map(a => String(a).trim()).filter(Boolean))];
 
     // Compute booking groups from SKU rows (falls back to header POs if no SKU rows)
     const sourceRows = safeRows.length > 0 ? safeRows
@@ -142,11 +148,13 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
     for (const row of sourceRows) {
       const bg = String(row.Booking_Group || '').trim();
       const po = String(row.PO_Number    || '').trim();
-      if (!po) continue;
+      const asn = String(row.ASN_Number  || '').trim();
+      const identity = po || asn;
+      if (!identity) continue;
       if (bg === 'Multiple') { groupKeys.add('__ALL__'); }
       else {
         const m = bg.match(/^Multiple POs-(BK\d+)$/i);
-        groupKeys.add(m ? m[1].toUpperCase() : 'PO__' + po);
+        groupKeys.add(m ? m[1].toUpperCase() : (po ? ('PO__' + po) : ('ASN__' + asn)));
       }
     }
 
@@ -157,6 +165,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
       poCount: poRefs.length,
       bookingCount: groupKeys.size,
       poRefs,
+      asnRefs,
       validationErrors: allValidationErrors
     });
   } catch (err) {
@@ -172,12 +181,42 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
 app.post('/api/fetch-feeds', async (req, res) => {
   try {
     const { poRefs, asnRefs } = req.body;
-    if (!poRefs) return res.status(400).json({ error: 'poRefs required' });
+    let effectivePoRefs = Array.isArray(poRefs) ? poRefs : [];
+    let effectiveAsnRefs = Array.isArray(asnRefs) ? asnRefs : [];
+
+    // Fallback: if UI didn't send asnRefs, derive them from parsed supplier rows in session.
+    if (effectiveAsnRefs.length === 0) {
+      effectiveAsnRefs = [...new Set(
+        (sessionState.supplierData?.rows || [])
+          .map(r => String(r.ASN_Number || '').trim())
+          .filter(Boolean)
+      )];
+    }
+
+    let resolverErrors = [];
+    if (effectivePoRefs.length === 0 && effectiveAsnRefs.length > 0) {
+      const resolved = await databricksAsnReader.resolvePoRefsByAsnRefs(effectiveAsnRefs);
+      effectivePoRefs = resolved.poRefs || [];
+      if (resolved.errors?.length) {
+        resolverErrors = resolved.errors;
+        console.warn('[fetch-feeds] ASN->PO resolution warnings:', resolved.errors);
+      }
+    }
+
+    if (!effectivePoRefs.length) {
+      const detail = resolverErrors.length
+        ? ` | ${resolverErrors.join(' ; ')}`
+        : '';
+      return res.status(400).json({
+        error: `poRefs required (or resolvable asnRefs)${detail}`,
+        resolverErrors
+      });
+    }
 
     const useDb = (process.env.ASN_SOURCE || '').toLowerCase() === 'databricks';
     const feedData = useDb
-      ? await databricksAsnReader.fetchAsnsByPoRefs(poRefs)
-      : await blobClient.fetchCarrierFeedsOnly(poRefs);
+      ? await databricksAsnReader.fetchAsnsByPoRefs(effectivePoRefs)
+      : await blobClient.fetchCarrierFeedsOnly(effectivePoRefs);
     sessionState.feedData = feedData;
 
     // Enrich ALREADY_BOOKED items with the VB Ref from our generation log

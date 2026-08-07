@@ -1,6 +1,8 @@
 'use strict';
 
 const ExcelJS = require('exceljs');
+const fs = require('fs');
+const path = require('path');
 
 // Required fields that must come from PO Header (or equivalent single-sheet columns)
 const REQUIRED_HEADER_COLS = [
@@ -27,14 +29,115 @@ function cellVal(cell) {
   return val;
 }
 
-// Maps user-friendly column display labels (as written in the Excel header) back to
-// the internal field names used throughout the codebase.
-const COLUMN_ALIASES = {
+function normalizeHeaderName(name) {
+  return String(name || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*\(.*?\)/g, '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+// Maps user-friendly column display labels (as written in the Excel header)
+// back to the internal field names used throughout the codebase.
+const DEFAULT_COLUMN_ALIASES = {
   'Total no. of Cartons of booking':   'No_of_Cartons',
   'Total items weight of booking':     'Unit_Weight_KG',
   'Header_Booking_Qty (total units in booking)': 'Header_Booking_Qty',
   'Total booked units of a booking':              'Header_Booking_Qty',
+  'ASN Number': 'ASN_Number',
+  'ASN No': 'ASN_Number',
+  'Box Qty': 'No_of_Cartons',
+  'Unit Qty': 'Header_Booking_Qty',
+  'KOLI TOTAL KG': 'Unit_Weight_KG',
+  'KOLI TOTAL KG ': 'Unit_Weight_KG',
+  'Koli Total Kg': 'Unit_Weight_KG',
 };
+
+const IDEATEKS_REQUIRED_COLS = [
+  'ASN_Number',
+  'No_of_Cartons',
+  'Header_Booking_Qty',
+  'Unit_Weight_KG'
+];
+
+function isoTodayPlus(daysToAdd) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + daysToAdd);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function applyIdeateksDefaults(obj) {
+  if (!obj.Cargo_Ready_Planned_Collection_Date) {
+    obj.Cargo_Ready_Planned_Collection_Date = isoTodayPlus(0);
+  }
+  if (!obj.Carrier_Booking_Request_Date) {
+    obj.Carrier_Booking_Request_Date = isoTodayPlus(1);
+  }
+  obj.Booking_Group = 'Single Booking';
+  if (!obj.Traffic_Mode) obj.Traffic_Mode = 'CFS';
+  if (!obj.Carton_Type) obj.Carton_Type = 'BDCM1';
+  if (!obj.Pack_Type) obj.Pack_Type = 'Bulk Flat';
+  if (!obj.Collection_Type) obj.Collection_Type = 'Delivery';
+  if (!obj.Hazardous) obj.Hazardous = 'N/A';
+}
+
+function loadColumnAliases() {
+  const mappingPath = process.env.SUPPLIER_COLUMN_MAPPING_FILE
+    ? path.resolve(process.cwd(), process.env.SUPPLIER_COLUMN_MAPPING_FILE)
+    : path.join(__dirname, '..', 'config', 'supplier-column-mapping.json');
+
+  const aliasMap = {};
+
+  // Seed with built-in aliases.
+  for (const [alias, canonical] of Object.entries(DEFAULT_COLUMN_ALIASES)) {
+    aliasMap[normalizeHeaderName(alias)] = canonical;
+  }
+
+  if (!fs.existsSync(mappingPath)) {
+    return aliasMap;
+  }
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(mappingPath, 'utf8'));
+
+    // Two supported formats:
+    // 1) { "Alias Name": "Canonical_Name" }
+    // 2) { "Canonical_Name": ["Alias 1", "Alias 2"] }
+    for (const [k, v] of Object.entries(raw || {})) {
+      if (Array.isArray(v)) {
+        for (const alias of v) {
+          aliasMap[normalizeHeaderName(alias)] = k;
+        }
+      } else if (typeof v === 'string') {
+        aliasMap[normalizeHeaderName(k)] = v;
+      }
+    }
+  } catch (err) {
+    // Ignore invalid mapping file and continue with built-in aliases.
+    console.warn('[supplier-reader] Invalid supplier-column-mapping.json:', err.message);
+  }
+
+  return aliasMap;
+}
+
+const COLUMN_ALIASES = loadColumnAliases();
+
+function mapHeader(rawHeader) {
+  const normalized = normalizeHeaderName(rawHeader);
+  return COLUMN_ALIASES[normalized] || String(rawHeader || '').replace(/\s*\(.*?\)/g, '').trim();
+}
+
+function hasRequiredHeaders(headers, required) {
+  const set = new Set((headers || []).filter(Boolean));
+  return required.every(h => set.has(h));
+}
 
 /**
  * Extract rows from a sheet into an array of plain objects.
@@ -48,17 +151,20 @@ function readSheet(sheet, anchorCol) {
   sheet.eachRow((row, rowNum) => {
     if (found) return;
     row.eachCell(cell => {
-      if (String(cell.value || '').replace(/\s*\(.*?\)/, '').trim() === anchorCol) {
+      if (mapHeader(cell.value) === anchorCol) {
         headerRowNum = rowNum;
         found = true;
       }
     });
   });
 
+  if (!found) {
+    return { rows: [], headerRowNum: 1, headerFound: false, headers: [] };
+  }
+
   const headers = [];
   sheet.getRow(headerRowNum).eachCell((cell, colNum) => {
-    const raw = String(cell.value || '').replace(/\s*\(.*?\)/, '').trim();
-    headers[colNum] = COLUMN_ALIASES[raw] || raw;
+    headers[colNum] = mapHeader(cell.value);
   });
 
   const rows = [];
@@ -73,7 +179,7 @@ function readSheet(sheet, anchorCol) {
     rows.push({ _rowNum: rowNum, ...obj });
   });
 
-  return { rows, headerRowNum };
+  return { rows, headerRowNum, headerFound: true, headers };
 }
 
 // ── Legacy single-sheet parser (SUPPLIER_INPUT) ───────────────────────────────
@@ -86,7 +192,14 @@ const LEGACY_REQUIRED_COLS = [
 ];
 
 function parseSingleSheet(sheet) {
-  const { rows: rawRows, headerRowNum } = readSheet(sheet, 'PO_Number');
+  const { rows: rawRows, headerRowNum, headerFound, headers } = readSheet(sheet, 'PO_Number');
+  if (!headerFound) {
+    throw new Error(`Could not find PO_Number header in sheet "${sheet.name}"`);
+  }
+
+  if (!hasRequiredHeaders(headers, ['PO_Number'])) {
+    throw new Error(`Sheet "${sheet.name}" is missing required header: PO_Number`);
+  }
 
   const rows = [];
   const validationErrors = [];
@@ -145,18 +258,42 @@ function parseSingleSheet(sheet) {
  * Each row becomes a header-only placeholder (_headerOnly: true).
  * SKU lines are NOT expected — they will be auto-booked from the carrier ASN feed.
  */
-function parseHeaderOnly(workbook) {
-  const wsHdr = workbook.getWorksheet('PO Header') || workbook.getWorksheet('BOOKING_HEADER');
-  const { rows: rawRows, headerRowNum } = readSheet(wsHdr, 'PO_Number');
+function parseHeaderOnlySheet(wsHdr) {
+  const poRead  = readSheet(wsHdr, 'PO_Number');
+  const asnRead = poRead.headerFound ? null : readSheet(wsHdr, 'ASN_Number');
+  const source  = poRead.headerFound ? poRead : asnRead;
+
+  if (!source || !source.headerFound) {
+    throw new Error(`Could not find PO_Number or ASN_Number header in sheet "${wsHdr.name}"`);
+  }
+
+  const { rows: rawRows, headerRowNum, headers } = source;
+  const usesAsnAnchor = hasRequiredHeaders(headers, ['ASN_Number']) && !hasRequiredHeaders(headers, ['PO_Number']);
+
+  const requiredCols = usesAsnAnchor ? IDEATEKS_REQUIRED_COLS : REQUIRED_HEADER_COLS;
+  if (!hasRequiredHeaders(headers, requiredCols)) {
+    const existing = new Set(headers.filter(Boolean));
+    const missing = requiredCols.filter(c => !existing.has(c));
+    throw new Error(`Sheet "${wsHdr.name}" is missing required headers: ${missing.join(', ')}`);
+  }
 
   const rows = [];
   const validationErrors = [];
+  const headerAsnRefs = [];
 
   for (const obj of rawRows) {
-    const po = String(obj.PO_Number || '').trim();
-    if (!po) continue;
+    if (usesAsnAnchor) {
+      applyIdeateksDefaults(obj);
+      const asn = String(obj.ASN_Number || '').trim();
+      if (!asn) continue;
+      headerAsnRefs.push(asn);
+    } else {
+      const po = String(obj.PO_Number || '').trim();
+      if (!po) continue;
+    }
 
-    const missing = REQUIRED_HEADER_COLS.filter(c => !obj[c] || String(obj[c]).trim() === '');
+    const requiredForRow = usesAsnAnchor ? IDEATEKS_REQUIRED_COLS : REQUIRED_HEADER_COLS;
+    const missing = requiredForRow.filter(c => !obj[c] || String(obj[c]).trim() === '');
     if (missing.length > 0) {
       validationErrors.push(`Row ${obj._rowNum}: missing required fields: ${missing.join(', ')}`);
     }
@@ -176,12 +313,18 @@ function parseHeaderOnly(workbook) {
     rows.push({ ...obj, _headerOnly: true });
   }
 
+  // For Ideateks-style files anchored by ASN, enforce Single Booking per row.
+  if (usesAsnAnchor) {
+    for (const row of rows) row.Booking_Group = 'Single Booking';
+  }
+
   return {
     rows,
     validationErrors,
     sheetName: wsHdr.name,
     headerRowNum,
-    headerPoRefs: [...new Set(rows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))]
+    headerPoRefs: [...new Set(rows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))],
+    headerAsnRefs: [...new Set(headerAsnRefs.map(a => String(a).trim()).filter(Boolean))]
   };
 }
 
@@ -196,14 +339,26 @@ async function parse(buffer) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
 
-  // PO Header sheet present — use header-only parser (PO Lines not used)
-  const wsHdr = workbook.getWorksheet('PO Header') || workbook.getWorksheet('BOOKING_HEADER');
-  if (wsHdr) return parseHeaderOnly(workbook);
+  // Preferred sheet names first, then fall back to any visible sheet that matches headers.
+  const preferred = [
+    workbook.getWorksheet('PO Header'),
+    workbook.getWorksheet('BOOKING_HEADER')
+  ].filter(Boolean);
+  const visibleSheets = workbook.worksheets.filter(ws => ws.state !== 'veryHidden' && ws.state !== 'hidden');
+  const orderedSheets = [...new Set([...preferred, ...visibleSheets])];
+
+  for (const ws of orderedSheets) {
+    try {
+      return parseHeaderOnlySheet(ws);
+    } catch (_) {
+      // Try next sheet.
+    }
+  }
 
   // Legacy fallback: SUPPLIER_INPUT or first visible sheet
   let sheet = workbook.getWorksheet('SUPPLIER_INPUT');
   if (!sheet) {
-    sheet = workbook.worksheets.find(ws => ws.state !== 'veryHidden' && ws.state !== 'hidden');
+    sheet = visibleSheets[0];
   }
   if (!sheet) sheet = workbook.worksheets[0];
   if (!sheet) throw new Error('Supplier Excel has no worksheets');

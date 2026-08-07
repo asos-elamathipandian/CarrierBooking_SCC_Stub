@@ -151,27 +151,38 @@ btnParseSupplier.addEventListener('click', async () => {
 
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
-    // Guard: no PO data found → likely a blank template
-    if ((data.poCount || 0) === 0) {
+    const poCount  = data.poCount  || 0;
+    const asnCount = data.asnRefs?.length || 0;
+
+    // Guard: no PO and no ASN data found → likely a blank/wrong template
+    if (poCount === 0 && asnCount === 0) {
       setStatus(1, 'error',
-        '⚠️ No PO data found in the uploaded file. ' +
-        'Please fill in the <strong>PO Header</strong> sheet with your PO details first, then upload again.'
+        '⚠️ No PO or ASN data found in the uploaded file. ' +
+        'Please provide either <strong>PO_Number</strong> or <strong>ASN Number</strong> columns, then upload again.'
       );
       setLoading(btnParseSupplier, false);
       btnParseSupplier.disabled = false;
       return;
     }
 
-    // Header-only template (no PO Lines) — SKUs auto-booked from ASN feed; this is expected
-    if ((data.rowCount || 0) === 0 && (data.poCount || 0) > 0) {
+    // ASN-based templates are valid even if POs are not resolved at parse time.
+    if (poCount === 0 && asnCount > 0) {
       setStatus(1, 'success',
-        `✅ Found <strong>${data.poCount}</strong> PO${data.poCount !== 1 ? 's' : ''} in PO Header. ` +
+        `✅ Found <strong>${asnCount}</strong> ASN${asnCount !== 1 ? 's' : ''}. ` +
+        'POs will be resolved from Databricks during Step 2.'
+      );
+    }
+
+    // Header-only template (no PO Lines) — SKUs auto-booked from ASN feed; this is expected
+    if ((data.rowCount || 0) === 0 && poCount > 0) {
+      setStatus(1, 'success',
+        `✅ Found <strong>${poCount}</strong> PO${poCount !== 1 ? 's' : ''} in PO Header. ` +
         'SKUs will be auto-booked from the Databricks ASN feed — proceed to Step 2.'
       );
     }
 
     state.poRefs          = data.poRefs  || [];
-    state.asnRefs         = [];
+    state.asnRefs         = data.asnRefs || [];
     state.supplierRows    = [];
     state.supplierFileNames = [...supplierFileInput.files].map(f => f.name);
 
@@ -188,7 +199,7 @@ btnParseSupplier.addEventListener('click', async () => {
 
     // Show compact summary
     refsPreview.innerHTML = '';
-    renderSupplierSummary(data.poCount || 0, data.bookingCount || 0, data.rowCount || 0);
+    renderSupplierSummary(poCount, data.bookingCount || 0, data.rowCount || 0, asnCount);
 
     // Unlock pipeline card and activate stage
     const pipelineCard = document.getElementById('pipelineCard');
@@ -464,7 +475,7 @@ if (btnRunPipeline) {
       const fetchRes  = await fetch(`${API}/fetch-feeds`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ poRefs: state.poRefs, asnRefs: [] }),
+        body: JSON.stringify({ poRefs: state.poRefs, asnRefs: state.asnRefs }),
         signal
       });
       const fetchData = await fetchRes.json();
@@ -621,12 +632,13 @@ if (btnRunPipeline) {
   });
 }
 
-function renderSupplierSummary(poCount, bookingCount, skuRowCount) {
+function renderSupplierSummary(poCount, bookingCount, skuRowCount, asnCount = 0) {
   const panel = document.getElementById('supplierParsePanel');
   if (!panel) return;
   panel.innerHTML = `
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 4px">
       <div class="parse-stat-badge" style="font-size:14px;padding:8px 18px">📦 <strong>${poCount}</strong> PO${poCount !== 1 ? 's' : ''} parsed</div>
+      <div class="parse-stat-badge" style="font-size:14px;padding:8px 18px">🧾 <strong>${asnCount}</strong> ASN${asnCount !== 1 ? 's' : ''} parsed</div>
       <div class="parse-stat-badge" style="font-size:14px;padding:8px 18px">🚚 <strong>${bookingCount}</strong> carrier booking${bookingCount !== 1 ? 's' : ''} will be generated</div>
     </div>`;
   panel.style.display = 'block';

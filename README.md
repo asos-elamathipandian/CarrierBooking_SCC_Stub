@@ -175,6 +175,7 @@ CarrierBookingStub/
 │   └── Supplier PO sheet-DDMMYYYY.xlsx  # Blank template to share with suppliers
 ├── config/
 │   └── sftp.config.example.json   # SFTP config reference
+│   └── supplier-column-mapping.example.json # Optional column alias mapping for non-standard supplier templates
 ├── .env                           # All credentials and configuration
 └── package.json
 ```
@@ -202,6 +203,50 @@ SFTP_HOST / USERNAME / PRIVATE_KEY_PATH  ← E2open SFTP
 SP_TENANT_ID / CLIENT_ID / CLIENT_SECRET / SITE_URL / FOLDER_PATH  ← SharePoint
 SP_SCHEDULE=09:00,13:00               ← Auto-sync times
 ```
+
+### Optional: Alternate Supplier Template Mapping (e.g. Ideateks)
+If a supplier uses different Excel column names, you can map those headers to the tool's canonical fields.
+
+1. Copy `config/supplier-column-mapping.example.json` to `config/supplier-column-mapping.json`.
+2. Add aliases for each canonical field you receive from the supplier file.
+3. Restart the server.
+
+By default, the parser loads `config/supplier-column-mapping.json` automatically when present.
+You can also point to a custom file path with:
+
+```
+SUPPLIER_COLUMN_MAPPING_FILE=./config/supplier-column-mapping.json
+```
+
+Supported JSON formats:
+
+```json
+{
+  "PO_Number": ["PO Number", "PO No"],
+  "Carrier_Booking_Request_Date": ["Booking Request Date"]
+}
+```
+
+or
+
+```json
+{
+  "PO Number": "PO_Number",
+  "Booking Request Date": "Carrier_Booking_Request_Date"
+}
+```
+
+Minimum mapped fields for header-only files are:
+`PO_Number`, `Cargo_Ready_Planned_Collection_Date`, `Carrier_Booking_Request_Date`, `Booking_Group`, `No_of_Cartons`, `Unit_Weight_KG`.
+
+For ASN-based files (for example Ideateks), use `ASN_Number` instead of `PO_Number`.
+The backend resolves POs from ASN IDs using Databricks automatically.
+
+Ideateks defaults applied when `ASN_Number` is used:
+- `Booking_Group` forced to `Single Booking`
+- `Cargo_Ready_Planned_Collection_Date` defaults to system date (today)
+- `Carrier_Booking_Request_Date` defaults to next day
+- `Traffic_Mode` defaults to `CFS` if not supplied
 
 ### Run
 ```bash
