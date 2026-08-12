@@ -67,8 +67,9 @@ async function runSync(sessionState) {
   writeStatus({ running: true, error: null });
   fs.mkdirSync(SYNC_DIR, { recursive: true });
 
-  // ── Pre-step: pull any new emails from the dedicated ASOS mailbox ───────────
-  // Runs before listing SharePoint so just-uploaded files are included in this cycle.
+  // ── Pre-step: legacy Graph mailbox ingest (no-op unless EMAIL_INGEST_MAILBOX set) ──
+  // Attachment delivery now happens via a Power Automate flow (Outlook → SharePoint),
+  // so this only runs if someone re-enables the old Graph mail-permission path.
   if (emailIngestor.isConfigured()) {
     try {
       const ingestResult = await emailIngestor.ingest();

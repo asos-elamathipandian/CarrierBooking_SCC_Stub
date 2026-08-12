@@ -3,6 +3,12 @@
 /**
  * email-ingestor.js
  *
+ * LEGACY / OPTIONAL FALLBACK — superseded by a Power Automate flow
+ * (Outlook "When a new email arrives" → SharePoint "Create file") because
+ * the Mail.ReadWrite Graph *application* permission was rejected.
+ * This module stays in place and is only active if EMAIL_INGEST_MAILBOX is
+ * set; leave that env var unset so Power Automate is the sole ingestion path.
+ *
  * Reads unread emails from a dedicated ASOS mailbox and deposits any Excel
  * attachments (.xlsx / .xlsm) into the correct SharePoint supplier subfolder
  * so the SP scheduler can pick them up at its 9 AM & 1 PM scheduled runs.
