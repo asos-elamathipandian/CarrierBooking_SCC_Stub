@@ -1170,6 +1170,50 @@ app.post('/api/sharepoint/dismiss-error', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// POST /api/webhook/sharepoint-file  — push-based ingestion
+// Called by a Power Automate flow when a new file lands in SharePoint,
+// so the server never needs the (currently unapproved) Graph Sites.Read.All
+// permission to pull files itself.
+// Body: { secret, fileName, contentBase64, supplierFolder }
+// ─────────────────────────────────────────────
+app.post('/api/webhook/sharepoint-file', async (req, res) => {
+  const { secret, fileName, contentBase64, supplierFolder } = req.body || {};
+
+  if (process.env.WEBHOOK_SECRET && secret !== process.env.WEBHOOK_SECRET) {
+    return res.status(401).json({ error: 'Invalid webhook secret' });
+  }
+  if (!fileName || !contentBase64) {
+    return res.status(400).json({ error: 'fileName and contentBase64 are required' });
+  }
+  if (!/\.(xlsx|xlsm)$/i.test(fileName)) {
+    return res.status(400).json({ error: 'Only .xlsx/.xlsm files are accepted' });
+  }
+
+  try {
+    const buffer = Buffer.from(contentBase64, 'base64');
+    const parsed = await supplierReader.parse(buffer);
+
+    sessionState.supplierData = sessionState.supplierData || { rows: [], validationErrors: [] };
+    sessionState.supplierData.rows = sessionState.supplierData.rows.concat(parsed.rows);
+    sessionState.supplierData.validationErrors = sessionState.supplierData.validationErrors.concat(
+      (parsed.validationErrors || []).map(e => `[${fileName}] ${e}`)
+    );
+    sessionState.supplierHeaderPoRefs = (sessionState.supplierHeaderPoRefs || []).concat(parsed.headerPoRefs || []);
+    sessionState.supplierBuffers = (sessionState.supplierBuffers || []).concat([{ name: fileName, buffer, supplierFolder: supplierFolder || '' }]);
+    sessionState.feedData     = null;
+    sessionState.masterData   = null;
+    sessionState.lastXml      = null;
+    sessionState.lastFilename = null;
+
+    console.log(`[Webhook] Ingested "${fileName}" (${supplierFolder || 'root'}) — ${parsed.rows.length} row(s)`);
+    res.json({ success: true, rowCount: parsed.rows.length, fileName });
+  } catch (err) {
+    console.error('[Webhook] sharepoint-file error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────
 // GET /api/sharepoint/files  — list current SP folder
 // ─────────────────────────────────────────────
 app.get('/api/sharepoint/files', async (req, res) => {
