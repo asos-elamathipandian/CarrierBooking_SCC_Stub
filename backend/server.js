@@ -19,6 +19,8 @@ const asnParser            = require('./asn-parser');
 const carrierAsnParser     = require('./carrier-asn-parser');
 const spClient             = require('./sharepoint-client');
 const spScheduler          = require('./sharepoint-scheduler');
+const blobWebhook          = require('./blob-webhook-client');
+const blobWebhookScheduler = require('./blob-webhook-scheduler');
 
 const app = express();
 
@@ -1170,10 +1172,7 @@ app.post('/api/sharepoint/dismiss-error', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// POST /api/webhook/sharepoint-file  — push-based ingestion
-// Called by a Power Automate flow when a new file lands in SharePoint,
-// so the server never needs the (currently unapproved) Graph Sites.Read.All
-// permission to pull files itself.
+// POST /api/webhook/sharepoint-file  — push-based ingestion (HTTP, blocked by DLP — kept for reference)
 // Body: { secret, fileName, contentBase64, supplierFolder }
 // ─────────────────────────────────────────────
 app.post('/api/webhook/sharepoint-file', async (req, res) => {
@@ -1211,6 +1210,26 @@ app.post('/api/webhook/sharepoint-file', async (req, res) => {
     console.error('[Webhook] sharepoint-file error:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─────────────────────────────────────────────
+// GET /api/blob-sync/status
+// POST /api/blob-sync — pull-based ingestion from the Azure Blob Storage
+// container Power Automate writes to (bypasses SharePoint Graph permission
+// and Power Automate's DLP-blocked HTTP connector)
+// ─────────────────────────────────────────────
+app.get('/api/blob-sync/status', (req, res) => {
+  res.json({ configured: blobWebhook.isConfigured(), ...blobWebhookScheduler.readStatus() });
+});
+
+app.post('/api/blob-sync', async (req, res) => {
+  if (!blobWebhook.isConfigured()) {
+    return res.status(400).json({ error: 'Blob webhook storage not configured. Fill in AZURE_WEBHOOK_* vars in .env and restart.' });
+  }
+  blobWebhookScheduler.runSync(sessionState).catch(err =>
+    console.error('[Blob sync] Error:', err.message)
+  );
+  res.json({ success: true, message: 'Sync started — poll /api/blob-sync/status for progress.' });
 });
 
 // ─────────────────────────────────────────────
