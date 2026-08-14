@@ -34,8 +34,10 @@ async function resolveToken(cfg) {
   if (cfg.token && !cfg.token.startsWith('REPLACE_')) return cfg.token;
 
   // Build credential chain: service principal first (works on App Service), then CLI, then browser (local only)
+  // DATABRICKS_SKIP_SP lets local dev bypass the SP (e.g. it's not yet authorized in Databricks) and use the developer's own identity instead.
+  const skipSp = process.env.DATABRICKS_SKIP_SP === 'true';
   const creds = [];
-  if (process.env.SP_CLIENT_ID && process.env.SP_CLIENT_SECRET && process.env.SP_TENANT_ID) {
+  if (!skipSp && process.env.SP_CLIENT_ID && process.env.SP_CLIENT_SECRET && process.env.SP_TENANT_ID) {
     creds.push(new ClientSecretCredential(process.env.SP_TENANT_ID, process.env.SP_CLIENT_ID, process.env.SP_CLIENT_SECRET));
   }
   creds.push(new AzureCliCredential({ tenantId: TENANT_ID }));
