@@ -3,41 +3,56 @@
 /**
  * email-ingestor.js
  *
- * LEGACY / OPTIONAL FALLBACK — superseded by a Power Automate flow
- * (Outlook "When a new email arrives" → SharePoint "Create file") because
- * the Mail.ReadWrite Graph *application* permission was rejected.
- * This module stays in place and is only active if EMAIL_INGEST_MAILBOX is
- * set; leave that env var unset so Power Automate is the sole ingestion path.
+ * OPTIONAL INGESTION PATH — an alternative to the Power Automate flow
+ * (Outlook "When a new email arrives" → SharePoint "Create file").
+ * Only active if EMAIL_INGEST_MAILBOX is set; leave that env var unset to
+ * keep Power Automate as the sole ingestion path.
  *
- * Reads unread emails from a dedicated ASOS mailbox and deposits any Excel
+ * Reads emails from a dedicated ASOS mailbox and deposits any Excel
  * attachments (.xlsx / .xlsm) into the correct SharePoint supplier subfolder
  * so the SP scheduler can pick them up at its 9 AM & 1 PM scheduled runs.
  *
  * Uses the SAME App Registration as sharepoint-client.js.
- * The registration must have the Mail.ReadWrite *application* permission
- * admin-consented for the target mailbox (no extra credentials needed).
+ *
+ * PERMISSION MODES
+ *   Read-only (default) — needs only the Mail.Read *application* permission.
+ *     Messages are never modified. De-duplication is handled locally via a
+ *     receivedDateTime watermark plus a set of processed message IDs stored
+ *     in bible/email-ingest-status.json.
+ *   Read-write (EMAIL_READONLY_MODE=false) — needs Mail.ReadWrite. Uses the
+ *     mailbox itself as the queue: unread messages are processed, then marked
+ *     as read and optionally moved to EMAIL_PROCESSED_FOLDER.
  *
  * Required .env vars:
  *   EMAIL_INGEST_MAILBOX  — InboundService@asos.com
- *                           (Mail.ReadWrite application permission pending cloud team approval)
  *   SP_TENANT_ID, SP_CLIENT_ID, SP_CLIENT_SECRET  (shared with SharePoint)
  *
  * Optional .env vars:
+ *   EMAIL_READONLY_MODE     — "false" to use the legacy Mail.ReadWrite behaviour.
+ *                             Defaults to true (Mail.Read only).
+ *   EMAIL_LOOKBACK_DAYS     — how far back to scan on the very first run,
+ *                             before a watermark exists. Default 7.
  *   EMAIL_SUPPLIER_MAP      — JSON: { "domain.com": "SP_FOLDER", "email@x.com": "SP_FOLDER2" }
  *                             Exact email address is checked first, then sender domain.
  *                             Unrecognised senders get a folder derived from their display name.
  *   EMAIL_PROCESSED_FOLDER  — mailbox subfolder name to move processed emails into
- *                             (e.g. "Processed"). If not set, emails are only marked as read.
+ *                             (e.g. "Processed"). Read-write mode only; ignored
+ *                             in read-only mode.
  *
  * Note: Graph API returns attachment content inline (base64) for files up to 3 MB.
  * Standard supplier Excel templates are well within this limit.
  */
 
+const path = require('path');
+const fs   = require('fs');
 const { ClientSecretCredential } = require('@azure/identity');
 const sp = require('./sharepoint-client');
 
 const GRAPH_BASE  = 'https://graph.microsoft.com/v1.0';
 const GRAPH_SCOPE = 'https://graph.microsoft.com/.default';
+
+const STATE_FILE      = path.join(__dirname, '..', 'bible', 'email-ingest-status.json');
+const MAX_TRACKED_IDS = 1000;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -95,6 +110,50 @@ function isConfigured() {
     && !SP_TENANT_ID.startsWith('REPLACE');
 }
 
+function isReadOnly() {
+  return String(process.env.EMAIL_READONLY_MODE || 'true').toLowerCase() !== 'false';
+}
+
+// ── Ingest state (read-only mode de-duplication) ──────────────────────────────
+
+function readState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const s = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+      return {
+        watermark:    s.watermark || null,
+        processedIds: Array.isArray(s.processedIds) ? s.processedIds : []
+      };
+    }
+  } catch (_) {}
+  return { watermark: null, processedIds: [] };
+}
+
+function writeState(state) {
+  try {
+    fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+    fs.writeFileSync(STATE_FILE, JSON.stringify({
+      watermark:    state.watermark,
+      processedIds: state.processedIds.slice(-MAX_TRACKED_IDS),
+      lastRun:      new Date().toISOString()
+    }, null, 2));
+  } catch (err) {
+    console.warn(`[Email Ingestor] Could not persist ingest state: ${err.message}`);
+  }
+}
+
+/**
+ * Start of the scan window: the stored watermark, or EMAIL_LOOKBACK_DAYS ago
+ * on first run. The watermark is inclusive (ge) so a message received in the
+ * same second as the previous run is not missed; processedIds prevents the
+ * resulting overlap from being ingested twice.
+ */
+function scanFrom(state) {
+  if (state.watermark) return state.watermark;
+  const days = Number(process.env.EMAIL_LOOKBACK_DAYS) || 7;
+  return new Date(Date.now() - days * 86400000).toISOString();
+}
+
 // ── Supplier folder resolution ────────────────────────────────────────────────
 
 /**
@@ -123,10 +182,16 @@ function resolveSupplierFolder(senderAddress, senderName) {
 // ── Mailbox helpers ───────────────────────────────────────────────────────────
 
 /**
- * List unread messages that have at least one attachment.
+ * List candidate messages that have at least one attachment.
+ *
+ * Read-only mode selects by receivedDateTime watermark (no mailbox writes);
+ * read-write mode uses the unread flag as the queue.
  */
-async function listUnreadMessages(mailbox) {
-  const filter = encodeURIComponent("isRead eq false and hasAttachments eq true");
+async function listCandidateMessages(mailbox, state) {
+  const criteria = isReadOnly()
+    ? `receivedDateTime ge ${scanFrom(state)} and hasAttachments eq true`
+    : 'isRead eq false and hasAttachments eq true';
+  const filter = encodeURIComponent(criteria);
   const select = encodeURIComponent("id,subject,from,receivedDateTime,hasAttachments");
   const path   = `/users/${encodeURIComponent(mailbox)}/messages?$filter=${filter}&$select=${select}&$top=50&$orderby=${encodeURIComponent('receivedDateTime asc')}`;
   const data   = await graphRequest('GET', path);
@@ -205,10 +270,11 @@ async function moveToFolder(mailbox, messageId, folderName) {
 /**
  * Ingest supplier template emails from the dedicated ASOS mailbox.
  *
- * For each unread email with an Excel attachment:
+ * For each candidate email with an Excel attachment:
  *   1. Resolves the supplier folder from the sender address / EMAIL_SUPPLIER_MAP
  *   2. Uploads the attachment to SharePoint under SP_FOLDER_PATH/{supplierFolder}/
- *   3. Marks the email as read (and optionally moves it to EMAIL_PROCESSED_FOLDER)
+ *   3. Records it as processed — locally in read-only mode, or by marking the
+ *      email as read (and optionally moving it) in read-write mode
  *
  * Returns { processed: number, uploaded: number, errors: string[] }
  */
@@ -220,25 +286,45 @@ async function ingest() {
     return { processed: 0, uploaded: 0, errors: ['SharePoint not configured — cannot upload attachments'] };
   }
 
-  const mailbox = process.env.EMAIL_INGEST_MAILBOX;
-  console.log(`[Email Ingestor] Checking ${mailbox} for new supplier templates…`);
+  const mailbox  = process.env.EMAIL_INGEST_MAILBOX;
+  const readOnly = isReadOnly();
+  const state    = readState();
+  const seen     = new Set(state.processedIds);
+  console.log(`[Email Ingestor] Checking ${mailbox} for new supplier templates… (${readOnly ? 'read-only' : 'read-write'} mode)`);
 
   let messages;
   try {
-    messages = await listUnreadMessages(mailbox);
+    messages = await listCandidateMessages(mailbox, state);
   } catch (err) {
     return { processed: 0, uploaded: 0, errors: [`Failed to list messages: ${err.message}`] };
   }
 
+  if (readOnly) messages = messages.filter(m => !seen.has(m.id));
+
   if (!messages.length) {
-    console.log('[Email Ingestor] No unread emails with attachments.');
+    console.log('[Email Ingestor] No new emails with attachments.');
     return { processed: 0, uploaded: 0, errors: [] };
   }
 
-  console.log(`[Email Ingestor] Found ${messages.length} unread email(s) to process.`);
+  console.log(`[Email Ingestor] Found ${messages.length} email(s) to process.`);
 
   let uploaded = 0;
   const errors = [];
+
+  // Marks a message done: locally in read-only mode, in the mailbox otherwise.
+  const markDone = async (msg) => {
+    if (readOnly) {
+      state.processedIds.push(msg.id);
+      seen.add(msg.id);
+      if (msg.receivedDateTime && (!state.watermark || msg.receivedDateTime > state.watermark)) {
+        state.watermark = msg.receivedDateTime;
+      }
+      return;
+    }
+    await markAsRead(mailbox, msg.id);
+    const processedFolder = process.env.EMAIL_PROCESSED_FOLDER;
+    if (processedFolder) await moveToFolder(mailbox, msg.id, processedFolder);
+  };
 
   for (const msg of messages) {
     const senderAddress  = msg.from?.emailAddress?.address || '';
@@ -255,10 +341,10 @@ async function ingest() {
     }
 
     if (!attachments.length) {
-      // Has attachments but none are Excel — mark as read to avoid reprocessing
+      // Has attachments but none are Excel — record it so it isn't reprocessed
       console.log(`[Email Ingestor] "${subject}" from ${senderAddress} — no Excel attachments, skipping.`);
-      await markAsRead(mailbox, msg.id).catch(e =>
-        console.warn(`[Email Ingestor] Could not mark as read: ${e.message}`)
+      await markDone(msg).catch(e =>
+        console.warn(`[Email Ingestor] Could not mark as processed: ${e.message}`)
       );
       continue;
     }
@@ -278,22 +364,20 @@ async function ingest() {
       }
     }
 
-    // Mark as read once at least one attachment was successfully uploaded
+    // Only record as processed once at least one attachment landed in SharePoint
     if (anyUploaded) {
       try {
-        await markAsRead(mailbox, msg.id);
-        const processedFolder = process.env.EMAIL_PROCESSED_FOLDER;
-        if (processedFolder) {
-          await moveToFolder(mailbox, msg.id, processedFolder);
-        }
+        await markDone(msg);
       } catch (err) {
-        console.warn(`[Email Ingestor] Could not mark message as read/move: ${err.message}`);
+        console.warn(`[Email Ingestor] Could not mark message as processed: ${err.message}`);
       }
     }
   }
+
+  if (readOnly) writeState(state);
 
   console.log(`[Email Ingestor] Done — ${uploaded} file(s) uploaded to SharePoint, ${errors.length} error(s).`);
   return { processed: messages.length, uploaded, errors };
 }
 
-module.exports = { isConfigured, ingest };
+module.exports = { isConfigured, isReadOnly, ingest };

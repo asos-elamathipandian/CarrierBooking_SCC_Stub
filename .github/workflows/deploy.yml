@@ -24,7 +24,7 @@ jobs:
       # Removes local dev/runtime artefacts before packaging
       - name: Clean local artefacts
         run: |
-          rm -rf output/ bible/sharepoint-sync/ bible/generation-log.json bible/sp-sync-status.json bible/report-state.json
+          rm -rf output/ bible/sharepoint-sync/ bible/generation-log.json bible/sp-sync-status.json bible/report-state.json bible/email-ingest-status.json
 
       - name: Login to Azure
         uses: azure/login@v1
