@@ -1,6 +1,7 @@
 'use strict';
 
-const API = 'http://localhost:3000/api';
+// Relative path works both locally (Express serves frontend) and on Azure (iisnode rewrites all requests)
+const API = '/api';
 
 // ── Session state ──────────────────────────────────────────────────────────────
 const state = {
