@@ -1242,8 +1242,33 @@ app.post('/api/webhook/sharepoint-file', async (req, res) => {
 // container Power Automate writes to (bypasses SharePoint Graph permission
 // and Power Automate's DLP-blocked HTTP connector)
 // ─────────────────────────────────────────────
-app.get('/api/blob-sync/status', (req, res) => {
-  res.json({ configured: blobWebhook.isConfigured(), ...blobWebhookScheduler.readStatus() });
+app.get('/api/blob-sync/status', async (req, res) => {
+  const status = { configured: blobWebhook.isConfigured(), ...blobWebhookScheduler.readStatus() };
+  // Auto-restore session from processed container if server restarted and session is empty
+  const sessionEmpty = !sessionState.supplierData?.rows?.length;
+  if (sessionEmpty && status.rowCount > 0 && blobWebhook.isConfigured()) {
+    try {
+      const files = await blobWebhook.listProcessedBlobs();
+      if (files.length) {
+        const supplierReader = require('./supplier-reader');
+        let allRows = [], allPoRefs = [];
+        for (const f of files) {
+          const buffer = await blobWebhook.downloadProcessedBlob(f.name);
+          const parsed = await supplierReader.parse(buffer);
+          allRows = allRows.concat(parsed.rows);
+          allPoRefs.push(...(parsed.headerPoRefs || []));
+        }
+        if (allRows.length) {
+          sessionState.supplierData = { rows: allRows, validationErrors: [] };
+          sessionState.supplierHeaderPoRefs = allPoRefs;
+          console.log(`[Blob Restore] Restored ${allRows.length} row(s) from processed container after restart`);
+        }
+      }
+    } catch (err) {
+      console.error('[Blob Restore] Failed:', err.message);
+    }
+  }
+  res.json(status);
 });
 
 app.post('/api/blob-sync', async (req, res) => {

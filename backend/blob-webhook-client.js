@@ -94,4 +94,41 @@ async function archiveBlob(name) {
   await srcBlob.deleteIfExists();
 }
 
-module.exports = { isConfigured, listBlobs, downloadBlob, deleteBlob, archiveBlob };
+/**
+ * List Excel blobs in the processed container (for session restore after restart).
+ */
+async function listProcessedBlobs() {
+  const connStr  = process.env.AZURE_WEBHOOK_STORAGE_CONNECTION_STRING;
+  const srcName  = process.env.AZURE_WEBHOOK_CONTAINER_NAME;
+  const dstName  = process.env.AZURE_WEBHOOK_PROCESSED_CONTAINER_NAME || `${srcName}-processed`;
+  const svcClient = BlobServiceClient.fromConnectionString(connStr);
+  const containerClient = svcClient.getContainerClient(dstName);
+  const results = [];
+  try {
+    for await (const blob of containerClient.listBlobsFlat()) {
+      if (/\.(xlsx|xlsm)$/i.test(blob.name)) {
+        results.push({ name: blob.name, lastModified: blob.properties.lastModified, size: blob.properties.contentLength });
+      }
+    }
+  } catch (_) {}
+  return results;
+}
+
+/**
+ * Download a blob from the processed container.
+ */
+async function downloadProcessedBlob(name) {
+  const connStr  = process.env.AZURE_WEBHOOK_STORAGE_CONNECTION_STRING;
+  const srcName  = process.env.AZURE_WEBHOOK_CONTAINER_NAME;
+  const dstName  = process.env.AZURE_WEBHOOK_PROCESSED_CONTAINER_NAME || `${srcName}-processed`;
+  const svcClient = BlobServiceClient.fromConnectionString(connStr);
+  const blobClient = svcClient.getContainerClient(dstName).getBlobClient(name);
+  const download = await blobClient.download();
+  const chunks = [];
+  for await (const chunk of download.readableStreamBody) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+module.exports = { isConfigured, listBlobs, downloadBlob, deleteBlob, archiveBlob, listProcessedBlobs, downloadProcessedBlob };
