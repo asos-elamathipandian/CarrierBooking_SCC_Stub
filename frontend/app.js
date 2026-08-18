@@ -201,12 +201,14 @@ btnParseSupplier.addEventListener('click', async () => {
     refsPreview.innerHTML = '';
     renderSupplierSummary(poCount, data.bookingCount || 0, data.rowCount || 0, asnCount);
 
-    // Unlock pipeline card and activate stage
+    // Show and unlock pipeline
     const pipelineCard = document.getElementById('pipelineCard');
-    if (pipelineCard) pipelineCard.classList.remove('locked');
+    if (pipelineCard) pipelineCard.style.display = '';
     const badge = document.getElementById('badgePipeline');
     if (badge) badge.className = 'step-badge active';
     if (btnRunPipeline) btnRunPipeline.disabled = false;
+    // Auto-trigger pipeline after brief delay
+    scheduleAutoPipeline('Parsed from manual upload');
   } catch (err) {
     const msg = err.message === 'Failed to fetch'
       ? '❌ Cannot reach the server. Please ensure the server is running (<code>npm start</code>) then try again.'
@@ -800,8 +802,84 @@ async function loadHistory() {
   }
 }
 
-// Load history on page start and after each upload
+// Load history and blob status on page start
 loadHistory();
+loadBlobStatus();
+
+// ── Auto-trigger pipeline with countdown ─────────────────────────────────────
+let _autoPipelineTimer = null;
+function scheduleAutoPipeline(source) {
+  const notice = document.getElementById('pipelineAutoNotice');
+  if (_autoPipelineTimer) { clearInterval(_autoPipelineTimer); _autoPipelineTimer = null; }
+  let secs = 5;
+  if (notice) {
+    notice.style.display = '';
+    notice.innerHTML = `⚡ Auto-running pipeline in <strong>${secs}s</strong> (${source}) &nbsp; <a href="#" id="cancelAutoPipeline" style="color:#B45309">Cancel</a>`;
+    document.getElementById('cancelAutoPipeline')?.addEventListener('click', e => {
+      e.preventDefault();
+      clearInterval(_autoPipelineTimer);
+      _autoPipelineTimer = null;
+      notice.style.display = 'none';
+    });
+  }
+  _autoPipelineTimer = setInterval(() => {
+    secs--;
+    if (secs > 0) {
+      if (notice) notice.innerHTML = `⚡ Auto-running pipeline in <strong>${secs}s</strong> (${source}) &nbsp; <a href="#" id="cancelAutoPipeline" style="color:#B45309">Cancel</a>`;
+      document.getElementById('cancelAutoPipeline')?.addEventListener('click', e => {
+        e.preventDefault();
+        clearInterval(_autoPipelineTimer);
+        _autoPipelineTimer = null;
+        if (notice) notice.style.display = 'none';
+      });
+    } else {
+      clearInterval(_autoPipelineTimer);
+      _autoPipelineTimer = null;
+      if (notice) notice.style.display = 'none';
+      if (btnRunPipeline && !btnRunPipeline.disabled) btnRunPipeline.click();
+    }
+  }, 1000);
+}
+
+// ── Blob sync status banner ────────────────────────────────────────────────────
+async function loadBlobStatus() {
+  const banner  = document.getElementById('blobSyncBanner');
+  const statusEl = document.getElementById('blobSyncStatus');
+  const filesEl  = document.getElementById('blobSyncFiles');
+  const histBody = document.getElementById('blobHistoryBody');
+  const histDet  = document.getElementById('blobHistoryDetails');
+  if (!banner) return;
+  try {
+    const res  = await fetch(`${API}/blob-sync/status`);
+    const data = await res.json();
+    if (!res.ok || !data.configured) return;
+    banner.style.display = '';
+    const lastSync = data.lastSync ? new Date(data.lastSync).toLocaleString('en-GB') : 'Never';
+    const poCount  = (data.poRefs && data.poRefs.length) || 0;
+    const rowCount = data.rowCount || 0;
+    statusEl.innerHTML = data.error
+      ? `<span style="color:#B91C1C">❌ ${data.error}</span>`
+      : `Last sync: <strong>${lastSync}</strong>`
+        + (rowCount ? ` &nbsp;·&nbsp; <strong>${rowCount}</strong> rows, <strong>${poCount}</strong> POs loaded` : '');
+    if (data.poRefs && data.poRefs.length) {
+      filesEl.innerHTML = data.poRefs.map(p => `<span style="display:inline-block;background:#DCFCE7;border:1px solid #BBF7D0;border-radius:10px;padding:1px 8px;font-size:11px;margin:2px 2px 0 0;color:#14532D">PO: ${p}</span>`).join('');
+    }
+    if (histBody && data.syncHistory) {
+      histDet.style.display = '';
+      histBody.innerHTML = (data.syncHistory || []).slice(-10).reverse().map(h => {
+        const t = h.timestamp ? new Date(h.timestamp).toLocaleString('en-GB') : '—';
+        const ok = !h.error;
+        return `<tr style="background:${ok?'#fff':'#FEF2F2'}">
+          <td style="padding:3px 8px;white-space:nowrap">${t}</td>
+          <td style="padding:3px 8px">${ok ? '<span style="color:#15803D">✅ OK</span>' : '<span style="color:#B91C1C">❌ Error</span>'}</td>
+          <td style="padding:3px 8px;text-align:right">${h.rowCount ?? '—'}</td>
+          <td style="padding:3px 8px;text-align:right">${(h.poRefs && h.poRefs.length) || '—'}</td>
+          <td style="padding:3px 8px">${(h.files||[]).map(f=>f.name||f).join(', ')||'—'}</td>
+        </tr>`;
+      }).join('');
+    }
+  } catch (_) {}
+}
 
 // ── Blob auto-sync: unlock pipeline if server already has parsed data ─────────
 (async function checkBlobAutoSync() {
@@ -815,14 +893,16 @@ loadHistory();
     // Server session already has supplier data from blob sync — unlock pipeline
     setStatus(1, 'success',
       `✅ Auto-loaded from blob sync: <strong>${poCount}</strong> PO${poCount !== 1 ? 's' : ''}, ` +
-      `<strong>${rowCount}</strong> row${rowCount !== 1 ? 's' : ''}. Proceed to the pipeline.`);
+      `<strong>${rowCount}</strong> row${rowCount !== 1 ? 's' : ''}.`);
     setBadge(1, 'done');
     renderSupplierSummary(poCount, 0, rowCount, 0);
+    renderPoTags(data.poRefs || []);
     const pipelineCard = document.getElementById('pipelineCard');
-    if (pipelineCard) pipelineCard.classList.remove('locked');
+    if (pipelineCard) pipelineCard.style.display = '';
     const badge = document.getElementById('badgePipeline');
     if (badge) badge.className = 'step-badge active';
     if (btnRunPipeline) btnRunPipeline.disabled = false;
+    scheduleAutoPipeline('blob auto-sync');
   } catch (_) {}
 })();
 
@@ -927,7 +1007,8 @@ async function loadSpStatus() {
     if (data.lastSync && data.poRefs && data.poRefs.length && !state.poRefs.length) {
       state.poRefs = data.poRefs;
       renderPoTags(data.poRefs);
-      document.getElementById('pipelineCard')?.classList.remove('locked');
+      const pipelineCard = document.getElementById('pipelineCard');
+      if (pipelineCard) pipelineCard.style.display = '';
       const badge = document.getElementById('badgePipeline');
       if (badge) badge.className = 'step-badge active';
     }
@@ -960,3 +1041,43 @@ async function dismissSpError() {
 
 // Initial SP status check
 loadSpStatus();
+
+// ── Blob sync "Pull Now" button ──────────────────────────────────────────────
+const btnBlobSync = document.getElementById('btnBlobSyncNow');
+if (btnBlobSync) {
+  btnBlobSync.addEventListener('click', async () => {
+    setLoading(btnBlobSync, true);
+    try {
+      await fetch(`${API}/blob-sync`, { method: 'POST' });
+      await new Promise(r => setTimeout(r, 2000));
+      await loadBlobStatus();
+      await checkBlobAutoSync_check();
+    } catch (err) {
+      const el = document.getElementById('blobSyncStatus');
+      if (el) el.textContent = `❌ ${err.message}`;
+    } finally {
+      setLoading(btnBlobSync, false);
+    }
+  });
+}
+
+async function checkBlobAutoSync_check() {
+  const res  = await fetch(`${API}/blob-sync/status`);
+  const data = await res.json();
+  if (!res.ok || !data.configured) return;
+  const rowCount = data.rowCount || 0;
+  const poCount  = (data.poRefs && data.poRefs.length) || 0;
+  if (rowCount === 0 && poCount === 0) return;
+  setStatus(1, 'success',
+    `✅ Auto-loaded: <strong>${poCount}</strong> PO${poCount !== 1 ? 's' : ''}, ` +
+    `<strong>${rowCount}</strong> row${rowCount !== 1 ? 's' : ''}.`);
+  setBadge(1, 'done');
+  renderSupplierSummary(poCount, 0, rowCount, 0);
+  renderPoTags(data.poRefs || []);
+  const pipelineCard = document.getElementById('pipelineCard');
+  if (pipelineCard) pipelineCard.style.display = '';
+  const badge = document.getElementById('badgePipeline');
+  if (badge) badge.className = 'step-badge active';
+  if (btnRunPipeline) btnRunPipeline.disabled = false;
+  scheduleAutoPipeline('blob pull');
+}
