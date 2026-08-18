@@ -813,6 +813,30 @@ app.post('/api/upload-sftp-batch', async (req, res) => {
     }
 
     res.json({ results });
+
+    // Fire-and-forget report webhook if configured
+    const webhookUrl = process.env.PIPELINE_REPORT_WEBHOOK;
+    if (webhookUrl) {
+      const generations = sessionState.lastGenerations || [];
+      const payload = {
+        runAt:        new Date().toISOString(),
+        poRefs:       sessionState.supplierHeaderPoRefs || [],
+        generations:  generations.map(g => ({
+          bookingRef: g.bookingRef || g.ctrlNumber,
+          poNumbers:  g.poNumbers || [],
+          filename:   g.filename,
+          uploaded:   results.find(r => r.filename === g.filename)?.ok || false,
+          sftpEnv:    results.find(r => r.filename === g.filename)?.sftpEnv || null
+        })),
+        skippedCount: (sessionState.skippedGroups || []).length,
+        errorMessage: null
+      };
+      fetch(webhookUrl, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload)
+      }).catch(err => console.error('[Report Webhook] Failed:', err.message));
+    }
   } catch (err) {
     console.error('upload-sftp-batch error:', err);
     res.status(500).json({ error: err.message });
