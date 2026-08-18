@@ -73,4 +73,25 @@ async function deleteBlob(name) {
   await containerClient.getBlobClient(name).deleteIfExists();
 }
 
-module.exports = { isConfigured, listBlobs, downloadBlob, deleteBlob };
+/**
+ * Copy blob to the processed container then delete from source.
+ * Destination container defaults to AZURE_WEBHOOK_CONTAINER_NAME + "-processed".
+ */
+async function archiveBlob(name) {
+  const connStr   = process.env.AZURE_WEBHOOK_STORAGE_CONNECTION_STRING;
+  const srcName   = process.env.AZURE_WEBHOOK_CONTAINER_NAME;
+  const dstName   = process.env.AZURE_WEBHOOK_PROCESSED_CONTAINER_NAME || `${srcName}-processed`;
+  const svcClient = BlobServiceClient.fromConnectionString(connStr);
+
+  const dstContainer = svcClient.getContainerClient(dstName);
+  await dstContainer.createIfNotExists();
+
+  const srcBlob = svcClient.getContainerClient(srcName).getBlobClient(name);
+  const dstBlob = dstContainer.getBlobClient(name);
+
+  const poller = await dstBlob.beginCopyFromURL(srcBlob.url);
+  await poller.pollUntilDone();
+  await srcBlob.deleteIfExists();
+}
+
+module.exports = { isConfigured, listBlobs, downloadBlob, deleteBlob, archiveBlob };

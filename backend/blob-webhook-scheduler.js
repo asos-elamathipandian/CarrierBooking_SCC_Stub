@@ -78,8 +78,8 @@ async function runSync(sessionState) {
       );
       allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
       processed.push({ name: file.name, size: file.size, lastModified: file.lastModified });
-      await blob.deleteBlob(file.name);
-      console.log(`[Blob Sync] Ingested "${file.name}" — ${parsed.rows.length} row(s)`);
+      await blob.archiveBlob(file.name);
+      console.log(`[Blob Sync] Ingested and archived "${file.name}" — ${parsed.rows.length} row(s)`);
     } catch (err) {
       console.error(`[Blob Sync] Failed to process "${file.name}":`, err.message);
     }
