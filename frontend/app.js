@@ -891,19 +891,21 @@ async function loadBlobStatus() {
     const rowCount = data.rowCount || 0;
     const poCount  = (data.poRefs && data.poRefs.length) || 0;
     if (rowCount === 0 && poCount === 0) return;
-    // Server session already has supplier data from blob sync — unlock pipeline
-    setStatus(1, 'success',
-      `✅ Auto-loaded from blob sync: <strong>${poCount}</strong> PO${poCount !== 1 ? 's' : ''}, ` +
-      `<strong>${rowCount}</strong> row${rowCount !== 1 ? 's' : ''}.`);
-    setBadge(1, 'done');
-    renderSupplierSummary(poCount, 0, rowCount, 0);
+    // Unlock pipeline UI
     renderPoTags(data.poRefs || []);
     const pipelineCard = document.getElementById('pipelineCard');
     if (pipelineCard) pipelineCard.style.display = '';
     const badge = document.getElementById('badgePipeline');
     if (badge) badge.className = 'step-badge active';
     if (btnRunPipeline) btnRunPipeline.disabled = false;
-    scheduleAutoPipeline('blob auto-sync');
+    // Only auto-trigger if session actually has rows (restore may need a moment)
+    setTimeout(async () => {
+      try {
+        const chk = await fetch(`${API}/blob-sync/status`);
+        const chkData = await chk.json();
+        if ((chkData.rowCount || 0) > 0) scheduleAutoPipeline('blob auto-sync');
+      } catch (_) {}
+    }, 3000);
   } catch (_) {}
 })();
 
@@ -925,6 +927,12 @@ async function loadSpStatus() {
     }
 
     if (spBanner) spBanner.style.display = '';
+
+    // Hide SP banner if it has a persistent 401 and no data — blob sync replaces it
+    if (data.error && data.error.includes('401') && !(data.rowCount > 0)) {
+      if (spBanner) spBanner.style.display = 'none';
+      return;
+    }
 
     if (data.running) {
       if (spStatus) spStatus.textContent = '⏳ Syncing…';
@@ -961,6 +969,8 @@ async function loadSpStatus() {
       const skippedNote = data.skipped ? ' &nbsp;<span style="color:#92400E">(no changes — skipped)</span>' : '';
       if (spStatus) spStatus.innerHTML = `Last synced: <strong>${when} on ${date}</strong>${skippedNote} &nbsp;·&nbsp; ${data.rowCount || 0} row(s), ${(data.poRefs || []).length} PO(s)`;
     } else if (!data.error) {
+      // Hide SP banner entirely if never synced and not configured with data
+      if (spBanner && !data.rowCount) spBanner.style.display = 'none';
       if (spStatus) spStatus.innerHTML = `Not yet synced`;
     }
 
@@ -1073,7 +1083,6 @@ async function checkBlobAutoSync_check() {
     `✅ Auto-loaded: <strong>${poCount}</strong> PO${poCount !== 1 ? 's' : ''}, ` +
     `<strong>${rowCount}</strong> row${rowCount !== 1 ? 's' : ''}.`);
   setBadge(1, 'done');
-  renderSupplierSummary(poCount, 0, rowCount, 0);
   renderPoTags(data.poRefs || []);
   const pipelineCard = document.getElementById('pipelineCard');
   if (pipelineCard) pipelineCard.style.display = '';
