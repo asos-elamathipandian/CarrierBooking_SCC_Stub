@@ -1014,14 +1014,20 @@ async function loadSpStatus() {
       histDetails.style.display = 'none';
     }
 
-    // If a fresh sync just populated supplier data, update the PO tags
-    if (data.lastSync && data.poRefs && data.poRefs.length && !state.poRefs.length) {
+    // Sync UI with server state whenever SP has data — always unlock pipeline
+    if (data.lastSync && data.poRefs && data.poRefs.length) {
+      const wasEmpty = !state.poRefs.length;
       state.poRefs = data.poRefs;
       renderPoTags(data.poRefs);
       const pipelineCard = document.getElementById('pipelineCard');
       if (pipelineCard) pipelineCard.style.display = '';
       const badge = document.getElementById('badgePipeline');
       if (badge) badge.className = 'step-badge active';
+      if (btnRunPipeline) btnRunPipeline.disabled = false;
+      if (wasEmpty) {
+        setStatus(1, 'success', `✅ Auto-loaded from SharePoint: <strong>${data.poRefs.length}</strong> PO${data.poRefs.length !== 1 ? 's' : ''}, <strong>${data.rowCount || 0}</strong> row${(data.rowCount || 0) !== 1 ? 's' : ''}.`);
+        setBadge(1, 'done');
+      }
     }
   } catch (_) {
     // silently ignore if server not up yet

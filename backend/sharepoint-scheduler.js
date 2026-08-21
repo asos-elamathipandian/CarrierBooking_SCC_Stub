@@ -263,18 +263,28 @@ function start(sessionState) {
   // ── Catch-up sync on startup ──────────────────────────────────────────────
   // If the server restarted after a scheduled slot passed today and no sync
   // has run today yet, fire one immediately so we don't wait until the next slot.
+  // Skip catch-up if a scheduled slot is within 10 minutes — the cron will handle it.
   const status = readStatus();
   const lastSync = status.lastSync ? new Date(status.lastSync) : null;
   const today = new Date().toDateString();
   const syncedToday = lastSync && lastSync.toDateString() === today;
 
-  if (!syncedToday && sp.isConfigured()) {
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  const nearNextSlot = cronExprs.some(expr => {
+    const [mStr, hStr] = expr.split(' ');
+    const slotMinutes = parseInt(hStr, 10) * 60 + parseInt(mStr, 10);
+    return Math.abs(slotMinutes - nowMinutes) <= 10;
+  });
+
+  if (!syncedToday && sp.isConfigured() && !nearNextSlot) {
     console.log('[SP Scheduler] No sync yet today — running catch-up sync on startup…');
     setTimeout(() => {
       runSync(sessionState).catch(err =>
         console.error('[SP Scheduler] Catch-up sync error:', err.message)
       );
     }, 3000); // 3s delay to let the server finish booting
+  } else if (!syncedToday && nearNextSlot) {
+    console.log('[SP Scheduler] No sync yet today but a scheduled slot is imminent — skipping catch-up.');
   }
 }
 

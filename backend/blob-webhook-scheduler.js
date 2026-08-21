@@ -8,14 +8,19 @@
  * mirrors sharepoint-scheduler.js's runSync() but sourced from Blob
  * Storage instead of a direct Graph SharePoint read.
  *
+ * Primary inbound path (Power Automate → Blob). Report emails are sent
+ * from here via Mail.Send. SharePoint scheduler remains as fallback.
+ *
  * Status is tracked in bible/blob-sync-status.json so the UI can show
  * last-sync time/outcome, same shape as sp-sync-status.json.
  */
 
 const path           = require('path');
 const fs             = require('fs');
+const cron           = require('node-cron');
 const blob           = require('./blob-webhook-client');
 const supplierReader = require('./supplier-reader');
+const reportSender   = require('./report-sender');
 
 const STATUS_FILE = path.join(__dirname, '..', 'bible', 'blob-sync-status.json');
 
@@ -108,6 +113,37 @@ async function runSync(sessionState) {
     poRefs,
     rowCount: allRows.length
   });
+
+  // Send report email for all VBKREQs generated since the last report
+  reportSender.sendScheduledReport().catch(err =>
+    console.error('[Blob Sync] Report send failed:', err.message)
+  );
 }
 
-module.exports = { runSync, readStatus, writeStatus };
+// ── Schedule builder ─────────────────────────────────────────────────────────
+
+function timesToCron(timesStr) {
+  return (timesStr || '').split(',').map(t => {
+    const [h, m] = t.trim().split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) return null;
+    return `${m} ${h} * * *`;
+  }).filter(Boolean);
+}
+
+function start(sessionState) {
+  const cronExprs = timesToCron(process.env.SP_SCHEDULE || '');
+  if (!cronExprs.length) {
+    console.log('[Blob Sync] SP_SCHEDULE not set — blob scheduler disabled.');
+    return;
+  }
+  for (const expr of cronExprs) {
+    cron.schedule(expr, () => {
+      runSync(sessionState).catch(err =>
+        console.error('[Blob Sync] Scheduled sync error:', err.message)
+      );
+    });
+    console.log(`[Blob Sync] Scheduled at cron "${expr}" (from SP_SCHEDULE)`);
+  }
+}
+
+module.exports = { runSync, start, readStatus, writeStatus };

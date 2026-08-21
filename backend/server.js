@@ -1572,5 +1572,6 @@ app.listen(PORT, () => {
   console.log(`CarrierBookingStub running at http://localhost:${PORT}`);
   // Clear any stale error from a previous server run so UI starts clean
   spScheduler.writeStatus({ error: null, running: false });
-  spScheduler.start(sessionState);
+  spScheduler.start(sessionState);     // fallback: direct SharePoint read
+  blobWebhookScheduler.start(sessionState); // primary: Power Automate → Blob
 });

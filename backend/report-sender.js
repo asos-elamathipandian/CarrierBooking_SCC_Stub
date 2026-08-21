@@ -176,6 +176,11 @@ async function sendScheduledReport() {
   const allEntries = readLog();
   const newEntries = allEntries.filter(e => new Date(e.timestamp) > lastReportTime);
 
+  if (newEntries.length === 0) {
+    console.log('[Report] No new entries since last report — skipping.');
+    return;
+  }
+
   const fromMailbox = process.env.REPORT_FROM || process.env.EMAIL_INGEST_MAILBOX;
   const toList = (process.env.REPORT_TO || '').split(',').map(s => s.trim()).filter(Boolean);
 
