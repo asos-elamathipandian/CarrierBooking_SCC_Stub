@@ -6,10 +6,6 @@ const db   = require('./databricks-client');
 
 const GEN_LOG_PATH = path.join(__dirname, '..', 'bible', 'generation-log.json');
 
-/**
- * Returns a Set of ASN IDs whose most recent tool log entry is a cancellation
- * (purposeCd='01'). Used as fallback when Databricks hasn't yet synced bookingCanceled.
- */
 function getToolCancelledAsnIds() {
   try {
     if (!fs.existsSync(GEN_LOG_PATH)) return new Set();
@@ -31,41 +27,35 @@ function getToolCancelledAsnIds() {
   } catch (_) { return new Set(); }
 }
 
-/** Normalise an ISO timestamp / date string to YYYY-MM-DD. */
+/** Normalise a date value to YYYY-MM-DD; returns '' for nulls and 1900-01-01 sentinels. */
 function toDateStr(val) {
   if (!val) return '';
   const s = String(val).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (s === '1900-01-01') return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s === '1900-01-01' ? '' : s;
   const d = new Date(s);
   if (isNaN(d.getTime())) return s.slice(0, 10);
-  return d.toISOString().slice(0, 10);
+  const iso = d.toISOString().slice(0, 10);
+  return iso === '1900-01-01' ? '' : iso;
 }
 
 /**
- * bam033j dates are stored 1 calendar day ahead of the intended business date
- * (dates ingested as midnight UTC of the following day). Subtract 1 day to correct.
- */
-function bam033jDate(val) {
-  if (!val) return '';
-  const s = toDateStr(val);
-  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const d = new Date(s + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * Fetch carrier ASN + PO enrichment data from Databricks for the given PO refs.
+ * Fetch carrier ASN + PO enrichment data from Databricks Serve layer for the given PO refs.
  *
- * Returns { carrierAsnFiles, errors } matching the structure of
- * blobClient.fetchCarrierFeedsOnly() so the rest of the pipeline is unchanged.
+ * Single star-schema query across:
+ *   fact_purchase_order_commitment_v1  (grain: PO + ASN + SKU, snapshot table)
+ *   dim_advanced_shipment_notice_v1    (ASN status, carrier, lading port)
+ *   dim_purchase_order_v1              (incoterms)
+ *   dim_supplier_v1                    (supplier ID/name/country)
+ *   dim_factory_v1                     (factory code/name/country)
+ *
+ * Returns { carrierAsnFiles, errors } matching the structure expected by the pipeline.
  */
 async function fetchAsnsByPoRefs(poRefs) {
   if (!poRefs || poRefs.length === 0) {
     return { poFeeds: [], asnFeeds: [], carrierAsnFiles: [], errors: [] };
   }
 
-  // Only numeric PO refs — prevents SQL injection from template data
   console.log(`[Databricks ASN] fetchAsnsByPoRefs called with: ${JSON.stringify(poRefs)}`);
   const safePOs = poRefs.map(p => String(p).trim()).filter(p => /^\d+$/.test(p));
   console.log(`[Databricks ASN] safePOs after filter: ${JSON.stringify(safePOs)}`);
@@ -75,46 +65,78 @@ async function fetchAsnsByPoRefs(poRefs) {
 
   const poList = safePOs.map(p => `'${p}'`).join(', ');
 
-  // ── Query 1: shipment lines from aim_shipment_detail_v1 ───────────────────
-  const shipmentSql = `
-    WITH latest AS (
-      SELECT *,
-        ROW_NUMBER() OVER (PARTITION BY asnId ORDER BY _IngestedDate DESC) AS _rn
-      FROM supplychain.conformed.aim_shipment_detail_v1
-      WHERE size(filter(orderLineItems, ol -> array_contains(array(${poList}), ol.orderId))) > 0
+  // Single star-schema query — QUALIFY picks the latest daily snapshot per PO+ASN+SKU
+  const sql = `
+    WITH latest_facts AS (
+      SELECT
+        f.dim_purchase_order_sk                                                    AS poId,
+        f.dim_advanced_shipment_notice_sk                                          AS asnId,
+        f.dim_product_sk                                                           AS sku,
+        CAST(f.dim_first_warehouse_sk AS STRING)                                   AS firstDestination,
+        CAST(f.dim_final_warehouse_sk  AS STRING)                                  AS finalDestination,
+        f.dim_purchase_order_status_sk                                             AS poStatus,
+        f.is_booked_by_carrier,
+        f.quantity                                                                 AS bookedQty,
+        CAST(f.dim_expected_factory_date_sk                                AS STRING) AS exFactoryDate,
+        CAST(f.dim_expected_shipment_date_sk                               AS STRING) AS expectedShipmentDate,
+        CAST(f.dim_first_warehouse_current_expected_delivery_date_sk       AS STRING) AS expectedDeliveryDate,
+        f.dim_factory_sk,
+        f.dim_supplier_sk
+      FROM sourcingandbuying.serve.fact_purchase_order_commitment_v1 f
+      WHERE f.dim_purchase_order_sk IN (${poList})
+        AND f.dim_advanced_shipment_notice_sk != 'Unknown'
+      QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY f.dim_purchase_order_sk, f.dim_advanced_shipment_notice_sk, f.dim_product_sk
+        ORDER BY f.dim_date_sk DESC
+      ) = 1
     )
     SELECT
-      s.asnId,
-      s.mode,
-      s.countryOfManufacture,
-      s.portOfLoad,
-      s.finalDestination,
-      s.firstDestination,
-      s.carrier,
-      s.supplier                         AS supplierCode,
-      s.asnEstimatedShipmentDate,
-      s.latestPlannedShipmentDate,
-      s.asnDeliveryDateFinalDest,
-      s.asnLoadingType,
-      s.bookingRequested,
-      s.bookingCanceled,
-      ol.orderId                         AS poId,
-      ol.sku,
-      TRY_CAST(ol.bookedQty AS DOUBLE)   AS bookedQty
-    FROM latest s
-    LATERAL VIEW EXPLODE(orderLineItems) AS ol
-    WHERE s._rn = 1
-      AND ol.orderId IN (${poList})
-    ORDER BY s.asnId, ol.orderId, ol.sku
+      lf.poId,
+      lf.asnId,
+      lf.sku,
+      lf.firstDestination,
+      lf.finalDestination,
+      lf.poStatus,
+      lf.is_booked_by_carrier    AS isBookedByCarrier,
+      lf.bookedQty,
+      lf.exFactoryDate,
+      lf.expectedShipmentDate,
+      lf.expectedDeliveryDate,
+      asn.asn_id,
+      asn.asn_status_code,
+      asn.carrier_code,
+      asn.lading_port_code,
+      sup.supplier_id,
+      sup.supplier               AS supplierName,
+      sup.primary_country_code   AS supplierCountry,
+      fac.factory_code           AS factoryID,
+      fac.factory                AS factoryName,
+      fac.factory_country_code,
+      po.inco_terms,
+      DATE_FORMAT(po.dim_original_purchase_order_shipment_date_sk,           'yyyy-MM-dd') AS poShipDate,
+      DATE_FORMAT(po.dim_current_requested_intake_first_destination_date_sk, 'yyyy-MM-dd') AS poDeliveryDate
+    FROM latest_facts lf
+    LEFT JOIN supplychain.serve.dim_advanced_shipment_notice_v1 asn
+           ON lf.asnId = asn.dim_advanced_shipment_notice_sk
+    LEFT JOIN sourcingandbuying.serve.dim_supplier_v1 sup
+           ON lf.dim_supplier_sk = sup.dim_supplier_sk
+    LEFT JOIN sourcingandbuying.serve.dim_factory_v1 fac
+           ON lf.dim_factory_sk = fac.dim_factory_sk
+    LEFT JOIN sourcingandbuying.serve.dim_purchase_order_v1 po
+           ON lf.poId = po.dim_purchase_order_sk
+    WHERE asn.asn_id IS NOT NULL
+    ORDER BY lf.asnId, lf.poId, lf.sku
   `;
 
   let rows;
   try {
-    rows = await db.query(shipmentSql);
+    console.log(`[Databricks Serve] querying ${safePOs.length} PO(s) via fact_purchase_order_commitment_v1`);
+    rows = await db.query(sql);
+    console.log(`[Databricks Serve] ${(rows || []).length} row(s) returned`);
   } catch (err) {
     return {
       poFeeds: [], asnFeeds: [], carrierAsnFiles: [],
-      errors: [`Databricks shipment query failed: ${err.message}`]
+      errors: [`Databricks serve query failed: ${err.message}`]
     };
   }
 
@@ -125,257 +147,106 @@ async function fetchAsnsByPoRefs(poRefs) {
     };
   }
 
-  // ── Query 2: PO enrichment from bam033j_purchase_order_v1 ────────────────
-  // Separate query — if it fails we still have shipment data above
-  const poEnrichMap = {}; // OrderNo -> { SupplierID, SupplierName, LadingPort, Incoterms }
-  const poSkuQtyMap  = {}; // OrderNo -> { sku -> PhysicalQtyOrdered }
-  const poSkuDescMap = {}; // OrderNo -> { sku -> OptionDescription }
-  try {
-    const poSql = `
-      SELECT
-        OrderNo,
-        CAST(SupplierID AS STRING)                                         AS SupplierID,
-        SupplierName,
-        LadingPort,
-        FreightTermsDescription                                            AS Incoterms,
-        CASE WHEN size(PODtl) > 0 THEN PODtl[0].OriginCountryID ELSE NULL END        AS FirstCountry,
-        CASE WHEN size(PODtl) > 0 THEN CAST(PODtl[0].OptionItemID AS STRING) ELSE NULL END AS OptionItemID,
-        CAST(Factory AS STRING)                                            AS FactoryID,
-        FactoryDesc                                                        AS FactoryName,
-        Status                                                             AS POStatus,
-        ExFactoryDate,
-        ExpectedShipmentDate,
-        ExpectedHandoverDate,
-        HandoverWindowStartDate,
-        HandoverWindowEndDate,
-        ExpectedDeliveryDateFirstLocation,
-        ROW_NUMBER() OVER (PARTITION BY OrderNo ORDER BY _IngestedDate DESC) AS _rn
-      FROM sourcingandbuying.conformed.bam033j_purchase_order_v1
-      WHERE OrderNo IN (${poList})
-    `;
-    console.log(`[Databricks PO] querying bam033j for POs: ${poList}`);
-    const poRows = await db.query(poSql);
-    console.log(`[Databricks PO] bam033j returned ${(poRows || []).length} row(s)`);
-    if (poRows && poRows.length > 0) {
-      console.log(`[Databricks PO] sample OrderNo values: ${[...new Set(poRows.slice(0,5).map(r => r.OrderNo))].join(', ')}`);
-      console.log(`[Databricks PO] sample SupplierName: ${poRows[0].SupplierName}, LadingPort: ${poRows[0].LadingPort}, FactoryName: ${poRows[0].FactoryName}`);
-      console.log(`[Databricks PO] dates — ExFactoryDate: ${poRows[0].ExFactoryDate}, ExpectedShipmentDate: ${poRows[0].ExpectedShipmentDate}, ExpectedHandoverDate: ${poRows[0].ExpectedHandoverDate}, HandoverWindowStartDate: ${poRows[0].HandoverWindowStartDate}, ExpectedDeliveryDateFirstLocation: ${poRows[0].ExpectedDeliveryDateFirstLocation}`);
-    }
-    for (const r of (poRows || [])) {
-      if (Number(r._rn) === 1 || !poEnrichMap[r.OrderNo]) {
-        poEnrichMap[r.OrderNo] = {
-          poStatus:             r.POStatus            || '',
-          supplierID:           r.SupplierID          || '',
-          supplierName:         r.SupplierName        || '',
-          ladingPort:           r.LadingPort          || '',
-          incoterms:            r.Incoterms           || '',
-          country:              r.FirstCountry        || '',
-          optionID:             r.OptionItemID        || '',
-          factoryID:            r.FactoryID           || '',
-          factoryName:          r.FactoryName         || '',
-          expectedShipmentDate: bam033jDate(r.ExFactoryDate || r.ExpectedShipmentDate || ''),
-          expectedDeliveryDate: bam033jDate(r.ExpectedDeliveryDateFirstLocation || r.ExpectedHandoverDate || ''),
-          exFactoryDate:        bam033jDate(r.ExFactoryDate        || ''),
-          expShipmentDate:      bam033jDate(r.ExpectedShipmentDate || ''),
-          expHandoverDate:      bam033jDate(r.ExpectedHandoverDate || ''),
-          expDeliveryDate:      bam033jDate(r.ExpectedDeliveryDateFirstLocation || ''),
-          supplierStreet1: '',
-          supplierCity:    '',
-          supplierPostal:  '',
-          supplierCountry: '',
-          factoryStreet1:  '',
-          factoryCity:     '',
-          factoryPostal:   '',
-          factoryCountry:  ''
-        };
-      }
-    }
-    console.log(`[Databricks PO] enrichment fetched for ${Object.keys(poEnrichMap).length} PO(s)`);
-
-    // ── Per-SKU quantities from bam033j PODtl ──
-    const qtySkuSql = `
-      WITH latest AS (
-        SELECT OrderNo, PODtl
-        FROM sourcingandbuying.conformed.bam033j_purchase_order_v1
-        WHERE OrderNo IN (${poList})
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY OrderNo ORDER BY _IngestedDate DESC) = 1
-      )
-      SELECT b.OrderNo, d.SKUItemID AS sku,
-             TRY_CAST(d.PhysicalQtyOrdered AS DOUBLE) AS qty,
-             d.OptionDescription AS description
-      FROM latest b
-      LATERAL VIEW EXPLODE(b.PODtl) AS d
-      WHERE d.SKUItemID IS NOT NULL
-    `;
-    const qtyRows = await db.query(qtySkuSql);
-    for (const r of (qtyRows || [])) {
-      if (!poSkuQtyMap[r.OrderNo])  poSkuQtyMap[r.OrderNo]  = {};
-      if (!poSkuDescMap[r.OrderNo]) poSkuDescMap[r.OrderNo] = {};
-      if (r.sku) {
-        poSkuQtyMap[r.OrderNo][String(r.sku)]  = r.qty         || 0;
-        poSkuDescMap[r.OrderNo][String(r.sku)] = r.description || '';
-      }
-    }
-    console.log(`[Databricks PO] per-SKU qty fetched for ${Object.keys(poSkuQtyMap).length} PO(s), ${(qtyRows||[]).length} SKU row(s)`);
-    if (qtyRows && qtyRows.length > 0) {
-      console.log(`[Databricks PO] sample sku qtys: ${JSON.stringify(Object.values(poSkuQtyMap)[0])}`);
-    }
-  } catch (err) {
-    console.warn(`[Databricks PO] enrichment query failed (continuing without it): ${err.message}`);
+  if (rows.length > 0) {
+    const s = rows[0];
+    console.log(`[Databricks Serve] sample: ASN=${s.asn_id}, PO=${s.poId}, sku=${s.sku}, exFactory=${s.exFactoryDate}, shipDate=${s.expectedShipmentDate}, delivery=${s.expectedDeliveryDate}, lading=${s.lading_port_code}, supplier=${s.supplierName}, factory=${s.factoryName}, status=${s.asn_status_code}, booked=${s.isBookedByCarrier}`);
   }
 
-  // ── Group shipment rows by (asnId, poId) ──────────────────────────────────
-  // asnSkuQtyMap is populated by Query 3 (bam036e) which runs after grouping;
-  // a second pass below overwrites quantities once bam036e data is available.
-  const asnSkuQtyMap = {}; // asnId -> poId -> sku -> unit_qty (filled by Query 3)
+  // Cancellation check pass — asn_status_code 'D' = deleted/cancelled (same as bam036e _notification_type)
+  const cancelledAsnIds = new Set();
+  for (const row of rows) {
+    if (row.asn_status_code === 'D') cancelledAsnIds.add(String(row.asn_id || row.asnId));
+  }
+
+  // Group rows by ASN+PO, collecting per-SKU lines
   const asnPoMap = {};
   for (const row of rows) {
     const key = `${row.asnId}::${row.poId}`;
-    const enrich = poEnrichMap[row.poId] || {};
     if (!asnPoMap[key]) {
       asnPoMap[key] = {
-        asnId:            row.asnId             || '',
-        poId:             row.poId              || '',
-        pofc:             row.firstDestination  || row.finalDestination || '',
-        finalDestination: row.finalDestination  || '',
-        shipDate:         toDateStr(row.asnEstimatedShipmentDate || row.latestPlannedShipmentDate || enrich.expectedShipmentDate),
-        supplier:         enrich.supplierName   || '',
-        supplierCode:     enrich.supplierID     || row.supplierCode || '',
-        shippingPoint:    enrich.ladingPort     || row.portOfLoad   || '',
-        shippingTerms:    enrich.incoterms      || '',
+        asnId:            String(row.asn_id   || row.asnId  || ''),
+        poId:             String(row.poId                   || ''),
+        pofc:             row.firstDestination              || '',
+        finalDestination: row.finalDestination              || '',
+        poStatus:         row.poStatus                      || '',
+        isBookedByCarrier: (row.isBookedByCarrier || 'No'),
+        // bookingRequested mirrors isBookedByCarrier for downstream compatibility
+        bookingRequested: row.isBookedByCarrier === 'Yes' ? 'booked' : null,
+        bookingCanceled:  null,
+        shipDate:         row.poShipDate       || toDateStr(row.expectedShipmentDate || row.exFactoryDate),
+        supplier:         row.supplierName                  || '',
+        supplierCode:     row.supplier_id                   || '',
+        shippingPoint:    row.lading_port_code              || '',
+        shippingTerms:    row.inco_terms                    || '',
         supplierStreet1:  '',
         supplierCity:     '',
         supplierPostal:   '',
         supplierCountry:  '',
-        factoryID:        enrich.factoryID      || '',
-        factoryName:      enrich.factoryName    || '',
+        factoryID:        row.factoryID                     || '',
+        factoryName:      row.factoryName                   || '',
         factoryStreet1:   '',
         factoryCity:      '',
         factoryPostal:    '',
         factoryCountry:   '',
-        mode:             row.mode              || '',
-        carrier:          row.carrier           || '',
-        bookingRequested: row.bookingRequested  || null,
-        bookingCanceled:  row.bookingCanceled   || null,
-        expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest || enrich.expectedDeliveryDate),
+        mode:             row.carrier_code                  || '',
+        carrier:          row.carrier_code                  || '',
+        expectedDeliveryDate: row.poDeliveryDate || toDateStr(row.expectedDeliveryDate),
         lines: []
       };
     }
     asnPoMap[key].lines.push({
-      sku:         row.sku                  || '',
+      sku:         String(row.sku        || ''),
       ean:         '',
-      description: poSkuDescMap[row.poId]?.[String(row.sku)] || '',
+      description: '',
       size:        '',
       colour:      '',
-      style:       enrich.optionID || '',
-      packFormat:  row.asnLoadingType === 'H' ? 'H' : 'F',
-      country:     row.countryOfManufacture || enrich.country || '',
-      quantity:    row.bookedQty ?? poSkuQtyMap[row.poId]?.[String(row.sku)] ?? 0,
-      expectedDeliveryDate: toDateStr(row.asnDeliveryDateFinalDest || enrich.expectedDeliveryDate)
+      style:       '',
+      packFormat:  'F',
+      country:     row.factory_country_code || row.supplierCountry || '',
+      quantity:    row.bookedQty ?? 0,
+      expectedDeliveryDate: row.poDeliveryDate || toDateStr(row.expectedDeliveryDate)
     });
   }
 
-  // ── Query 3: cancellation status + per-SKU quantities from bam036e_asn_v1 ──
-  // _notification_type: 'C' = Created, 'M' = Modified, 'D' = Deleted/Cancelled.
-  // ASNInDesc.ASNInPO[].ASNInItem[].unit_qty — actual booked qty per SKU in the ASN.
-  // Non-fatal — if this query fails we proceed without the cancellation/qty data.
-  const cancelledAsnIds = new Set();
-
-  try {
-    const uniqueAsnIds = [...new Set(Object.values(asnPoMap).map(g => g.asnId).filter(Boolean))];
-    if (uniqueAsnIds.length > 0) {
-      const asnList = uniqueAsnIds.map(a => `'${a}'`).join(', ');
-      const bam036eSql = `
-        WITH latest AS (
-          SELECT _asn_nbr, _notification_type,
-            AdvancedShipmentNotification.ASNInDesc.ASNInPO AS po_list
-          FROM supplychain.conformed.bam036e_asn_v1
-          WHERE _asn_nbr IN (${asnList})
-          QUALIFY ROW_NUMBER() OVER (PARTITION BY _asn_nbr ORDER BY _last_update_timestamp DESC, _IngestedDate DESC) = 1
-        )
-        SELECT b._asn_nbr, b._notification_type,
-               po.po_nbr, item.item_id AS sku,
-               TRY_CAST(item.unit_qty AS DOUBLE) AS unit_qty
-        FROM latest b
-        LATERAL VIEW EXPLODE(b.po_list)     AS po
-        LATERAL VIEW EXPLODE(po.ASNInItem)  AS item
-      `;
-      console.log(`[Databricks bam036e] querying cancellation + unit_qty for ${uniqueAsnIds.length} ASN(s)`);
-      const bam036eRows = await db.query(bam036eSql);
-      for (const r of (bam036eRows || [])) {
-        if (r._notification_type === 'D') cancelledAsnIds.add(String(r._asn_nbr));
-        if (r._asn_nbr && r.po_nbr && r.sku) {
-          const asnKey = String(r._asn_nbr);
-          const poKey  = String(r.po_nbr);
-          const skuKey = String(r.sku);
-          if (!asnSkuQtyMap[asnKey])          asnSkuQtyMap[asnKey]         = {};
-          if (!asnSkuQtyMap[asnKey][poKey])   asnSkuQtyMap[asnKey][poKey]  = {};
-          asnSkuQtyMap[asnKey][poKey][skuKey] = r.unit_qty ?? 0;
-        }
-      }
-      console.log(`[Databricks bam036e] ${cancelledAsnIds.size} cancelled ASN(s); qty rows: ${(bam036eRows||[]).length}`);
-      if (bam036eRows && bam036eRows.length > 0) {
-        const sample = bam036eRows.slice(0, 4).map(r => `${r._asn_nbr}/${r.po_nbr}/${r.sku}=${r.unit_qty}`).join(', ');
-        console.log(`[Databricks bam036e] sample qtys: ${sample}`);
-      }
-    }
-  } catch (err) {
-    console.warn(`[Databricks bam036e] query failed (continuing without it): ${err.message}`);
-  }
-
-  // ── Second pass: apply bam036e unit_qty over the fallback quantities ──────
-  for (const group of Object.values(asnPoMap)) {
-    for (const line of group.lines) {
-      const bam036eQty = asnSkuQtyMap[group.asnId]?.[group.poId]?.[line.sku];
-      if (bam036eQty !== undefined) line.quantity = bam036eQty;
-    }
-  }
-
-  // ── Separate active vs cancelled ASN/PO groups ───────────────────────────
+  // Separate active vs cancelled ASN/PO groups
   const toolCancelledAsnIds = getToolCancelledAsnIds();
   const cancelledItems = [];
   const allGroups      = Object.values(asnPoMap);
 
   const parsed = allGroups.filter(group => {
-    const enrich = poEnrichMap[group.poId] || {};
-
     if (cancelledAsnIds.has(String(group.asnId))) {
-      console.warn(`[Databricks ASN] SKIPPED — ASN ${group.asnId} / PO ${group.poId} is cancelled (bam036e _notification_type=D)`);
+      console.warn(`[Databricks Serve] SKIPPED — ASN ${group.asnId} / PO ${group.poId} is cancelled (asn_status_code=D)`);
       cancelledItems.push({
         type:   'ASN',
         asnId:  group.asnId,
         poId:   group.poId,
-        reason: `ASN ${group.asnId} (PO ${group.poId}) is cancelled — latest notification type is D (deleted)`
+        reason: `ASN ${group.asnId} (PO ${group.poId}) is cancelled`
       });
       return false;
     }
 
-    if (group.bookingRequested) {
-      const dbCancelled   = !!group.bookingCanceled;
+    if (group.isBookedByCarrier === 'Yes') {
       const toolCancelled = toolCancelledAsnIds.has(String(group.asnId));
-      if (dbCancelled || toolCancelled) {
-        const reason = dbCancelled ? 'bookingCanceled set in Databricks' : 'cancellation logged in tool (purposeCd=01)';
-        console.log(`[Databricks ASN] ASN ${group.asnId} bookingRequested but cancelled — ${reason} — allowing re-book`);
-      } else {
-        const when = toDateStr(group.bookingRequested);
-        console.warn(`[Databricks ASN] SKIPPED — ASN ${group.asnId} / PO ${group.poId} already has a booking request (bookingRequested=${when})`);
+      if (!toolCancelled) {
+        console.warn(`[Databricks Serve] SKIPPED — ASN ${group.asnId} / PO ${group.poId} already booked by carrier`);
         cancelledItems.push({
           type:   'ALREADY_BOOKED',
           asnId:  group.asnId,
           poId:   group.poId,
-          reason: `ASN ${group.asnId} (PO ${group.poId}) already has a carrier booking request — submitted on ${when}`
+          reason: `ASN ${group.asnId} (PO ${group.poId}) already has a carrier booking`
         });
         return false;
       }
+      console.log(`[Databricks Serve] ASN ${group.asnId} booked but tool-cancelled — allowing re-book`);
     }
 
-    if (enrich.poStatus === 'C') {
-      console.warn(`[Databricks ASN] SKIPPED — PO ${group.poId} has Status=C (cancelled)`);
+    if (group.poStatus === 'C') {
+      console.warn(`[Databricks Serve] SKIPPED — PO ${group.poId} has Status=C (cancelled)`);
       cancelledItems.push({
         type:  'PO',
         asnId: group.asnId,
         poId:  group.poId,
-        reason: `PO ${group.poId} is cancelled (Status=C) — booking creation skipped`
+        reason: `PO ${group.poId} is cancelled (Status=C)`
       });
       return false;
     }
@@ -388,11 +259,10 @@ async function fetchAsnsByPoRefs(poRefs) {
     .filter(p => !foundPOs.has(p))
     .map(p => `Databricks: no shipment record found for PO ${p}`);
 
-  console.log(`[Databricks ASN] ${parsed.length} active ASN group(s), ${cancelledItems.length} cancelled, for ${safePOs.length} PO ref(s)`);
+  console.log(`[Databricks Serve] ${parsed.length} active group(s), ${cancelledItems.length} cancelled, for ${safePOs.length} PO ref(s)`);
   if (parsed.length > 0) {
     const p = parsed[0];
-    console.log(`[Databricks ASN] shipDate="${p.shipDate}", expectedDeliveryDate="${p.expectedDeliveryDate}", mode="${p.mode}"`);
-    console.log(`[Databricks ASN] raw asnEstimatedShipmentDate="${rows[0]?.asnEstimatedShipmentDate}", latestPlannedShipmentDate="${rows[0]?.latestPlannedShipmentDate}", asnDeliveryDateFinalDest="${rows[0]?.asnDeliveryDateFinalDest}"`);
+    console.log(`[Databricks Serve] shipDate="${p.shipDate}", expectedDeliveryDate="${p.expectedDeliveryDate}", mode="${p.mode}", shippingPoint="${p.shippingPoint}"`);
   }
 
   // One carrierAsnFile entry per PO that has active parsed data — so the
@@ -419,15 +289,13 @@ async function fetchAsnsByPoRefs(poRefs) {
 }
 
 /**
- * Resolve PO references from ASN references using latest shipment detail records.
+ * Resolve PO references from ASN references using the serve layer fact table.
  * Returns { asnToPoMap, poRefs, errors } where asnToPoMap[asn] = [po1, po2, ...].
  */
 async function resolvePoRefsByAsnRefs(asnRefs) {
   const cleanAsns = [...new Set((asnRefs || []).map(a => String(a || '').trim()).filter(Boolean))];
   if (!cleanAsns.length) return { asnToPoMap: {}, poRefs: [], errors: [] };
 
-  // Keep the query safe by allowing common ASN characters (letters, numbers,
-  // underscore, dash, slash, dot) while rejecting everything else.
   const safeAsns = cleanAsns.filter(a => /^[A-Za-z0-9_./-]+$/.test(a));
   const rejected = cleanAsns.filter(a => !safeAsns.includes(a));
 
@@ -441,17 +309,13 @@ async function resolvePoRefsByAsnRefs(asnRefs) {
 
   const asnList = safeAsns.map(a => `'${a}'`).join(', ');
   const sql = `
-    WITH latest AS (
-      SELECT asnId, orderLineItems,
-             ROW_NUMBER() OVER (PARTITION BY asnId ORDER BY _IngestedDate DESC) AS _rn
-      FROM supplychain.conformed.aim_shipment_detail_v1
-      WHERE asnId IN (${asnList})
-    )
-    SELECT s.asnId, ol.orderId AS poId
-    FROM latest s
-    LATERAL VIEW EXPLODE(s.orderLineItems) AS ol
-    WHERE s._rn = 1
-      AND ol.orderId IS NOT NULL
+    SELECT DISTINCT
+      f.dim_advanced_shipment_notice_sk AS asnId,
+      f.dim_purchase_order_sk           AS poId
+    FROM sourcingandbuying.serve.fact_purchase_order_commitment_v1 f
+    WHERE f.dim_advanced_shipment_notice_sk IN (${asnList})
+      AND f.dim_advanced_shipment_notice_sk != 'Unknown'
+      AND f.dim_purchase_order_sk IS NOT NULL
   `;
 
   let rows;

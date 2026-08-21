@@ -56,7 +56,36 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('\n🎉 SharePoint connection test passed!');
+  console.log('\n🎉 SharePoint read test passed!');
+
+  // ── WRITE test (upload a tiny file then delete it) ──────────────────────────
+  const testFileName = `_write-test-${Date.now()}.txt`;
+  const testContent  = Buffer.from(`SP write test — ${new Date().toISOString()}`);
+  console.log(`\n⬆  Write test — uploading "${testFileName}"…`);
+
+  let uploadedItem;
+  try {
+    uploadedItem = await sp.uploadToSupplierFolder('', testFileName, testContent);
+    console.log(`✅ Upload OK — id: ${uploadedItem.id}`);
+  } catch (err) {
+    console.error('❌ Upload failed (Sites.Selected write grant not in place):', err.message);
+    process.exit(1);
+  }
+
+  // Delete the test file to leave SharePoint clean
+  const driveId = uploadedItem.parentReference?.driveId;
+  if (driveId) {
+    const { ClientSecretCredential } = require('@azure/identity');
+    const cred  = new ClientSecretCredential(process.env.SP_TENANT_ID, process.env.SP_CLIENT_ID, process.env.SP_CLIENT_SECRET);
+    const token = (await cred.getToken('https://graph.microsoft.com/.default')).token;
+    const delRes = await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${uploadedItem.id}`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+    });
+    if (delRes.status === 204) console.log('🗑  Test file deleted — SharePoint left clean.');
+    else console.warn(`⚠  Could not delete test file (status ${delRes.status}) — remove manually from SharePoint.`);
+  }
+
+  console.log('\n🎉 SharePoint read + write test passed!');
 }
 
 main();
