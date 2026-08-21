@@ -21,6 +21,7 @@ const cron           = require('node-cron');
 const blob           = require('./blob-webhook-client');
 const supplierReader = require('./supplier-reader');
 const reportSender   = require('./report-sender');
+const pipeline       = require('./pipeline-runner');
 
 const STATUS_FILE = path.join(__dirname, '..', 'bible', 'blob-sync-status.json');
 
@@ -114,10 +115,19 @@ async function runSync(sessionState) {
     rowCount: allRows.length
   });
 
-  // Send report email for all VBKREQs generated since the last report
-  reportSender.sendScheduledReport().catch(err =>
-    console.error('[Blob Sync] Report send failed:', err.message)
-  );
+  // Run the full pipeline: Databricks → bible → VBKREQs → SFTP → report
+  const result = await pipeline.run(sessionState);
+  if (result.error) {
+    console.error(`[Blob Sync] Pipeline error: ${result.error}`);
+    writeStatus({ pipelineError: result.error });
+  } else {
+    writeStatus({
+      pipelineError:    null,
+      lastPipelineRun:  now.toISOString(),
+      generationCount:  result.generations.length,
+      skippedCount:     result.skippedGroups.length,
+    });
+  }
 }
 
 // ── Schedule builder ─────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ const spClient             = require('./sharepoint-client');
 const spScheduler          = require('./sharepoint-scheduler');
 const blobWebhook          = require('./blob-webhook-client');
 const blobWebhookScheduler = require('./blob-webhook-scheduler');
+const reportSender         = require('./report-sender');
 
 const app = express();
 
@@ -813,6 +814,11 @@ app.post('/api/upload-sftp-batch', async (req, res) => {
     }
 
     res.json({ results });
+
+    // Send booking report email immediately after manual pipeline upload
+    reportSender.sendScheduledReport().catch(err =>
+      console.error('[Report] Post-upload send failed:', err.message)
+    );
 
     // Fire-and-forget report webhook if configured
     const webhookUrl = process.env.PIPELINE_REPORT_WEBHOOK;
