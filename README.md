@@ -1,6 +1,297 @@
-# CarrierBookingStub — VBKREQ Generator
+# Carrier Booking Tool — Team Guide
 
-A web-based internal tool for ASOS to automate carrier booking requests (VBKREQs) to E2open/Davis Turner via SFTP. It eliminates manual XML authoring by pulling ASN and PO data from Azure Databricks, merging it with supplier-provided booking templates, and generating standards-compliant VBKREQ XML files ready for transmission.
+> **What it does:** Automatically generates carrier booking requests (VBKREQs) to E2open / Davis Turner. Suppliers email a booking template → the tool pulls ASN & PO data from Databricks → produces compliant XML → uploads via SFTP. No manual XML authoring required.
+
+---
+
+## Contents
+
+1. [Day-to-Day: How it works](#day-to-day-how-it-works)
+2. [Using the UI](#using-the-ui)
+3. [Adding a New Supplier](#adding-a-new-supplier)
+4. [Troubleshooting](#troubleshooting)
+5. [Azure Deployment — Updating the App](#azure-deployment--updating-the-app)
+6. [Databricks Access — Raising a PR](#databricks-access--raising-a-pr)
+7. [Environment Variables Reference](#environment-variables-reference)
+8. [Local Development Setup](#local-development-setup)
+9. [Architecture & Technical Reference](#architecture-overview)
+
+---
+
+## Day-to-Day: How it works
+
+The tool runs **automatically** on Azure App Service. No one needs to manually trigger it.
+
+```
+Supplier emails booking template (.xlsx)
+        ↓
+Power Automate picks it up from InboundService@asos.com
+        ↓
+PA uploads file to Azure Blob Storage + triggers the App Service
+        ↓
+App Service parses the template, fetches ASN/PO data from Databricks
+        ↓
+Generates VBKREQ XML + uploads to E2open SFTP
+        ↓
+Sends summary email report to InboundService@asos.com at 09:00 and 13:00
+```
+
+### What your team needs to do day-to-day
+
+| Scenario | Action |
+|---|---|
+| Supplier sends template | Nothing — PA handles it automatically |
+| Check booking status | Open the tool UI → see pipeline status card |
+| Booking failed | Check UI for error → see [Troubleshooting](#troubleshooting) |
+| Re-submit a booking | UI → "Re-Submit / Cancel" card → enter PO → Re-Submit |
+| Cancel a booking | UI → "Re-Submit / Cancel" card → enter PO → Cancel |
+| Download a VBKREQ XML | UI → Booking History → Download |
+
+**Tool URL:** `https://as-carrierbookingstub.azurewebsites.net`
+
+---
+
+## Using the UI
+
+### Running the pipeline manually (if needed)
+
+1. Open the tool URL above
+2. **Upload supplier template** — drag & drop the `.xlsx` file from the supplier
+3. Click **Run Pipeline** — the steps run in order:
+   - Step 1: Parse supplier template
+   - Step 2a: Fetch ASN from Databricks
+   - Step 2b: Fetch PO enrichment data
+   - Step 2c: Build master dataset (Bible)
+   - Step 2d: Generate VBKREQ XML
+   - Step 2e: Upload to SFTP
+4. Green ticks = success. Amber ⚠ = some POs skipped (cancelled/already booked). Red = error.
+
+### Skipped POs — what does ⚠ mean?
+
+A PO is skipped (not sent to E2open) when:
+- The ASN is **cancelled** (`D` status in Databricks)
+- The PO is **cancelled** (`Status=C` in Databricks)
+- A carrier booking **already exists** for that ASN/PO
+
+This is expected behaviour. Expand the skipped section in the UI for details.
+
+---
+
+## Adding a New Supplier
+
+### Standard supplier (same column headers as ASOS template)
+
+No config needed — just upload their `.xlsx` file.
+
+### Supplier with different column names (e.g. different header labels)
+
+1. Copy the example mapping file:
+   ```
+   config/supplier-column-mapping.example.json → config/supplier-column-mapping.json
+   ```
+2. Edit `supplier-column-mapping.json` and add the supplier's column names mapped to the tool's canonical names:
+   ```json
+   {
+     "PO_Number": ["PO Number", "Purchase Order"],
+     "Carrier_Booking_Request_Date": ["Booking Request Date"]
+   }
+   ```
+3. Save and restart the app. The parser picks it up automatically.
+
+**Minimum required fields to map:**
+`PO_Number`, `Cargo_Ready_Planned_Collection_Date`, `Carrier_Booking_Request_Date`, `Booking_Group`, `No_of_Cartons`, `Unit_Weight_KG`
+
+### ASN-based supplier (e.g. Ideateks — template has ASN numbers, not PO numbers)
+
+Use `ASN_Number` in the mapping instead of `PO_Number`. The tool automatically resolves PO numbers from ASN IDs via Databricks.
+
+Ideateks defaults applied automatically:
+- `Booking_Group` → `Single Booking`
+- `Cargo_Ready_Planned_Collection_Date` → today
+- `Carrier_Booking_Request_Date` → tomorrow
+- `Traffic_Mode` → `CFS`
+
+---
+
+## Troubleshooting
+
+### "Databricks 403 / PERMISSION_DENIED"
+
+The Azure App Service SP doesn't have access to Databricks. See [Databricks Access — Raising a PR](#databricks-access--raising-a-pr).
+
+### "SFTP upload failed"
+
+- Check SFTP credentials in Azure App Service → Configuration → `SFTP_HOST`, `SFTP_USERNAME`, `SFTP_PRIVATE_KEY_PATH`
+- Run connection test locally: `node backend/test-sftp.js`
+
+### "SharePoint sync failed — 403"
+
+- The `Sites.Selected` permission may have expired or not been applied per-site
+- Check App Registration `carrier-booking-sharepoint-write` in Azure Portal → API Permissions
+- Ensure admin consent has been granted AND the per-site write grant was applied via Graph API
+
+### "Pipeline runs locally but fails on Azure"
+
+Most likely cause: the SP (`carrier-booking-sharepoint-write`) is missing a permission in one of the downstream services (Databricks, SharePoint, or Graph). Check Azure App Service logs:
+1. Azure Portal → App Service `as-carrierbookingstub` → Log stream
+2. Or: App Service → Advanced Tools (Kudu) → Debug Console → `LogFiles/`
+
+### "Emails not sending / report not arriving"
+
+- Check `Mail.Send` application permission is granted on the App Registration
+- Confirm `REPORT_TO` and `REPORT_FROM` env vars are set in App Service Configuration
+- Check **Always On** is enabled (App Service → Configuration → General settings) — without it, the 09:00/13:00 cron jobs stop after 20 min of inactivity
+
+### "All bookings re-sent after restart"
+
+Known behaviour: `bible/report-state.json` lives on the App Service filesystem which resets on restart. The next report will be a catch-up of all historical entries. This is harmless — E2open deduplicates by VB Ref.
+
+---
+
+## Azure Deployment — Updating the App
+
+The app runs on **Azure App Service `as-carrierbookingstub`** (Resource Group: `as-inbound-e2e-testsupporttool`).
+
+### Deploying code changes
+
+```bash
+# From the repo root — zip deploy via Azure CLI
+az webapp deployment source config-zip \
+  --resource-group as-inbound-e2e-testsupporttool \
+  --name as-carrierbookingstub \
+  --src <path-to-zip>
+```
+
+Or use the Azure Portal → App Service → Deployment Center if connected to this repo.
+
+### Adding / changing environment variables
+
+Azure Portal → App Service `as-carrierbookingstub` → **Configuration** → Application settings → Add/Edit → Save → Restart.
+
+> Never put secrets in code or commit `.env` to git. All secrets live in App Service Configuration only.
+
+### Checking the app is running
+
+Azure Portal → App Service → Overview → check Status = **Running**.  
+Live logs: App Service → **Log stream**.
+
+---
+
+## Databricks Access — Raising a PR
+
+If the SP needs access to new Databricks serve layer tables, raise a PR to:
+[`asosteam/asos-data-ade-consumptionzone-infrastructure`](https://github.com/asosteam/asos-data-ade-consumptionzone-infrastructure)
+
+### File to create
+`terraform/phase2_databricks_config/modules/systematic_access/configs/prd/<system_name>.yaml`
+
+### Template
+```yaml
+system_config:
+  system_name: "e2e_carrier_booking"
+  system_type: "business_data_consumer"
+  description: "Data access for E2E Carrier Booking tool"
+
+  owner:
+    name: "e2e_carrier_booking"
+    contact_email: "InboundService@asos.com"
+
+  infra_config:
+    cluster_size: "Small"
+    auto_stop_minutes: 1
+    enable_serverless: true
+    max_num_clusters: 1
+    enable_photon: false
+    tags:
+      environment: "Production"
+      backstage_system: "<registered-backstage-system>"
+      backstage_component: "<registered-backstage-component>"
+
+  spns:
+    - client_id: "322bfb99-27c5-444b-8e68-92612c73d5d9"
+      display_name: "carrier-booking-sharepoint-write"
+      entra_groups:
+        - "AAD_ADE_SBU_Serve_System_DataReader"   # sourcingandbuying.serve
+        - "AAD_ADE_SCH_Serve_System_DataReader"   # supplychain.serve
+```
+
+### Branch naming rule
+Branch names must match: `feature/<6-7 digit ticket>-<10+ letters>`  
+Example: `feature/2608211-AddCarrierBookingServeAccess`
+
+### Reviewer
+Tag **Japji Gandhi** (`asosjapji`) as reviewer.
+
+---
+
+## Environment Variables Reference
+
+All variables go in `.env` locally, or Azure App Service → Configuration on Azure.
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABRICKS_HOST` | Yes | e.g. `adb-2908786112690092.12.azuredatabricks.net` |
+| `DATABRICKS_HTTP_PATH` | Yes | SQL warehouse HTTP path |
+| `DATABRICKS_TOKEN` | Local only | Personal access token (local dev only) |
+| `SP_CLIENT_ID` | Yes | App Registration client ID (`322bfb99-...`) |
+| `SP_CLIENT_SECRET` | Yes | App Registration client secret |
+| `SP_TENANT_ID` | Yes | Azure AD tenant ID |
+| `DATABRICKS_SKIP_SP` | Local only | Set `true` locally to use personal az login instead of SP |
+| `SFTP_HOST` | Yes | E2open SFTP hostname |
+| `SFTP_USERNAME` | Yes | SFTP username |
+| `SFTP_PRIVATE_KEY_PATH` | Yes | Path to `.ppk` / `.pem` private key file |
+| `SFTP_REMOTE_PATH` | Yes | Remote SFTP directory |
+| `SP_SITE_URL` | Yes | SharePoint site URL |
+| `SP_FOLDER_PATH` | Yes | SharePoint folder path for supplier templates |
+| `SP_SCHEDULE` | No | Cron sync times, default `09:00,13:00` |
+| `REPORT_TO` | Yes | Email recipients for booking report (comma-separated) |
+| `REPORT_FROM` | No | Sender address, defaults to `EMAIL_INGEST_MAILBOX` |
+| `EMAIL_INGEST_MAILBOX` | Yes | Mailbox to scan for supplier emails |
+| `EMAIL_READONLY_MODE` | No | `true` = use watermark (default); `false` = mark as read |
+| `AZURE_WEBHOOK_STORAGE_CONNECTION_STRING` | Yes | Blob storage connection string |
+| `AZURE_WEBHOOK_CONTAINER_NAME` | No | Blob container name, default `supplier-uploads` |
+| `NODE_ENV` | Azure only | Set to `production` on Azure (auto-set via web.config) |
+
+---
+
+## Local Development Setup
+
+### Prerequisites
+- Node.js 18+
+- Azure CLI (`az login` with your ASOS account)
+- Access to Azure Databricks warehouse `9d9de70087d062a5`
+
+### First-time setup
+
+```bash
+git clone <repo-url>
+cd CarrierBookingStub
+npm install
+```
+
+Create `.env` from the reference above. For local dev, set:
+```
+DATABRICKS_SKIP_SP=true   # uses your personal az login, not the SP
+SFTP_HOST=                # leave blank to save XML locally instead of uploading
+```
+
+### Run locally
+
+```bash
+node backend/server.js
+# or
+npm start
+```
+
+Open **http://localhost:3000**
+
+### Test individual connections
+
+```bash
+node backend/test-sharepoint.js   # test SharePoint / Graph API
+node backend/test-sftp.js         # test E2open SFTP
+node backend/test-databricks.js   # test Databricks connection
+```
 
 ---
 
@@ -264,48 +555,30 @@ node backend/test-sftp.js         # Test E2open SFTP
 
 ---
 
-## Databricks Field Sources
+## Databricks Tables (Serve Layer)
 
-### `supplychain.conformed.aim_shipment_detail_v1` — ASN / Shipment data
-| Field | VBKREQ usage |
+The tool queries the ADE serve layer via a single star-schema query.
+
+### Central fact table
+**`sourcingandbuying.serve.fact_purchase_order_commitment_v1`**  
+Grain: PO + ASN + SKU (snapshot). Latest row per PO+ASN+SKU selected via `ROW_NUMBER OVER PARTITION`.
+
+| Field | Usage |
 |---|---|
-| `asnId` | ASN reference (SI attribute) |
-| `mode` | Mode of transport |
-| `portOfLoad` | Shipping point (SL) fallback |
-| `firstDestination` / `finalDestination` | FC destination (FD / F1) |
-| `asnEstimatedShipmentDate` / `latestPlannedShipmentDate` | Ship date (238) |
-| `asnDeliveryDateFinalDest` | Expected delivery (065) |
-| `bookingRequested` | Smart Skip — if populated, ASN already booked |
-| `orderLineItems[].bookedQty` | **Booking_Qty (BKQ)** fallback 2 — null for most ASNs; bam036e unit_qty preferred |
+| `quantity` | Booking_Qty (BKQ) per SKU |
+| `asn_status_code = 'D'` | Smart Skip — ASN cancelled |
+| `is_booked_by_carrier = 'Yes'` | Smart Skip — booking already exists |
 
-### `sourcingandbuying.conformed.bam033j_purchase_order_v1` — PO detail
-| Field | VBKREQ usage |
+### Dimension tables joined
+
+| Table | Key fields |
 |---|---|
-| `SupplierID` / `SupplierName` | SU trade partner |
-| `Factory` / `FactoryDesc` | FA trade partner |
-| `LadingPort` | SL shipping point LOCODE |
-| `FreightTermsDescription` | Incoterms |
-| `ExFactoryDate` (−1 day) | Ship date (238) |
-| `ExpectedDeliveryDateFirstLocation` (−1 day) | Expected delivery (065) |
-| `Status` | Smart Skip — `C` = PO cancelled |
-| `PODtl[].OriginCountryID` | Country of origin (4B) |
-| `PODtl[].OptionItemID` | Product style (PT reference) |
-| `PODtl[].SKUItemID` | SKU identifier matched to ASN line |
-| `PODtl[].PhysicalQtyOrdered` | **Booking_Qty (BKQ)** fallback 3 — PO ordered qty, last resort if both ASN sources are null |
+| `supplychain.serve.dim_advanced_shipment_notice_v1` | `asn_id`, `lading_port_code`, `mode_of_transport`, ship/delivery dates |
+| `sourcingandbuying.serve.dim_supplier_v1` | `supplier_id`, `supplier` (name) |
+| `sourcingandbuying.serve.dim_factory_v1` | `factory_id`, `factory_name`, `factory_country_code` |
+| `sourcingandbuying.serve.dim_purchase_order_v1` | `po_number`, `inco_terms`, `origin_country_code` |
 
-> Note: bam033j dates are stored 1 calendar day ahead — 1 day is subtracted automatically.
-
-### `supplychain.conformed.bam036e_asn_v1` — ASN notification log
-| `_notification_type` | Meaning |
-|---|---|
-| `C` | Created (initial notification — ASN is active) |
-| `M` | Modified (ASN updated — still active) |
-| `D` | **Deleted/Cancelled** — Smart Skip triggers, no VBKREQ raised |
-
-| Nested field | Usage |
-|---|---|
-| `AdvancedShipmentNotification.ASNInDesc.ASNInPO[].ASNInItem[].item_id` | SKU identifier |
-| `AdvancedShipmentNotification.ASNInDesc.ASNInPO[].ASNInItem[].unit_qty` | **Booking_Qty (BKQ)** — primary source for actual booked units per SKU |
+> Dates in the fact table are native `date` type — no −1 day correction needed. `1900-01-01` = null sentinel.
 
 ---
 
