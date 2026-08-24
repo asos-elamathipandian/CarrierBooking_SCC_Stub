@@ -12,5 +12,5 @@ metadata:
 spec:
   type: service
   lifecycle: production
-  owner: group:inbound-supply-chain
-  system: inbound-supply-chain
+  owner: group:default/lumen
+  system: supplychain-aim-asos-inbound-management
