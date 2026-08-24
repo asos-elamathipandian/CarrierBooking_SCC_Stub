@@ -1,0 +1,16 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: e2e-carrier-booking
+  description: "Internal tool to automate carrier booking requests (VBKREQs) to E2open / Davis Turner. Pulls ASN and PO data from Databricks ADE serve layer, merges with supplier templates, and uploads XML via SFTP."
+  annotations:
+    github.com/project-slug: asos-elamathipandian/CarrierBookingStub
+  tags:
+    - inbound
+    - supply-chain
+    - carrier-booking
+spec:
+  type: service
+  lifecycle: production
+  owner: group:inbound-supply-chain
+  system: inbound-supply-chain

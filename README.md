@@ -224,6 +224,19 @@ Tag **Japji Gandhi** (`asosjapji`) as reviewer.
 
 ---
 
+## Capacity & Known Limits
+
+| Constraint | Limit | Notes |
+|---|---|---|
+| Supplier Excel file size | 10 MB per file | Easily fits a typical booking template |
+| Files per upload | 20 files | Hard limit in the upload handler |
+| POs per Databricks query | ~500 recommended | All POs sent in a single SQL `IN (...)` clause — no batching |
+| Session state | Azure App Service RAM | All pipeline data is in-memory; large datasets on Basic tier may cause issues |
+
+The tool is designed for **day-to-day operational use** — typically 10–100 POs per supplier template. If you ever need 500+ POs in a single run, the Databricks query in `backend/databricks-asn-reader.js` would need batching logic added.
+
+---
+
 ## Environment Variables Reference
 
 All variables go in `.env` locally, or Azure App Service → Configuration on Azure.
