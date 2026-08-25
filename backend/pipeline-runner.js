@@ -398,6 +398,12 @@ async function run(sessionState) {
     console.log(`[Pipeline] SFTP upload — ${ok} OK, ${bad} failed`);
   } catch (err) {
     console.error('[Pipeline] SFTP upload failed:', err.message);
+    // Mark all generations as error so the report shows the real failure, not "Pending"
+    for (const gen of generations) {
+      bibleBuilder.updateGenerationLog(gen.filename, gen.ctrlNumber, {
+        sftp: 'error', sftpError: err.message
+      });
+    }
     // Non-fatal — still send report so the operator knows what was generated
   }
 

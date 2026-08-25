@@ -113,7 +113,7 @@ function buildHtml(entries, runTime) {
             ? `&#10004; ${e.headerBkq} units (header matches ASN lines: ${e.lineBkqSum} units)`
             : `${e.lineBkqSum != null ? e.lineBkqSum + ' units (ASN lines only — no header override)' : '\u2014'}`
       }</td>      <td style="color:${e.sftp === 'uploaded' ? '#1e7e34' : '#c0392b'};font-weight:bold">
-        ${e.sftp === 'uploaded' ? '&#10004; Uploaded' : e.sftp || 'Pending'}
+        ${e.sftp === 'uploaded' ? '&#10004; Uploaded' : e.sftp === 'error' ? `&#10008; Error${e.sftpError ? ': ' + e.sftpError : ''}` : e.sftp || 'Pending'}
       </td>
       <td style="color:#555;white-space:nowrap">${new Date(e.timestamp).toLocaleString('en-GB')}</td>
     </tr>`).join('');
