@@ -893,6 +893,7 @@ async function loadBlobStatus() {
     const poCount  = (data.poRefs && data.poRefs.length) || 0;
     if (rowCount === 0 && poCount === 0) return;
     // Unlock pipeline UI
+    state.poRefs = data.poRefs || [];
     renderPoTags(data.poRefs || []);
     const pipelineCard = document.getElementById('pipelineCard');
     if (pipelineCard) pipelineCard.style.display = '';
@@ -1089,6 +1090,7 @@ async function checkBlobAutoSync_check() {
     `✅ Auto-loaded: <strong>${poCount}</strong> PO${poCount !== 1 ? 's' : ''}, ` +
     `<strong>${rowCount}</strong> row${rowCount !== 1 ? 's' : ''}.`);
   setBadge(1, 'done');
+  state.poRefs = data.poRefs || [];
   renderPoTags(data.poRefs || []);
   const pipelineCard = document.getElementById('pipelineCard');
   if (pipelineCard) pipelineCard.style.display = '';
