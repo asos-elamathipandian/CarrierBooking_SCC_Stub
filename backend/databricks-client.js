@@ -67,8 +67,8 @@ async function query(sql, params) {
   });
 
   const session = await client.openSession({
-    initialCatalog: 'supplychain',
-    initialSchema:  'conformed',
+    initialCatalog: 'sourcingandbuying',
+    initialSchema:  'serve',
   });
 
   try {
