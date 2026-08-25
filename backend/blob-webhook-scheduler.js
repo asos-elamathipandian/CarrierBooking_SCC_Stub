@@ -115,6 +115,12 @@ async function runSync(sessionState) {
     rowCount: allRows.length
   });
 
+  // When BLOB_PIPELINE_SCHEDULE is set, hold here — the cron will fire the pipeline at the scheduled slot
+  if (process.env.BLOB_PIPELINE_SCHEDULE) {
+    console.log('[Blob Sync] BLOB_PIPELINE_SCHEDULE set — deferring pipeline run to next scheduled slot.');
+    return;
+  }
+
   // Run the full pipeline: Databricks → bible → VBKREQs → SFTP → report
   const result = await pipeline.run(sessionState);
   if (result.error) {
@@ -130,6 +136,30 @@ async function runSync(sessionState) {
   }
 }
 
+// ── Scheduled pipeline run (BLOB_PIPELINE_SCHEDULE mode) ─────────────────────
+
+async function runScheduledPipeline(sessionState) {
+  if (!(sessionState.supplierData?.rows?.length)) {
+    console.log('[Blob Pipeline] No supplier data in session — nothing to run.');
+    return;
+  }
+  console.log('[Blob Pipeline] Scheduled pipeline run starting…');
+  const now = new Date();
+  const result = await pipeline.run(sessionState);
+  if (result.error) {
+    console.error('[Blob Pipeline] Pipeline error:', result.error);
+    writeStatus({ pipelineError: result.error });
+  } else {
+    writeStatus({
+      pipelineError:   null,
+      lastPipelineRun: now.toISOString(),
+      generationCount: result.generations.length,
+      skippedCount:    result.skippedGroups.length,
+    });
+    console.log(`[Blob Pipeline] Done — ${result.generations.length} generated, ${result.skippedGroups.length} skipped.`);
+  }
+}
+
 // ── Schedule builder ─────────────────────────────────────────────────────────
 
 function timesToCron(timesStr) {
@@ -141,9 +171,23 @@ function timesToCron(timesStr) {
 }
 
 function start(sessionState) {
+  // BLOB_PIPELINE_SCHEDULE: pipeline-only cron (blob ingest is instant, pipeline runs at these times)
+  const pipelineCrons = timesToCron(process.env.BLOB_PIPELINE_SCHEDULE || '');
+  if (pipelineCrons.length) {
+    for (const expr of pipelineCrons) {
+      cron.schedule(expr, () => {
+        runScheduledPipeline(sessionState).catch(err =>
+          console.error('[Blob Pipeline] Scheduled run error:', err.message)
+        );
+      });
+      console.log(`[Blob Pipeline] Scheduled at cron "${expr}" (from BLOB_PIPELINE_SCHEDULE)`);
+    }
+  }
+
+  // SP_SCHEDULE: legacy full blob sync + pipeline cron (instant mode only)
   const cronExprs = timesToCron(process.env.SP_SCHEDULE || '');
-  if (!cronExprs.length) {
-    console.log('[Blob Sync] SP_SCHEDULE not set — blob scheduler disabled.');
+  if (!cronExprs.length && !pipelineCrons.length) {
+    console.log('[Blob Sync] No schedule set — blob scheduler disabled.');
     return;
   }
   for (const expr of cronExprs) {
