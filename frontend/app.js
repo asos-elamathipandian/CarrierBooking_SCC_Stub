@@ -1026,7 +1026,6 @@ async function loadSpStatus() {
       if (badge) badge.className = 'step-badge active';
       if (btnRunPipeline) btnRunPipeline.disabled = false;
       if (wasEmpty) {
-        setStatus(1, 'success', `✅ Auto-loaded from SharePoint: <strong>${data.poRefs.length}</strong> PO${data.poRefs.length !== 1 ? 's' : ''}, <strong>${data.rowCount || 0}</strong> row${(data.rowCount || 0) !== 1 ? 's' : ''}.`);
         setBadge(1, 'done');
       }
     }
