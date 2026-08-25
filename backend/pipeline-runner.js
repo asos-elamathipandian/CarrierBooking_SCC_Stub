@@ -326,6 +326,11 @@ async function run(sessionState) {
     sessionState.feedData = feedData;
     console.log(`[Pipeline] ASN fetch complete — ${(feedData.carrierAsnFiles || []).length} file(s), ` +
       `${(feedData.cancelledItems || []).length} cancelled/booked item(s)`);
+    if ((feedData.carrierAsnFiles || []).length === 0 && (feedData.errors || []).length > 0) {
+      const errMsg = feedData.errors.join('; ');
+      console.error('[Pipeline] Databricks returned no records:', errMsg);
+      return { poRefs, generations: [], skippedGroups: [], sftpResults: [], error: `Databricks: ${errMsg}` };
+    }
   } catch (err) {
     console.error('[Pipeline] ASN fetch failed:', err.message);
     return { poRefs, generations: [], skippedGroups: [], sftpResults: [], error: `ASN fetch: ${err.message}` };

@@ -526,7 +526,8 @@ if (btnRunPipeline) {
 
       if (carrierAsnFiles.length === 0 && cancelledItems.length === 0) {
         progSet(1, 'error', '📡 No ASN found');
-        throw new Error(`No active ASN records found in Databricks for any of the submitted POs. Cannot proceed.`);
+        const dbErrors = (fetchData.errors || []).length ? ` — ${fetchData.errors.join('; ')}` : '';
+        throw new Error(`No active ASN records found in Databricks for any of the submitted POs. Cannot proceed.${dbErrors}`);
       }
 
       const doneExtras = [alreadyBooked.length ? `${alreadyBooked.length} already booked skipped` : '', cancelled.length ? `${cancelled.length} cancelled skipped` : ''].filter(Boolean).join(', ');

@@ -238,6 +238,27 @@ app.post('/api/fetch-feeds', async (req, res) => {
       }
     }
 
+    // If Databricks has dropped rows for a PO that we already generated a VB for
+    // (serve-layer snapshot lifecycle), surface it as ALREADY_BOOKED rather than
+    // letting the pipeline fail with a generic "No active ASN records found" error.
+    const foundPoIds = new Set([
+      ...(feedData.carrierAsnFiles || []).map(f => String(f.poRef || '')),
+      ...cancelledItems.map(c => String(c.poId || ''))
+    ].filter(Boolean));
+    for (const po of effectivePoRefs) {
+      if (foundPoIds.has(String(po))) continue;
+      const logEntry = genLog.find(e => (e.poNumbers || []).map(String).includes(String(po)));
+      if (logEntry) {
+        cancelledItems.push({
+          type:   'ALREADY_BOOKED',
+          asnId:  null,
+          poId:   String(po),
+          vbRef:  logEntry.bookingRef || null,
+          reason: `PO ${po} — VB already generated${logEntry.bookingRef ? ` (${logEntry.bookingRef})` : ''}${logEntry.filename ? `, file: ${logEntry.filename}` : ''}`
+        });
+      }
+    }
+
     res.json({
       success: true,
       carrierAsnCount: (feedData.carrierAsnFiles || []).length,
