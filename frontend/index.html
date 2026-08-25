@@ -587,41 +587,16 @@
 
       <!-- ── Option A: Auto Pull (open by default) ── -->
       <details id="autoPullDetails" open>
-        <summary style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:10px;padding:11px 14px;background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border:1.5px solid #BFDBFE;border-radius:10px;font-size:13px;font-weight:700;color:#1565C0">
-          <span>📡</span>
-          <span>Auto Pull &mdash; SharePoint &amp; Blob (Power Automate)</span>
-          <span style="font-weight:400;font-size:11px;color:#64748B">— files retrieved automatically at scheduled CRON times</span>
+        <summary style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:10px;padding:11px 14px;background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border:1.5px solid #BBF7D0;border-radius:10px;font-size:13px;font-weight:700;color:#15803D">
+          <span>📦</span>
+          <span>Blob Auto-Ingest (Power Automate)</span>
+          <span style="font-weight:400;font-size:11px;color:#64748B">— supplier files ingested automatically via email → PA → Blob</span>
           <span style="margin-left:auto;font-size:10px;color:#94A3B8">▲ collapse</span>
         </summary>
         <div style="padding:12px 2px 4px">
 
-          <!-- SharePoint auto-sync status -->
-          <div id="spSyncBanner" style="display:none;padding:10px 14px;background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:8px;font-size:12px">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <span id="spScheduleLabel" style="color:#0369A1;font-size:11px;background:#DBEAFE;padding:2px 7px;border-radius:10px"></span>
-              <span id="spSyncStatus" style="color:#555">Checking…</span>
-              <button class="btn" id="btnSpSyncNow" style="padding:4px 12px;font-size:11px;background:#0369A1;color:#fff;border-color:#0369A1;margin-left:auto">↻ Sync Now — Instantly pulls latest from SharePoint</button>
-            </div>
-            <div id="spSyncFiles" style="margin-top:6px"></div>
-            <details id="spHistoryDetails" style="display:none;margin-top:8px">
-              <summary style="cursor:pointer;color:#0369A1;font-size:11px;user-select:none">Run History (last 10)</summary>
-              <div id="spSyncHistory" style="margin-top:6px;overflow-x:auto">
-                <table style="width:100%;border-collapse:collapse;font-size:11px">
-                  <thead><tr style="background:#E0F2FE;color:#0C4A6E">
-                    <th style="padding:4px 8px;text-align:left;white-space:nowrap">Date &amp; Time</th>
-                    <th style="padding:4px 8px;text-align:left">Outcome</th>
-                    <th style="padding:4px 8px;text-align:right">Rows</th>
-                    <th style="padding:4px 8px;text-align:right">POs</th>
-                    <th style="padding:4px 8px;text-align:left">Files</th>
-                  </tr></thead>
-                  <tbody id="spHistoryBody"></tbody>
-                </table>
-              </div>
-            </details>
-          </div>
-
-          <!-- Blob auto-sync status banner -->
-          <div id="blobSyncBanner" style="display:none;margin-top:10px;padding:10px 14px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:8px;font-size:12px">
+          <!-- Blob auto-sync status banner (PRIMARY) -->
+          <div id="blobSyncBanner" style="display:none;padding:10px 14px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:8px;font-size:12px">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <span style="color:#15803D;font-size:11px;background:#DCFCE7;padding:2px 7px;border-radius:10px">📦 Blob Auto-Ingest</span>
               <span id="blobSyncStatus" style="color:#555">Checking…</span>
@@ -644,6 +619,41 @@
               </div>
             </details>
           </div>
+
+          <!-- SharePoint direct sync (FALLBACK - collapsed) -->
+          <details style="margin-top:8px">
+            <summary style="cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:8px;padding:7px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;color:#64748B">
+              <span>↻</span>
+              <span style="font-weight:600;color:#374151">SharePoint Direct Sync</span>
+              <span>— fallback / manual pull</span>
+              <span style="margin-left:auto;font-size:10px">▼ expand</span>
+            </summary>
+            <div style="padding:8px 2px 0">
+              <div id="spSyncBanner" style="display:none;padding:10px 14px;background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:8px;font-size:12px">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span id="spScheduleLabel" style="color:#0369A1;font-size:11px;background:#DBEAFE;padding:2px 7px;border-radius:10px"></span>
+                  <span id="spSyncStatus" style="color:#555">Checking…</span>
+                  <button class="btn" id="btnSpSyncNow" style="padding:4px 12px;font-size:11px;background:#0369A1;color:#fff;border-color:#0369A1;margin-left:auto">↻ Sync Now — Instantly pulls latest from SharePoint</button>
+                </div>
+                <div id="spSyncFiles" style="margin-top:6px"></div>
+                <details id="spHistoryDetails" style="display:none;margin-top:8px">
+                  <summary style="cursor:pointer;color:#0369A1;font-size:11px;user-select:none">Run History (last 10)</summary>
+                  <div id="spSyncHistory" style="margin-top:6px;overflow-x:auto">
+                    <table style="width:100%;border-collapse:collapse;font-size:11px">
+                      <thead><tr style="background:#E0F2FE;color:#0C4A6E">
+                        <th style="padding:4px 8px;text-align:left;white-space:nowrap">Date &amp; Time</th>
+                        <th style="padding:4px 8px;text-align:left">Outcome</th>
+                        <th style="padding:4px 8px;text-align:right">Rows</th>
+                        <th style="padding:4px 8px;text-align:right">POs</th>
+                        <th style="padding:4px 8px;text-align:left">Files</th>
+                      </tr></thead>
+                      <tbody id="spHistoryBody"></tbody>
+                    </table>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </details>
 
         </div>
       </details>
