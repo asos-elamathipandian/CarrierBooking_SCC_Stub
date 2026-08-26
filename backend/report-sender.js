@@ -129,9 +129,6 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
 </body></html>`;
 }
 
-
-}
-
 // ── Supplier Excel tagging ────────────────────────────────────────────────────
 
 /**

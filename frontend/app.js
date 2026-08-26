@@ -863,9 +863,6 @@ async function loadBlobStatus() {
       ? `<span style="color:#B91C1C">❌ ${data.error}</span>`
       : `Last sync: <strong>${lastSync}</strong>`
         + (rowCount ? ` &nbsp;·&nbsp; <strong>${rowCount}</strong> rows, <strong>${poCount}</strong> POs loaded` : '');
-    if (data.poRefs && data.poRefs.length) {
-      filesEl.innerHTML = data.poRefs.map(p => `<span style="display:inline-block;background:#DCFCE7;border:1px solid #BBF7D0;border-radius:10px;padding:1px 8px;font-size:11px;margin:2px 2px 0 0;color:#14532D">PO: ${p}</span>`).join('');
-    }
     if (histBody && data.syncHistory) {
       histDet.style.display = '';
       histBody.innerHTML = (data.syncHistory || []).slice(-10).reverse().map(h => {
@@ -883,33 +880,8 @@ async function loadBlobStatus() {
   } catch (_) {}
 }
 
-// ── Blob auto-sync: unlock pipeline if server already has parsed data ─────────
-(async function checkBlobAutoSync() {
-  try {
-    const res  = await fetch(`${API}/blob-sync/status`);
-    const data = await res.json();
-    if (!res.ok || !data.configured) return;
-    const rowCount = data.rowCount || 0;
-    const poCount  = (data.poRefs && data.poRefs.length) || 0;
-    if (rowCount === 0 && poCount === 0) return;
-    // Unlock pipeline UI
-    state.poRefs = data.poRefs || [];
-    renderPoTags(data.poRefs || []);
-    const pipelineCard = document.getElementById('pipelineCard');
-    if (pipelineCard) pipelineCard.style.display = '';
-    const badge = document.getElementById('badgePipeline');
-    if (badge) badge.className = 'step-badge active';
-    if (btnRunPipeline) btnRunPipeline.disabled = false;
-    // Only auto-trigger if session actually has rows (restore may need a moment)
-    setTimeout(async () => {
-      try {
-        const chk = await fetch(`${API}/blob-sync/status`);
-        const chkData = await chk.json();
-        if ((chkData.rowCount || 0) > 0) scheduleAutoPipeline('blob auto-sync');
-      } catch (_) {}
-    }, 3000);
-  } catch (_) {}
-})();
+// Page-load blob auto-sync intentionally disabled — pipeline unlocks only after
+// an in-session manual pull or a fresh blob push (checkBlobAutoSync_check).
 
 // ── SharePoint auto-sync status banner ───────────────────────────────────────
 const spBanner    = document.getElementById('spSyncBanner');
@@ -1016,20 +988,6 @@ async function loadSpStatus() {
       histDetails.style.display = 'none';
     }
 
-    // Sync UI with server state whenever SP has data — always unlock pipeline
-    if (data.lastSync && data.poRefs && data.poRefs.length) {
-      const wasEmpty = !state.poRefs.length;
-      state.poRefs = data.poRefs;
-      renderPoTags(data.poRefs);
-      const pipelineCard = document.getElementById('pipelineCard');
-      if (pipelineCard) pipelineCard.style.display = '';
-      const badge = document.getElementById('badgePipeline');
-      if (badge) badge.className = 'step-badge active';
-      if (btnRunPipeline) btnRunPipeline.disabled = false;
-      if (wasEmpty) {
-        setBadge(1, 'done');
-      }
-    }
   } catch (_) {
     // silently ignore if server not up yet
   }
