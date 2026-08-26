@@ -361,6 +361,7 @@ async function run(sessionState) {
   try {
     ({ generations, skippedGroups } = await generateVbkreqs(sessionState));
     sessionState.lastGenerations = generations;
+    sessionState.skippedGroups   = skippedGroups;
     sessionState.lastXml         = generations[0]?.xml      || null;
     sessionState.lastFilename    = generations[0]?.filename  || null;
     sessionState.lastCtrlNumber  = generations[0]?.ctrlNumber || null;
@@ -372,7 +373,7 @@ async function run(sessionState) {
 
   if (!generations.length) {
     console.log('[Pipeline] Nothing to upload — all groups skipped.');
-    reportSender.sendScheduledReport({ supplierBuffers: sessionState.supplierBuffers, lastGenerations: sessionState.lastGenerations }).catch(e => console.error('[Pipeline] Report failed:', e.message));
+    reportSender.sendScheduledReport(buildSessionCtx(sessionState)).catch(e => console.error('[Pipeline] Report failed:', e.message));
     return { poRefs, generations: [], skippedGroups, sftpResults: [], error: null };
   }
 
@@ -408,9 +409,19 @@ async function run(sessionState) {
   }
 
   // ── Step 5: Send report ──────────────────────────────────────────────────
-  reportSender.sendScheduledReport({ supplierBuffers: sessionState.supplierBuffers, lastGenerations: sessionState.lastGenerations }).catch(e => console.error('[Pipeline] Report failed:', e.message));
+  reportSender.sendScheduledReport(buildSessionCtx(sessionState)).catch(e => console.error('[Pipeline] Report failed:', e.message));
 
   return { poRefs, generations, skippedGroups, sftpResults, error: null };
+}
+
+function buildSessionCtx(sessionState) {
+  return {
+    supplierBuffers:      sessionState.supplierBuffers,
+    lastGenerations:      sessionState.lastGenerations,
+    supplierHeaderPoRefs: sessionState.supplierHeaderPoRefs,
+    skippedGroups:        sessionState.skippedGroups,
+    cancelledItems:       sessionState.feedData?.cancelledItems
+  };
 }
 
 module.exports = { run };

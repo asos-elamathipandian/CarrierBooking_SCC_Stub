@@ -80,84 +80,56 @@ function writeState(state) {
 
 // ── HTML builder ──────────────────────────────────────────────────────────────
 
-function fmtDate(val) {
-  if (!val) return '';
-  const s = String(val);
-  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return new Date(s).toLocaleDateString('en-GB');
-  return s;
-}
-
-function buildHtml(entries, runTime) {
+function buildSummaryHtml(entries, runTime, sessionCtx) {
   const dateStr = new Date(runTime).toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short' });
 
-  const rows = entries.map(e => `
-    <tr>
-      <td>${e.supplier || '—'}</td>
-      <td>${(e.poNumbers || []).join('<br>')}</td>
-      <td><strong>${e.bookingRef || ''}</strong></td>
-      <td>${(e.asnRefs || []).join('<br>') || '—'}</td>
-      <td style="font-size:11px;color:#555">${e.filename || ''}</td>
-      <td style="font-size:11px;color:#555">${e.supplierTemplate || '—'}</td>
-      <td>${e.bookingGroup || ''}</td>
-      <td style="${e.purposeCd==='01'?'color:#c0392b':e.purposeCd==='15'?'color:#d97706':'color:#1e7e34'};font-weight:bold">${
-        e.purposeCd === '01' ? 'Cancellation'
-        : e.purposeCd === '15'
-          ? 'Re-submission' + (e.resubmissionReason ? '<br/><span style="font-size:10px;font-weight:normal">' + e.resubmissionReason + '</span>' : '')
-          : 'New'
-      }</td>
-      <td>${fmtDate(e.cargoReadyDate)}</td>
-      <td style="text-align:center">${e.noOfCartons != null ? e.noOfCartons : '—'}</td>
-      <td style="text-align:center">${e.totalWeight != null ? e.totalWeight : '—'}</td>
-      <td style="${e.bkqDiscrepancy ? 'color:#c0392b;font-weight:bold;background:#fff5f5' : e.headerBkq != null ? 'color:#1e7e34' : 'color:#555'}">${
-        e.bkqDiscrepancy
-          ? `&#9888; Mismatch — Header: ${e.headerBkq} units | ASN lines: ${e.lineBkqSum} units`
-          : e.headerBkq != null
-            ? `&#10004; ${e.headerBkq} units (header matches ASN lines: ${e.lineBkqSum} units)`
-            : `${e.lineBkqSum != null ? e.lineBkqSum + ' units (ASN lines only — no header override)' : '\u2014'}`
-      }</td>      <td style="color:${e.sftp === 'uploaded' ? '#1e7e34' : '#c0392b'};font-weight:bold">
-        ${e.sftp === 'uploaded' ? '&#10004; Uploaded' : e.sftp === 'error' ? `&#10008; Error${e.sftpError ? ': ' + e.sftpError : ''}` : e.sftp || 'Pending'}
-      </td>
-      <td style="color:#555;white-space:nowrap">${new Date(e.timestamp).toLocaleString('en-GB')}</td>
-    </tr>`).join('');
+  const newBookings   = entries.filter(e => !e.purposeCd || e.purposeCd === '13').length;
+  const resubmitted   = entries.filter(e => e.purposeCd === '15').length;
+  const cancellations = entries.filter(e => e.purposeCd === '01').length;
 
-  const tableOrMsg = entries.length === 0
-    ? `<p style="color:#888;font-style:italic">No new carrier booking requests since the last report.</p>`
-    : `<table>
-        <thead><tr>
-          <th>Supplier</th>
-          <th>PO Number(s)</th>
-          <th>VB Ref</th>
-          <th>ASN Ref(s)</th>
-          <th>Filename</th>
-          <th>Supplier Template</th>
-          <th>Booking Group</th>
-          <th>Purpose</th>
-          <th>Cargo Ready Date</th>
-          <th>No. of Cartons</th>
-          <th>Total Weight&nbsp;(KG)</th>
-          <th>BKQ (Header vs Lines)</th>
-          <th>SFTP Status</th>
-          <th>Generated At</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
+  const totalSubmitted   = (sessionCtx.supplierHeaderPoRefs || []).length;
+  const skippedCount     = (sessionCtx.skippedGroups || []).length;
+  const alreadyBooked    = (sessionCtx.cancelledItems || []).filter(c => c.type === 'ALREADY_BOOKED').length;
+  const asnCancelled     = (sessionCtx.cancelledItems || []).filter(c => c.type !== 'ALREADY_BOOKED').length;
+
+  const suppliers = [...new Set(entries.map(e => e.supplier).filter(Boolean))];
+
+  const row = (label, value, color = '#222') =>
+    `<tr><td style="padding:7px 16px 7px 0;color:#555;white-space:nowrap">${label}</td>` +
+    `<td style="padding:7px 0;font-weight:bold;color:${color}">${value}</td></tr>`;
+
+  const hasAttachment = !!(sessionCtx.supplierBuffers?.length && sessionCtx.lastGenerations?.length);
 
   return `<!DOCTYPE html>
 <html><head><style>
   body  { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: #222; margin: 24px; }
   h2    { color: #1F4E79; margin-bottom: 4px; }
-  p     { margin: 4px 0 12px; }
-  table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 12px; }
-  th    { background: #1F4E79; color: #fff; padding: 7px 10px; text-align: left; white-space: nowrap; }
-  td    { padding: 6px 10px; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
-  tr:nth-child(even) td { background: #f5f8fc; }
-  .footer { margin-top: 24px; color: #aaa; font-size: 11px; border-top: 1px solid #e0e0e0; padding-top: 8px; }
+  .card { background:#f5f8fc; border:1px solid #d0dce8; border-radius:6px; padding:16px 20px; display:inline-block; margin-top:12px; }
+  .note { margin-top:16px; color:#444; font-size:12px; }
+  .footer { margin-top:24px; color:#aaa; font-size:11px; border-top:1px solid #e0e0e0; padding-top:8px; }
 </style></head><body>
   <h2>&#128666; Carrier Booking Request &mdash; Run Report</h2>
-  <p>${dateStr} &nbsp;|&nbsp; <strong>${entries.length}</strong> booking request${entries.length !== 1 ? 's' : ''} in this report</p>
-  ${tableOrMsg}
+  <p style="color:#555">${dateStr}</p>
+  <div class="card">
+    <table style="border-collapse:collapse">
+      ${suppliers.length ? row('Supplier',                    suppliers.join(', '))                    : ''}
+      ${totalSubmitted  ? row('Total POs submitted',          totalSubmitted)                          : ''}
+      ${row('New bookings generated',      newBookings   || 0, newBookings   ? '#1e7e34' : '#888')}
+      ${resubmitted   ? row('Re-submissions (data changed)',  resubmitted,   '#d97706') : ''}
+      ${cancellations ? row('Cancellations',                  cancellations, '#c0392b') : ''}
+      ${skippedCount  ? row('Skipped (no changes)',           skippedCount,  '#888')    : ''}
+      ${alreadyBooked ? row('Already booked externally',      alreadyBooked, '#888')    : ''}
+      ${asnCancelled  ? row('ASN cancelled / no ASN',         asnCancelled,  '#888')    : ''}
+    </table>
+  </div>
+  ${hasAttachment
+    ? `<p class="note">&#128206; The tagged supplier template with <strong>VBKREQ_Ref</strong> mapped against each PO is attached.</p>`
+    : `<p class="note" style="color:#888">No supplier template available to attach for this run.</p>`}
   <div class="footer">Generated by ASOS Carrier Booking Tool &mdash; Azure hosted</div>
 </body></html>`;
+}
+
+
 }
 
 // ── Supplier Excel tagging ────────────────────────────────────────────────────
@@ -276,7 +248,7 @@ async function sendScheduledReport(sessionCtx = {}) {
 
   const nowGb   = now.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
   const subject = `Carrier Booking Report — ${nowGb} (${newEntries.length} booking${newEntries.length !== 1 ? 's' : ''})`;
-  const html    = buildHtml(newEntries, now.toISOString());
+  const html    = buildSummaryHtml(newEntries, now.toISOString(), sessionCtx);
 
   const attachments = await buildTaggedSupplierAttachments(
     sessionCtx.supplierBuffers,

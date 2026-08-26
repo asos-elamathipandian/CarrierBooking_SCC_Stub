@@ -773,6 +773,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
     }
 
     res.json({ success: true, generations, skippedGroups });
+    sessionState.skippedGroups = skippedGroups;
   } catch (err) {
     console.error('generate-vbkreq error:', err);
     res.status(500).json({ error: err.message });
@@ -839,7 +840,13 @@ app.post('/api/upload-sftp-batch', async (req, res) => {
     res.json({ results });
 
     // Send booking report email immediately after manual pipeline upload
-    reportSender.sendScheduledReport({ supplierBuffers: sessionState.supplierBuffers, lastGenerations: sessionState.lastGenerations }).catch(err =>
+    reportSender.sendScheduledReport({
+      supplierBuffers:      sessionState.supplierBuffers,
+      lastGenerations:      sessionState.lastGenerations,
+      supplierHeaderPoRefs: sessionState.supplierHeaderPoRefs,
+      skippedGroups:        sessionState.skippedGroups,
+      cancelledItems:       sessionState.feedData?.cancelledItems
+    }).catch(err =>
       console.error('[Report] Post-upload send failed:', err.message)
     );
 
