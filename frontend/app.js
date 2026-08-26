@@ -807,6 +807,7 @@ async function loadHistory() {
 // Load history and blob status on page start
 loadHistory();
 loadBlobStatus();
+checkBlobAutoSync_check(true); // restore pipeline card if data already loaded, skip auto-trigger
 
 // ── Auto-trigger pipeline with countdown ─────────────────────────────────────
 let _autoPipelineTimer = null;
@@ -1037,7 +1038,7 @@ if (btnBlobSync) {
   });
 }
 
-async function checkBlobAutoSync_check() {
+async function checkBlobAutoSync_check(skipAutoTrigger = false) {
   const res  = await fetch(`${API}/blob-sync/status`);
   const data = await res.json();
   if (!res.ok || !data.configured) return;
@@ -1055,5 +1056,5 @@ async function checkBlobAutoSync_check() {
   const badge = document.getElementById('badgePipeline');
   if (badge) badge.className = 'step-badge active';
   if (btnRunPipeline) btnRunPipeline.disabled = false;
-  scheduleAutoPipeline('blob pull');
+  if (!skipAutoTrigger) scheduleAutoPipeline('blob pull');
 }
