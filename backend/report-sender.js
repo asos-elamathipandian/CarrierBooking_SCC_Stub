@@ -100,6 +100,49 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
 
   const hasAttachment = !!(sessionCtx.supplierBuffers?.length && sessionCtx.lastGenerations?.length);
 
+  const purposeLabel = cd => cd === '15' ? 'Re-submit' : cd === '01' ? 'Cancel' : 'New';
+  const purposeColor = cd => cd === '15' ? '#d97706'   : cd === '01' ? '#c0392b' : '#1e7e34';
+
+  const detailRows = entries.map(e => {
+    const sftpBadge = e.sftp === 'uploaded'
+      ? `<span style="color:#1e7e34">&#10003; Uploaded</span>`
+      : e.sftp === 'local'
+        ? `<span style="color:#888">Local</span>`
+        : e.sftp === 'error'
+          ? `<span style="color:#c0392b">&#10007; Error</span>`
+          : `<span style="color:#888">—</span>`;
+    const pos  = (e.poNumbers  || []).join(', ') || '—';
+    const asns = (e.asnRefs    || []).join(', ') || '—';
+    return `<tr>
+      <td style="padding:6px 10px;white-space:nowrap;font-weight:bold;color:${purposeColor(e.purposeCd)}">${e.bookingRef || '—'}</td>
+      <td style="padding:6px 10px;font-size:11px;color:#555;word-break:break-all">${e.filename || '—'}</td>
+      <td style="padding:6px 10px;white-space:nowrap">${pos}</td>
+      <td style="padding:6px 10px;white-space:nowrap;font-size:11px;color:#555">${asns}</td>
+      <td style="padding:6px 10px;text-align:center">${e.noOfCartons ?? '—'}</td>
+      <td style="padding:6px 10px;white-space:nowrap;font-size:11px">${e.cargoReadyDate || '—'}</td>
+      <td style="padding:6px 10px;white-space:nowrap;font-size:11px;color:${purposeColor(e.purposeCd)}">${purposeLabel(e.purposeCd)}</td>
+      <td style="padding:6px 10px">${sftpBadge}</td>
+    </tr>`;
+  }).join('');
+
+  const detailTable = entries.length ? `
+  <h3 style="color:#1F4E79;margin:20px 0 6px">Booking Details</h3>
+  <table style="border-collapse:collapse;width:100%;font-size:12px">
+    <thead>
+      <tr style="background:#1F4E79;color:#fff">
+        <th style="padding:6px 10px;text-align:left;white-space:nowrap">VB Ref</th>
+        <th style="padding:6px 10px;text-align:left">VBKREQ File</th>
+        <th style="padding:6px 10px;text-align:left">PO(s)</th>
+        <th style="padding:6px 10px;text-align:left">ASN Ref(s)</th>
+        <th style="padding:6px 10px;text-align:center">Cartons</th>
+        <th style="padding:6px 10px;text-align:left">Cargo Ready</th>
+        <th style="padding:6px 10px;text-align:left">Type</th>
+        <th style="padding:6px 10px;text-align:left">SFTP</th>
+      </tr>
+    </thead>
+    <tbody>${detailRows}</tbody>
+  </table>` : '';
+
   return `<!DOCTYPE html>
 <html><head><style>
   body  { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: #222; margin: 24px; }
@@ -107,6 +150,7 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
   .card { background:#f5f8fc; border:1px solid #d0dce8; border-radius:6px; padding:16px 20px; display:inline-block; margin-top:12px; }
   .note { margin-top:16px; color:#444; font-size:12px; }
   .footer { margin-top:24px; color:#aaa; font-size:11px; border-top:1px solid #e0e0e0; padding-top:8px; }
+  tbody tr:nth-child(even) { background:#f5f8fc; }
 </style></head><body>
   <h2>&#128666; Carrier Booking Request &mdash; Run Report</h2>
   <p style="color:#555">${dateStr}</p>
@@ -122,6 +166,7 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
       ${asnCancelled  ? row('ASN cancelled / no ASN',         asnCancelled,  '#888')    : ''}
     </table>
   </div>
+  ${detailTable}
   ${hasAttachment
     ? `<p class="note">&#128206; The tagged supplier template with <strong>VBKREQ_Ref</strong> mapped against each PO is attached.</p>`
     : `<p class="note" style="color:#888">No supplier template available to attach for this run.</p>`}
