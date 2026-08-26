@@ -72,6 +72,7 @@ async function runSync(sessionState) {
   let allRows = [];
   let allValidationErrors = [];
   let allHeaderPoRefs = [];
+  let allSupplierBuffers = [];
   const processed = [];
 
   for (const file of files) {
@@ -83,6 +84,7 @@ async function runSync(sessionState) {
         (parsed.validationErrors || []).map(e => `[${file.name}] ${e}`)
       );
       allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
+      allSupplierBuffers.push({ name: file.name, buffer });
       processed.push({ name: file.name, size: file.size, lastModified: file.lastModified });
       await blob.archiveBlob(file.name);
       console.log(`[Blob Sync] Ingested and archived "${file.name}" — ${parsed.rows.length} row(s)`);
@@ -98,6 +100,7 @@ async function runSync(sessionState) {
 
   sessionState.supplierData         = { rows: allRows, validationErrors: allValidationErrors };
   sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
+  sessionState.supplierBuffers      = allSupplierBuffers;
   sessionState.feedData             = null;
   sessionState.masterData           = null;
   sessionState.lastXml              = null;
