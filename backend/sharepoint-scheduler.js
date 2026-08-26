@@ -212,7 +212,7 @@ async function runSync(sessionState) {
   });
 
   // Send post-run booking report email
-  reportSender.sendScheduledReport().catch(err =>
+  reportSender.sendScheduledReport({ supplierBuffers: sessionState.supplierBuffers, lastGenerations: sessionState.lastGenerations }).catch(err =>
     console.error('[SP Scheduler] Report send failed:', err.message)
   );
 }

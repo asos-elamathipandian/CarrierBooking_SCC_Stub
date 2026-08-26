@@ -372,7 +372,7 @@ async function run(sessionState) {
 
   if (!generations.length) {
     console.log('[Pipeline] Nothing to upload — all groups skipped.');
-    reportSender.sendScheduledReport().catch(e => console.error('[Pipeline] Report failed:', e.message));
+    reportSender.sendScheduledReport({ supplierBuffers: sessionState.supplierBuffers, lastGenerations: sessionState.lastGenerations }).catch(e => console.error('[Pipeline] Report failed:', e.message));
     return { poRefs, generations: [], skippedGroups, sftpResults: [], error: null };
   }
 
@@ -408,7 +408,7 @@ async function run(sessionState) {
   }
 
   // ── Step 5: Send report ──────────────────────────────────────────────────
-  reportSender.sendScheduledReport().catch(e => console.error('[Pipeline] Report failed:', e.message));
+  reportSender.sendScheduledReport({ supplierBuffers: sessionState.supplierBuffers, lastGenerations: sessionState.lastGenerations }).catch(e => console.error('[Pipeline] Report failed:', e.message));
 
   return { poRefs, generations, skippedGroups, sftpResults, error: null };
 }

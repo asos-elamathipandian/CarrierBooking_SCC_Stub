@@ -622,6 +622,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
         headerBkq,
         lineBkqSum,
         bkqDiscrepancy,
+        supplierTemplate:   (sessionState.supplierBuffers || []).map(b => b.name).join(', ') || '',
         masterRows:         groupRows
       });
       generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers, asnRefs, bookingRef,
@@ -751,6 +752,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
             headerBkq:          ab_hbkq,
             lineBkqSum:         ab_lbkq,
             bkqDiscrepancy:     ab_disc,
+            supplierTemplate:   prevEntry.supplierTemplate || (sessionState.supplierBuffers || []).map(b => b.name).join(', ') || '',
             masterRows:         resubRows,
           });
 
@@ -837,7 +839,7 @@ app.post('/api/upload-sftp-batch', async (req, res) => {
     res.json({ results });
 
     // Send booking report email immediately after manual pipeline upload
-    reportSender.sendScheduledReport().catch(err =>
+    reportSender.sendScheduledReport({ supplierBuffers: sessionState.supplierBuffers, lastGenerations: sessionState.lastGenerations }).catch(err =>
       console.error('[Report] Post-upload send failed:', err.message)
     );
 
@@ -1100,6 +1102,7 @@ app.post('/api/cancel-booking', async (req, res) => {
         headerBkq:      cancelHeaderBkq,
         lineBkqSum:     cancelLineBkqSum,
         bkqDiscrepancy: cancelBkqDiscrepancy,
+        supplierTemplate: entry.supplierTemplate || '',
         masterRows:     workingRows
       });
       generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers: poNums, asnRefs, bookingRef });
