@@ -225,16 +225,21 @@ app.post('/api/fetch-feeds', async (req, res) => {
     // Enrich ALREADY_BOOKED items with the VB Ref from our generation log
     const cancelledItems = feedData.cancelledItems || [];
     const genLog = bibleBuilder.getGenerationLog() || [];
+    const supplierRows = sessionState.supplierData?.rows || [];
     for (const item of cancelledItems) {
-      if (item.type === 'ALREADY_BOOKED' && item.asnId) {
-        const logEntry = genLog.find(e =>
-          (e.asnRefs || []).map(String).includes(String(item.asnId)) ||
-          (e.poNumbers || []).map(String).includes(String(item.poId))
-        );
-        if (logEntry) {
-          item.vbRef  = logEntry.bookingRef || null;
-          item.reason = `ASN ${item.asnId} (PO ${item.poId}) already has a carrier booking — ${logEntry.bookingRef ? `VB Ref: ${logEntry.bookingRef}` : 'submitted previously'}`;
-        }
+      // Attach supplier from log entry or current supplier data
+      const logEntry = genLog.find(e =>
+        (e.asnRefs  || []).map(String).includes(String(item.asnId || '')) ||
+        (e.poNumbers|| []).map(String).includes(String(item.poId  || ''))
+      );
+      if (logEntry) item.supplier = logEntry.supplier || null;
+      if (!item.supplier) {
+        const supRow = supplierRows.find(r => String(r.PO_Number || '').trim() === String(item.poId || '').trim());
+        if (supRow) item.supplier = supRow.Supplier || supRow.Supplier_Name || supRow.supplierName || null;
+      }
+      if (item.type === 'ALREADY_BOOKED' && item.asnId && logEntry) {
+        item.vbRef  = logEntry.bookingRef || null;
+        item.reason = `ASN ${item.asnId} (PO ${item.poId}) already has a carrier booking — ${logEntry.bookingRef ? `VB Ref: ${logEntry.bookingRef}` : 'submitted previously'}`;
       }
     }
 
@@ -577,7 +582,13 @@ app.post('/api/generate-vbkreq', async (req, res) => {
             // Same PO, no changes — skip, do not generate a new VBKREQ
             const groupLabel = group === '__ALL__' ? 'Multiple' : group.startsWith('PO__') ? group.replace('PO__', '') : group;
             console.log(`[Skip] PO ${poNumbers.join(',')} already booked with no changes — skipping`);
-            skippedGroups.push({ poNumbers, bookingRef: prevEntry.bookingRef, group: groupLabel });
+            const _skipFirst = groupRows[0] || {};
+            skippedGroups.push({
+              poNumbers,
+              bookingRef: prevEntry.bookingRef,
+              group:      groupLabel,
+              supplier:   _skipFirst.Supplier || _skipFirst.Supplier_Name || _skipFirst.supplierName || prevEntry.supplier || ''
+            });
             continue;
           }
         }

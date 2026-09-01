@@ -193,33 +193,48 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
     <tbody>${detailRows}</tbody>
   </table>` : '';
 
-  // ── Non-generated POs section ──────────────────────────────────────────────
-  // Shows each skipped / cancelled PO with the reason it was excluded.
-  const exclusionRows = [];
+  // ── Non-generated POs section — grouped by supplier ─────────────────────
+  const allExclusions = [
+    ...skippedGroups.flatMap(sg =>
+      (sg.poNumbers || []).map(po => ({
+        po,
+        reason:   `Skipped \u2013 no changes since last booking`,
+        vbRef:    sg.bookingRef || '',
+        supplier: sg.supplier  || '',
+        color:    '#888'
+      }))
+    ),
+    ...cancelledItems.map(ci => ({
+      po:       ci.poId || '',
+      reason:   ci.reason ||
+        (ci.type === 'ALREADY_BOOKED' ? 'Already booked externally'
+          : ci.type === 'ASN'         ? `ASN ${ci.asnId || ''} cancelled`
+          : ci.type === 'PO'          ? 'PO cancelled (Status=C)'
+          :                             'Excluded from this run'),
+      vbRef:    ci.vbRef    || '',
+      supplier: ci.supplier || '',
+      color:    ci.type === 'ALREADY_BOOKED' ? '#888' : '#c0392b'
+    }))
+  ];
 
-  for (const sg of skippedGroups) {
-    exclusionRows.push(`<tr>
-      <td style="${tdStyle}">${(sg.poNumbers || []).join('<br>')}</td>
-      <td style="${tdStyle};color:#888">Skipped &mdash; no changes since last booking</td>
-      <td style="${tdStyle};color:#555">${sg.bookingRef || '&mdash;'}</td>
-    </tr>`);
-  }
+  const excSuppliers = [...new Set(allExclusions.map(e => e.supplier))];
+  // Consistent supplier grouping: named suppliers first, unknowns last
+  excSuppliers.sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b));
 
-  for (const ci of cancelledItems) {
-    const reasonColor = ci.type === 'ALREADY_BOOKED' ? '#888' : '#c0392b';
-    const reasonText  = ci.reason ||
-      (ci.type === 'ALREADY_BOOKED' ? 'Already booked externally'
-        : ci.type === 'ASN'         ? `ASN ${ci.asnId || ''} cancelled`
-        : ci.type === 'PO'          ? `PO cancelled (Status=C)`
-        :                             'Excluded from this run');
-    exclusionRows.push(`<tr>
-      <td style="${tdStyle}">${ci.poId || '&mdash;'}</td>
-      <td style="${tdStyle};color:${reasonColor}">${reasonText}</td>
-      <td style="${tdStyle};color:#555">${ci.vbRef || '&mdash;'}</td>
-    </tr>`);
-  }
-
-  const nonGeneratedHtml = exclusionRows.length ? `
+  const nonGeneratedHtml = allExclusions.length ? (() => {
+    const sections = excSuppliers.map(sup => {
+      const rows = allExclusions.filter(e => e.supplier === sup);
+      const supHeading = sup
+        ? `<tr><td colspan="3" style="padding:10px 12px 4px;font-weight:bold;color:#1F4E79;border-bottom:2px solid #1F4E79">${sup}</td></tr>`
+        : `<tr><td colspan="3" style="padding:10px 12px 4px;font-weight:bold;color:#888;border-bottom:1px solid #d0d0d0">Unknown supplier</td></tr>`;
+      const dataRows = rows.map(e => `<tr>
+        <td style="${tdStyle}">${e.po || '&mdash;'}</td>
+        <td style="${tdStyle};color:${e.color}">${e.reason}</td>
+        <td style="${tdStyle};color:#555">${e.vbRef || '&mdash;'}</td>
+      </tr>`).join('');
+      return supHeading + dataRows;
+    }).join('');
+    return `
   <h3 style="color:#1F4E79;margin-top:24px;margin-bottom:6px">Non-generated POs</h3>
   <table style="border-collapse:collapse;width:100%;max-width:960px">
     <thead><tr>
@@ -227,8 +242,9 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
       <th style="${thStyle}">Reason excluded</th>
       <th style="${thStyle}">VB Ref</th>
     </tr></thead>
-    <tbody>${exclusionRows.join('')}</tbody>
-  </table>` : '';
+    <tbody>${sections}</tbody>
+  </table>`;
+  })() : '';
 
   return `<!DOCTYPE html>
 <html><head><style>
@@ -257,8 +273,23 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
  * Write the VB Ref and booking detail columns into each supplier Excel buffer.
  * Non-fatal: returns [] if tagging fails.
  */
-async function buildTaggedSupplierAttachments(supplierBuffers, generations, logEntries = []) {
+async function buildTaggedSupplierAttachments(supplierBuffers, generations, logEntries = [], exclusions = {}) {
   if (!supplierBuffers?.length || !generations?.length) return [];
+
+  // Build per-PO exclusion reason map (skipped / cancelled / ASN-cancelled POs)
+  const poToExclusionReason = {};
+  for (const sg of (exclusions.skippedGroups || [])) {
+    const label = `Skipped – no changes (already booked: ${sg.bookingRef || 'n/a'})`;
+    for (const po of (sg.poNumbers || [])) poToExclusionReason[String(po).trim()] = label;
+  }
+  for (const ci of (exclusions.cancelledItems || [])) {
+    if (ci.poId) {
+      poToExclusionReason[String(ci.poId).trim()] = ci.reason ||
+        (ci.type === 'ALREADY_BOOKED' ? `Already booked externally${ci.vbRef ? ` (${ci.vbRef})` : ''}` :
+         ci.type === 'ASN'            ? `ASN ${ci.asnId || ''} cancelled` :
+         ci.type === 'PO'             ? `PO cancelled (Status=C)` : 'Excluded from this run');
+    }
+  }
 
   // Build per-PO detail map from log entries (richer than generations array)
   const poToDetail = {};
@@ -348,15 +379,18 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
           refCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
           refCell.font  = { color: { argb: 'FF1B5E20' }, bold: true, size: 10 };
         } else {
-          refCell.value = 'Not generated';
+          const exclusionReason = poToExclusionReason[po] || 'Not generated';
+          refCell.value = exclusionReason;
           refCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE8E8' } };
           refCell.font  = { color: { argb: 'FF7B1F1F' }, size: 10 };
+          refCell.alignment = { wrapText: true };
         }
-        // Write extra detail columns
+        // Write extra detail columns (blank for excluded POs — no transform on empty)
         EXTRA_COLS.forEach((col, i) => {
           const ci   = baseColIdx + 1 + i;
           const cell = row.getCell(ci);
-          const raw  = detail ? (detail[col.key] ?? '') : '';
+          if (!detail) { cell.value = ''; cell.font = { size: 10 }; return; }
+          const raw  = detail[col.key] ?? '';
           cell.value = col.transform ? col.transform(raw) : raw;
           cell.font  = { size: 10 };
         });
@@ -420,7 +454,8 @@ async function sendScheduledReport(sessionCtx = {}) {
   const attachments = await buildTaggedSupplierAttachments(
     sessionCtx.supplierBuffers,
     sessionCtx.lastGenerations,
-    newEntries
+    newEntries,
+    { skippedGroups: sessionCtx.skippedGroups, cancelledItems: sessionCtx.cancelledItems }
   );
 
   try {
