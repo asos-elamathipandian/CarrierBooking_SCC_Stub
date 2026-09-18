@@ -195,7 +195,13 @@ async function listCandidateMessages(mailbox, state) {
   const select = encodeURIComponent("id,subject,from,receivedDateTime,hasAttachments");
   const path   = `/users/${encodeURIComponent(mailbox)}/messages?$filter=${filter}&$select=${select}&$top=50&$orderby=${encodeURIComponent('receivedDateTime asc')}`;
   const data   = await graphRequest('GET', path);
-  return (data && Array.isArray(data.value)) ? data.value : [];
+  const messages = (data && Array.isArray(data.value)) ? data.value : [];
+
+  // Exclude the tool's own booking-report emails — REPORT_FROM defaults to this same
+  // mailbox, so without this filter the report (which carries an .xlsx attachment)
+  // would be ingested as a supplier submission and moved out of the inbox.
+  const reportSender = String(process.env.REPORT_FROM || mailbox || '').trim().toLowerCase();
+  return messages.filter(m => (m.from?.emailAddress?.address || '').trim().toLowerCase() !== reportSender);
 }
 
 /**
@@ -221,6 +227,7 @@ async function getExcelAttachments(mailbox, messageId) {
     if (!a.contentBytes) return false;
     const name = (a.name || '').toLowerCase();
     if (!/\.(xlsx|xlsm)$/i.test(name)) return false;
+    if (/_vbref\.xlsx?$/i.test(name)) return false; // our own report attachment tag — never re-ingest it
     if (matchTokens.length && !matchTokens.some(token => name.includes(token))) return false;
     return true;
   });
