@@ -76,6 +76,7 @@ const uploadXml = multer({
 let sessionState = {
   supplierData: null,
   supplierHeaderPoRefs: [],
+  isAdHocRun: false,
   feedData: null,
   masterData: null,
   lastXml: null,
@@ -644,6 +645,7 @@ app.post('/api/generate-vbkreq', async (req, res) => {
     sessionState.lastXml          = generations[0]?.xml          || null;
     sessionState.lastFilename     = generations[0]?.filename     || null;
     sessionState.lastCtrlNumber   = generations[0]?.ctrlNumber   || null;
+    sessionState.isAdHocRun       = false; // full pipeline run — totals/skip counts are in scope
 
     // ── Auto re-submission: already-booked POs with changed supplier data ────
     // Only trigger when processing fresh new submissions (purposeCd='13').
@@ -856,7 +858,8 @@ app.post('/api/upload-sftp-batch', async (req, res) => {
       lastGenerations:      sessionState.lastGenerations,
       supplierHeaderPoRefs: sessionState.supplierHeaderPoRefs,
       skippedGroups:        sessionState.skippedGroups,
-      cancelledItems:       sessionState.feedData?.cancelledItems
+      cancelledItems:       sessionState.feedData?.cancelledItems,
+      isAdHocRun:           sessionState.isAdHocRun
     }).catch(err =>
       console.error('[Report] Post-upload send failed:', err.message)
     );
@@ -1126,6 +1129,7 @@ app.post('/api/cancel-booking', async (req, res) => {
       generations.push({ group: groupLabel, xml, filename, ctrlNumber, version, poNumbers: poNums, asnRefs, bookingRef });
     }
     sessionState.lastGenerations = generations;
+    sessionState.isAdHocRun      = true; // single PO/VB re-submit or cancel — not a full pipeline batch, exclude from total-submitted reconciliation
     res.json({ success: true, generations });
   } catch (err) {
     console.error('cancel-booking error:', err);

@@ -87,9 +87,13 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
   const resubmitted   = entries.filter(e => e.purposeCd === '15').length;
   const cancellations = entries.filter(e => e.purposeCd === '01').length;
 
-  const totalSubmitted   = (sessionCtx.supplierHeaderPoRefs || []).length;
-  const skippedGroups    = sessionCtx.skippedGroups  || [];
-  const cancelledItems   = sessionCtx.cancelledItems || [];
+  // Ad-hoc runs (single PO/VB Re-Submit or Cancel from the UI) aren't scoped to the full
+  // supplier template — the stale supplierHeaderPoRefs/skippedGroups from the last full
+  // pipeline run don't apply here, so skip the total-submitted reconciliation for them.
+  const isAdHocRun     = !!sessionCtx.isAdHocRun;
+  const totalSubmitted = isAdHocRun ? 0 : (sessionCtx.supplierHeaderPoRefs || []).length;
+  const skippedGroups  = isAdHocRun ? [] : (sessionCtx.skippedGroups  || []);
+  const cancelledItems = isAdHocRun ? [] : (sessionCtx.cancelledItems || []);
   const skippedCount     = skippedGroups.length;
   const alreadyBooked    = cancelledItems.filter(c => c.type === 'ALREADY_BOOKED').length;
   const asnCancelled     = cancelledItems.filter(c => c.type !== 'ALREADY_BOOKED').length;
@@ -98,11 +102,13 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
   const bookedPoSet    = new Set(entries.flatMap(e => e.poNumbers || []).map(p => String(p).trim()));
   const bookedPoCount  = bookedPoSet.size;
   const skippedPoCount = Math.max(0, totalSubmitted - bookedPoCount);
-  const poStatusNote = totalSubmitted
-    ? (skippedPoCount === 0
-        ? `&#9989; All ${totalSubmitted} PO(s) submitted were booked this run.`
-        : `&#9888;&#65039; ${bookedPoCount}/${totalSubmitted} PO(s) booked this run &mdash; ${skippedPoCount} skipped/excluded (see Non-generated POs below).`)
-    : '';
+  const poStatusNote = isAdHocRun
+    ? `&#8505;&#65039; Ad-hoc action: ${bookedPoCount} PO(s) processed this run (Re-Submit/Cancel).`
+    : (totalSubmitted
+        ? (skippedPoCount === 0
+            ? `&#9989; All ${totalSubmitted} PO(s) submitted were booked this run.`
+            : `&#9888;&#65039; ${bookedPoCount}/${totalSubmitted} PO(s) booked this run &mdash; ${skippedPoCount} skipped/excluded (see Non-generated POs below).`)
+        : '');
 
   const suppliers       = [...new Set(entries.map(e => e.supplier).filter(Boolean))];
   const isMultiSupplier = suppliers.length > 1;
@@ -267,7 +273,7 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
 </style></head><body>
   <h2>&#128666; Carrier Booking Request &mdash; Run Report</h2>
   <p style="color:#555">${dateStr}</p>
-  ${poStatusNote ? `<p class="note" style="font-size:14px;font-weight:bold;color:${skippedPoCount ? '#d97706' : '#1e7e34'}">${poStatusNote}</p>` : ''}
+  ${poStatusNote ? `<p class="note" style="font-size:14px;font-weight:bold;color:${isAdHocRun ? '#1565C0' : (skippedPoCount ? '#d97706' : '#1e7e34')}">${poStatusNote}</p>` : ''}
   ${cardsHtml}
   ${bookingDetailsHtml}
   ${nonGeneratedHtml}
