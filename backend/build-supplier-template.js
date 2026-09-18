@@ -200,15 +200,15 @@ async function build() {
     // Mandatory fields
     { text: '2.  MANDATORY fields (pink/red columns) — must be filled for every PO row:', bold: true, indent: 1, bg: 'FFFDE8E8' },
     { text: '       •  PO_Number', bold: false, indent: 2, bg: 'FFFEF4F4' },
-    { text: '       •  Booking_Group                           (see Booking_Group rules below)', bold: false, indent: 2, bg: 'FFFEF4F4' },
     { text: '       •  Cargo_Ready_Planned_Collection_Date   (DD/MM/YYYY)', bold: false, indent: 2, bg: 'FFFEF4F4' },
     { text: '       •  Carrier_Booking_Request_Date            (DD/MM/YYYY)', bold: false, indent: 2, bg: 'FFFEF4F4' },
     { text: '       •  Total booked units of a booking   (total units for the booking — maps to VBKREQ header BKQ measure)', bold: false, indent: 2, bg: 'FFFEF4F4' },
-    { text: '       •  Total no. of Cartons of booking    (whole number > 0  |  default: 1)', bold: false, indent: 2, bg: 'FFFEF4F4' },
-    { text: '       •  Total items weight of booking      (kg per individual unit/garment  |  default: 0.21)', bold: false, indent: 2, bg: 'FFFEF4F4' },
+    { text: '       •  Total no. of Cartons of booking    (whole number > 0)', bold: false, indent: 2, bg: 'FFFEF4F4' },
     { text: '', bg: 'FFFFFFFF' },
     // Defaulted fields
     { text: '3.  DEFAULTED fields (green columns) — pre-filled with sensible values; update only if different for your shipment:', bold: true, indent: 1, bg: 'FFD6E4F0' },
+    { text: '       •  Booking_Group = Single Booking        (see Booking_Group rules below — change if grouping POs into one booking)', bold: false, indent: 2, bg: 'FFE8F5E9' },
+    { text: '       •  Total items weight of booking = 0.21  (kg per individual unit/garment — update if different for your shipment)', bold: false, indent: 2, bg: 'FFE8F5E9' },
     { text: '       •  Carton_Type = BDCM1                  (select from dropdown if different)', bold: false, indent: 2, bg: 'FFE8F5E9' },
     { text: '       •  Pack_Type = Bulk Flat', bold: false, indent: 2, bg: 'FFE8F5E9' },
     { text: '       •  Collection_Type = Delivery           (change to "Collection" if carrier collects from factory)', bold: false, indent: 2, bg: 'FFE8F5E9' },
@@ -274,18 +274,18 @@ async function build() {
   const hCols = [
     // Mandatory
     { key: 'PO_Number',                           label: 'PO_Number',                           width: 16, type: 'mandatory' },
-    { key: 'Booking_Group',                       label: 'Booking_Group',                       width: 16, type: 'mandatory' },
     { key: 'Cargo_Ready_Planned_Collection_Date', label: 'Cargo_Ready_Planned_Collection_Date', width: 14, type: 'mandatory' },
     { key: 'Carrier_Booking_Request_Date',        label: 'Carrier_Booking_Request_Date',        width: 14, type: 'mandatory' },
     { key: 'Header_Booking_Qty',                  label: 'Total booked units of a booking',     width: 14, type: 'mandatory' },
     { key: 'No_of_Cartons',                       label: 'Total no. of Cartons of booking',     width: 14, type: 'mandatory' },
-    { key: 'Unit_Weight_KG',                      label: 'Total items weight of booking',       width: 14, type: 'mandatory' },
     // Auto-fill (from Carton_Type via CARTON_LOOKUP)
     { key: 'Carton_Length_cm', label: 'Carton_Length_cm', width: 12, type: 'auto' },
     { key: 'Carton_Width_cm',  label: 'Carton_Width_cm',  width: 12, type: 'auto' },
     { key: 'Carton_Height_cm', label: 'Carton_Height_cm', width: 12, type: 'auto' },
     { key: 'Carton_Weight_KG', label: 'Carton_Weight_KG', width: 12, type: 'auto' },
     // Defaulted
+    { key: 'Booking_Group',    label: 'Booking_Group',                 width: 16, type: 'default' },
+    { key: 'Unit_Weight_KG',   label: 'Total items weight of booking', width: 14, type: 'default' },
     { key: 'Carton_Type',      label: 'Carton_Type',      width: 12, type: 'default' },
     { key: 'Pack_Type',        label: 'Pack_Type',        width: 12, type: 'default' },
     { key: 'Collection_Type',  label: 'Collection_Type',  width: 14, type: 'default' },
@@ -321,7 +321,6 @@ async function build() {
     row.getCell(hIdx['Pack_Type']).value         = 'Bulk Flat';
     row.getCell(hIdx['Collection_Type']).value   = 'Delivery';
     row.getCell(hIdx['Hazardous']).value         = 'N/A';
-    row.getCell(hIdx['No_of_Cartons']).value     = 1;
     row.getCell(hIdx['Unit_Weight_KG']).value    = 0.21;
     row.getCell(hIdx['Carton_Type']).value       = 'BDCM1';
     const hCt = hLet(hIdx['Carton_Type']) + r;
@@ -356,8 +355,8 @@ async function build() {
       showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Traffic Mode', error: 'Select CFS or CY'
     };
     wsH.getCell(r, hIdx['Booking_Group']).dataValidation = {
-      type: 'list', allowBlank: false, formulae: ['LISTS_LOOKUP!$A$2:$A$28'],
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Booking Group', error: 'Select a Booking Group from the list'
+      type: 'list', allowBlank: true, formulae: ['LISTS_LOOKUP!$A$2:$A$28'],
+      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Booking Group', error: 'Select a Booking Group from the list, or leave the default "Single Booking"'
     };
     wsH.getCell(r, hIdx['Pack_Type']).dataValidation = {
       type: 'list', allowBlank: false, formulae: ['"Flat,Bulk Flat,Hanging"'],
@@ -382,9 +381,9 @@ async function build() {
       error: 'Enter a whole number greater than 0 (no decimals)'
     };
     wsH.getCell(r, hIdx['Unit_Weight_KG']).dataValidation = {
-      type: 'decimal', operator: 'greaterThan', formulae: [0], allowBlank: false,
-      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Unit Weight required',
-      error: 'Enter a positive weight in KG (e.g. 0.21)'
+      type: 'decimal', operator: 'greaterThan', formulae: [0], allowBlank: true,
+      showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Invalid Unit Weight',
+      error: 'Enter a positive weight in KG (e.g. 0.21), or leave the pre-filled default'
     };
     wsH.getCell(r, hIdx['Carton_Type']).dataValidation = {
       type: 'list', allowBlank: false, formulae: ['CARTON_LOOKUP!$A$2:$A$20'],

@@ -5,11 +5,11 @@ const fs = require('fs');
 const path = require('path');
 
 // Required fields that must come from PO Header (or equivalent single-sheet columns)
+// Booking_Group and Unit_Weight_KG are defaulted/pre-filled in the supplier template, not mandatory.
 const REQUIRED_HEADER_COLS = [
   'PO_Number',
   'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date',
-  'Booking_Group',
-  'No_of_Cartons', 'Unit_Weight_KG'
+  'No_of_Cartons'
 ];
 
 // Required fields that must come from PO Lines (used only by legacy single-sheet fallback)

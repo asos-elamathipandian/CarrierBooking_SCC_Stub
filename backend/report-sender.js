@@ -94,6 +94,16 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
   const alreadyBooked    = cancelledItems.filter(c => c.type === 'ALREADY_BOOKED').length;
   const asnCancelled     = cancelledItems.filter(c => c.type !== 'ALREADY_BOOKED').length;
 
+  // Booked vs skipped PO reconciliation — unique PO numbers actually booked this run
+  const bookedPoSet    = new Set(entries.flatMap(e => e.poNumbers || []).map(p => String(p).trim()));
+  const bookedPoCount  = bookedPoSet.size;
+  const skippedPoCount = Math.max(0, totalSubmitted - bookedPoCount);
+  const poStatusNote = totalSubmitted
+    ? (skippedPoCount === 0
+        ? `&#9989; All ${totalSubmitted} PO(s) submitted were booked this run.`
+        : `&#9888;&#65039; ${bookedPoCount}/${totalSubmitted} PO(s) booked this run &mdash; ${skippedPoCount} skipped/excluded (see Non-generated POs below).`)
+    : '';
+
   const suppliers       = [...new Set(entries.map(e => e.supplier).filter(Boolean))];
   const isMultiSupplier = suppliers.length > 1;
 
@@ -257,6 +267,7 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
 </style></head><body>
   <h2>&#128666; Carrier Booking Request &mdash; Run Report</h2>
   <p style="color:#555">${dateStr}</p>
+  ${poStatusNote ? `<p class="note" style="font-size:14px;font-weight:bold;color:${skippedPoCount ? '#d97706' : '#1e7e34'}">${poStatusNote}</p>` : ''}
   ${cardsHtml}
   ${bookingDetailsHtml}
   ${nonGeneratedHtml}
@@ -401,7 +412,16 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
       for (const ws of wb.worksheets) ws.conditionalFormattings = [];
 
       const buf      = await wb.xlsx.writeBuffer();
-      const baseName = file.name.replace(/\.xlsx?$/i, '');
+      // Suppliers often leave the template's literal "DDMMYYYY" placeholder unreplaced —
+      // swap it for today's date so the attachment name is meaningful, not a placeholder.
+      const todayDDMMYYYY = (() => {
+        const d = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}${pad(d.getMonth() + 1)}${d.getFullYear()}`;
+      })();
+      const baseName = file.name
+        .replace(/\.xlsx?$/i, '')
+        .replace(/DDMMYYYY/i, todayDDMMYYYY);
       attachments.push({
         '@odata.type':  '#microsoft.graph.fileAttachment',
         name:           `${baseName}_VBRef.xlsx`,
