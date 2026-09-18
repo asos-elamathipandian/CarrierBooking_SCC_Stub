@@ -442,6 +442,12 @@ async function build(masterRows, purposeCd, options = {}) {
     poGroups[poKey].push(row);
   }
 
+  // QUR (cartons) is a document-level total — split evenly across every SKU line so
+  // E2open's line-level sum reconstructs the header carton value (e.g. 9 cartons / 2 lines = 4.5 each).
+  const totalLineCount = masterRows.length;
+  const qurPerLine = totalLineCount > 0 ? totalCartons / totalLineCount : 0;
+  const qurPerLineStr = qurPerLine.toFixed(4);
+
   for (const [poNum, lines] of Object.entries(poGroups)) {
     const order = doc.ele('Order', { Key: poNum, OrderType: 'PO' });
     order.ele('OrderID').txt(poNum);
@@ -476,12 +482,13 @@ async function build(masterRows, purposeCd, options = {}) {
       li.ele('Reference', { RefTypeCd: 'LN',  SourceRefTypeCd: '128' }).txt(cL ? cL.toFixed(2) : '0.00');
       li.ele('Reference', { RefTypeCd: 'WD',  SourceRefTypeCd: '128' }).txt(cW ? cW.toFixed(2) : '0.00');
       li.ele('Reference', { RefTypeCd: 'HT',  SourceRefTypeCd: '128' }).txt(cH ? cH.toFixed(2) : '0.00');
-      // Line-level measures: BKQ uses real qty; N/G/VOL/QUR all defaulted to 1 (header totals carry the real values)
+      // Line-level measures: BKQ uses real qty; N/G/VOL defaulted to 1 (header totals carry the real values);
+      // QUR is the header carton total split evenly across all lines so line sums reconcile to the header.
       li.ele('Measure', { Qualifier: 'BKQ', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'UN' }).txt(row._bkq.toFixed(6));
       li.ele('Measure', { Qualifier: 'G',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt('1.0000');
       li.ele('Measure', { Qualifier: 'N',   SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'KG' }).txt('1.0000');
       li.ele('Measure', { Qualifier: 'VOL', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'M3' }).txt('1.0000');
-      li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt('1.0000');
+      li.ele('Measure', { Qualifier: 'QUR', SourceQualifier: '738', SourceUOMCd: '355', UOMCd: 'CT' }).txt(qurPerLineStr);
       li.ele('TradePartner', { RoleCd: 'FS' }).ele('TradePartnerID', { Qualifier: '93' }).txt(lineFC);
     }
   }
