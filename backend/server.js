@@ -82,100 +82,156 @@ let sessionState = {
   lastXml: null,
   lastFilename: null,
   lastCtrlNumber: null,
-  lastGenerations: []
+  lastGenerations: [],
+  jobStatus: {}
 };
+
+let sessionQueue = Promise.resolve();
+
+function setJobStatus(jobKey, status, details = {}) {
+  const state = sessionState.jobStatus || {};
+  state[jobKey] = {
+    status,
+    updatedAt: new Date().toISOString(),
+    ...details
+  };
+  sessionState.jobStatus = state;
+}
+
+function getJobKey(label, req, fallback = 'unknown') {
+  const files = Array.isArray(req?.files) ? req.files : [];
+  if (files.length > 0) {
+    return `${label}:${files.map(f => f.originalname || 'unnamed').join('|')}`;
+  }
+  if (req?.body?.filename) {
+    return `${label}:${req.body.filename}`;
+  }
+  if (req?.body?.files && Array.isArray(req.body.files)) {
+    const names = req.body.files.map(f => f.filename || f.name || 'unnamed').join('|');
+    if (names) return `${label}:${names}`;
+  }
+  return `${label}:${fallback}`;
+}
+
+function enqueueSessionJob(label, req, task, fallback = 'unknown') {
+  const jobKey = getJobKey(label, req, fallback);
+  setJobStatus(jobKey, 'queued', { label, startedAt: new Date().toISOString() });
+
+  const run = async () => {
+    try {
+      setJobStatus(jobKey, 'processing', { label, startedAt: new Date().toISOString() });
+      return await task();
+    } catch (err) {
+      setJobStatus(jobKey, 'failed', { label, error: err.message, failedAt: new Date().toISOString() });
+      console.error(`[session-queue:${label}]`, err);
+      throw err;
+    }
+  };
+
+  const next = sessionQueue.then(run, run);
+  sessionQueue = next.then(() => undefined, () => undefined);
+  return next.then(result => {
+    setJobStatus(jobKey, 'completed', { label, completedAt: new Date().toISOString() });
+    return result;
+  }, err => {
+    // Keep the failure state from the catch above.
+    throw err;
+  });
+}
 
 // ─────────────────────────────────────────────
 // POST /api/parse-supplier
 // Accept supplier Excel upload, extract PO/ASN refs
 // ─────────────────────────────────────────────
 app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, res) => {
-  try {
-    const files = req.files;
-    if (!files || files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
+  return enqueueSessionJob('parse-supplier', req, async () => {
+    try {
+      const files = req.files;
+      if (!files || files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
 
-    // Parse each file and merge rows + validation errors
-    let allRows = [];
-    let allValidationErrors = [];
-    let allHeaderPoRefs = [];
-    let allHeaderAsnRefs = [];
+      // Parse each file and merge rows + validation errors
+      let allRows = [];
+      let allValidationErrors = [];
+      let allHeaderPoRefs = [];
+      let allHeaderAsnRefs = [];
 
-    for (const file of files) {
-      const parsed = await supplierReader.parse(file.buffer);
-      if (parsed.rows.length > 0) {
-        console.log(`[parse-supplier] ${file.originalname} — headers:`, Object.keys(parsed.rows[0]));
-        console.log(`[parse-supplier] ${file.originalname} — first row:`, JSON.stringify(parsed.rows[0]).slice(0, 300));
-      } else {
-        console.log(`[parse-supplier] ${file.originalname} — no rows parsed — headerRow:`, parsed.headerRowNum);
+      for (const file of files) {
+        const parsed = await supplierReader.parse(file.buffer);
+        if (parsed.rows.length > 0) {
+          console.log(`[parse-supplier] ${file.originalname} — headers:`, Object.keys(parsed.rows[0]));
+          console.log(`[parse-supplier] ${file.originalname} — first row:`, JSON.stringify(parsed.rows[0]).slice(0, 300));
+        } else {
+          console.log(`[parse-supplier] ${file.originalname} — no rows parsed — headerRow:`, parsed.headerRowNum);
+        }
+        allRows = allRows.concat(parsed.rows);
+        allValidationErrors = allValidationErrors.concat(
+          (parsed.validationErrors || []).map(e => `[${file.originalname}] ${e}`)
+        );
+        allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
+        allHeaderAsnRefs.push(...(parsed.headerAsnRefs || []));
       }
-      allRows = allRows.concat(parsed.rows);
-      allValidationErrors = allValidationErrors.concat(
-        (parsed.validationErrors || []).map(e => `[${file.originalname}] ${e}`)
+
+      // NOTE: ASN->PO resolution is intentionally deferred to /api/fetch-feeds
+      // so Step 1 parse does not depend on Databricks permissions/connectivity.
+
+      sessionState.supplierData = { rows: allRows, validationErrors: allValidationErrors };
+      sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
+      sessionState.supplierBuffers = files.map(f => ({ name: f.originalname, buffer: f.buffer }));
+      sessionState.feedData = null;
+      sessionState.masterData = null;
+      sessionState.lastXml = null;
+      sessionState.lastFilename = null;
+
+      // Sanitize rows for JSON: convert ExcelJS Date/RichText/formula objects to primitives
+      const sanitizeVal = v => {
+        if (v === null || v === undefined) return '';
+        if (v instanceof Date) return v.toLocaleDateString('en-GB');
+        if (typeof v === 'object' && 'result' in v) return String(v.result ?? '');
+        if (typeof v === 'object' && 'richText' in v) return (v.richText || []).map(r => r.text || '').join('');
+        if (typeof v === 'object' && 'formula' in v) return '';
+        if (typeof v === 'object') return String(v);
+        return v;
+      };
+      const safeRows = allRows.map(r =>
+        Object.fromEntries(Object.entries(r).map(([k, v]) => [k, sanitizeVal(v)]))
       );
-      allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
-      allHeaderAsnRefs.push(...(parsed.headerAsnRefs || []));
-    }
 
-    // NOTE: ASN->PO resolution is intentionally deferred to /api/fetch-feeds
-    // so Step 1 parse does not depend on Databricks permissions/connectivity.
+      // Compute distinct POs from BOOKING_HEADER (authoritative, even if SKU_LINES is empty)
+      const poRefs = [...new Set(allHeaderPoRefs.map(p => String(p).trim()).filter(Boolean))];
+      const asnRefs = [...new Set(allHeaderAsnRefs.map(a => String(a).trim()).filter(Boolean))];
 
-    sessionState.supplierData = { rows: allRows, validationErrors: allValidationErrors };
-    sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
-    sessionState.supplierBuffers = files.map(f => ({ name: f.originalname, buffer: f.buffer }));
-    sessionState.feedData = null;
-    sessionState.masterData = null;
-    sessionState.lastXml = null;
-    sessionState.lastFilename = null;
-
-    // Sanitize rows for JSON: convert ExcelJS Date/RichText/formula objects to primitives
-    const sanitizeVal = v => {
-      if (v === null || v === undefined) return '';
-      if (v instanceof Date) return v.toLocaleDateString('en-GB');
-      if (typeof v === 'object' && 'result' in v) return String(v.result ?? '');
-      if (typeof v === 'object' && 'richText' in v) return (v.richText || []).map(r => r.text || '').join('');
-      if (typeof v === 'object' && 'formula' in v) return '';
-      if (typeof v === 'object') return String(v);
-      return v;
-    };
-    const safeRows = allRows.map(r =>
-      Object.fromEntries(Object.entries(r).map(([k, v]) => [k, sanitizeVal(v)]))
-    );
-
-    // Compute distinct POs from BOOKING_HEADER (authoritative, even if SKU_LINES is empty)
-    const poRefs = [...new Set(allHeaderPoRefs.map(p => String(p).trim()).filter(Boolean))];
-    const asnRefs = [...new Set(allHeaderAsnRefs.map(a => String(a).trim()).filter(Boolean))];
-
-    // Compute booking groups from SKU rows (falls back to header POs if no SKU rows)
-    const sourceRows = safeRows.length > 0 ? safeRows
-      : poRefs.map(po => ({ PO_Number: po, Booking_Group: 'Single Booking' }));
-    const groupKeys = new Set();
-    for (const row of sourceRows) {
-      const bg = String(row.Booking_Group || '').trim();
-      const po = String(row.PO_Number    || '').trim();
-      const asn = String(row.ASN_Number  || '').trim();
-      const identity = po || asn;
-      if (!identity) continue;
-      if (bg === 'Multiple') { groupKeys.add('__ALL__'); }
-      else {
-        const m = bg.match(/^Multiple POs-(BK\d+)$/i);
-        groupKeys.add(m ? m[1].toUpperCase() : (po ? ('PO__' + po) : ('ASN__' + asn)));
+      // Compute booking groups from SKU rows (falls back to header POs if no SKU rows)
+      const sourceRows = safeRows.length > 0 ? safeRows
+        : poRefs.map(po => ({ PO_Number: po, Booking_Group: 'Single Booking' }));
+      const groupKeys = new Set();
+      for (const row of sourceRows) {
+        const bg = String(row.Booking_Group || '').trim();
+        const po = String(row.PO_Number    || '').trim();
+        const asn = String(row.ASN_Number  || '').trim();
+        const identity = po || asn;
+        if (!identity) continue;
+        if (bg === 'Multiple') { groupKeys.add('__ALL__'); }
+        else {
+          const m = bg.match(/^Multiple POs-(BK\d+)$/i);
+          groupKeys.add(m ? m[1].toUpperCase() : (po ? ('PO__' + po) : ('ASN__' + asn)));
+        }
       }
-    }
 
-    res.json({
-      success: true,
-      rowCount: allRows.filter(r => !r._headerOnly).length,
-      fileCount: files.length,
-      poCount: poRefs.length,
-      bookingCount: groupKeys.size,
-      poRefs,
-      asnRefs,
-      validationErrors: allValidationErrors
-    });
-  } catch (err) {
-    console.error('parse-supplier error:', err);
-    res.status(500).json({ error: err.message });
-  }
+      return res.json({
+        success: true,
+        rowCount: allRows.filter(r => !r._headerOnly).length,
+        fileCount: files.length,
+        poCount: poRefs.length,
+        bookingCount: groupKeys.size,
+        poRefs,
+        asnRefs,
+        validationErrors: allValidationErrors
+      });
+    } catch (err) {
+      console.error('parse-supplier error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
 });
 
 // ─────────────────────────────────────────────
@@ -183,124 +239,126 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
 // Fetch PO + ASN XMLs from Azure Blob by refs
 // ─────────────────────────────────────────────
 app.post('/api/fetch-feeds', async (req, res) => {
-  try {
-    const { poRefs, asnRefs } = req.body;
-    let effectivePoRefs = Array.isArray(poRefs) ? poRefs : [];
-    let effectiveAsnRefs = Array.isArray(asnRefs) ? asnRefs : [];
+  return enqueueSessionJob('fetch-feeds', req, async () => {
+    try {
+      const { poRefs, asnRefs } = req.body;
+      let effectivePoRefs = Array.isArray(poRefs) ? poRefs : [];
+      let effectiveAsnRefs = Array.isArray(asnRefs) ? asnRefs : [];
 
-    // Fallback: if UI didn't send asnRefs, derive them from parsed supplier rows in session.
-    if (effectiveAsnRefs.length === 0) {
-      effectiveAsnRefs = [...new Set(
-        (sessionState.supplierData?.rows || [])
-          .map(r => String(r.ASN_Number || '').trim())
-          .filter(Boolean)
-      )];
-    }
-
-    let resolverErrors = [];
-    if (effectivePoRefs.length === 0 && effectiveAsnRefs.length > 0) {
-      const resolved = await databricksAsnReader.resolvePoRefsByAsnRefs(effectiveAsnRefs);
-      effectivePoRefs = resolved.poRefs || [];
-      if (resolved.errors?.length) {
-        resolverErrors = resolved.errors;
-        console.warn('[fetch-feeds] ASN->PO resolution warnings:', resolved.errors);
+      // Fallback: if UI didn't send asnRefs, derive them from parsed supplier rows in session.
+      if (effectiveAsnRefs.length === 0) {
+        effectiveAsnRefs = [...new Set(
+          (sessionState.supplierData?.rows || [])
+            .map(r => String(r.ASN_Number || '').trim())
+            .filter(Boolean)
+        )];
       }
-    }
 
-    if (!effectivePoRefs.length) {
-      const detail = resolverErrors.length
-        ? ` | ${resolverErrors.join(' ; ')}`
-        : '';
-      return res.status(400).json({
-        error: `poRefs required (or resolvable asnRefs)${detail}`,
-        resolverErrors
-      });
-    }
-
-    const useDb = (process.env.ASN_SOURCE || '').toLowerCase() === 'databricks';
-    const feedData = useDb
-      ? await databricksAsnReader.fetchAsnsByPoRefs(effectivePoRefs)
-      : await blobClient.fetchCarrierFeedsOnly(effectivePoRefs);
-    sessionState.feedData = feedData;
-
-    // Enrich ALREADY_BOOKED items with the VB Ref from our generation log
-    const cancelledItems = feedData.cancelledItems || [];
-    const genLog = bibleBuilder.getGenerationLog() || [];
-    const supplierRows = sessionState.supplierData?.rows || [];
-    for (const item of cancelledItems) {
-      // Attach supplier from log entry or current supplier data
-      const logEntry = genLog.find(e =>
-        (e.asnRefs  || []).map(String).includes(String(item.asnId || '')) ||
-        (e.poNumbers|| []).map(String).includes(String(item.poId  || ''))
-      );
-      if (logEntry) item.supplier = logEntry.supplier || null;
-      if (!item.supplier) {
-        const supRow = supplierRows.find(r => String(r.PO_Number || '').trim() === String(item.poId || '').trim());
-        if (supRow) item.supplier = supRow.Supplier || supRow.Supplier_Name || supRow.supplierName || null;
+      let resolverErrors = [];
+      if (effectivePoRefs.length === 0 && effectiveAsnRefs.length > 0) {
+        const resolved = await databricksAsnReader.resolvePoRefsByAsnRefs(effectiveAsnRefs);
+        effectivePoRefs = resolved.poRefs || [];
+        if (resolved.errors?.length) {
+          resolverErrors = resolved.errors;
+          console.warn('[fetch-feeds] ASN->PO resolution warnings:', resolved.errors);
+        }
       }
-      if (item.type === 'ALREADY_BOOKED' && item.asnId && logEntry) {
-        item.vbRef  = logEntry.bookingRef || null;
-        item.reason = `ASN ${item.asnId} (PO ${item.poId}) already has a carrier booking — ${logEntry.bookingRef ? `VB Ref: ${logEntry.bookingRef}` : 'submitted previously'}`;
-      }
-    }
 
-    // If Databricks has dropped rows for a PO that we already generated a VB for
-    // (serve-layer snapshot lifecycle), surface it as ALREADY_BOOKED rather than
-    // letting the pipeline fail with a generic "No active ASN records found" error.
-    const foundPoIds = new Set([
-      ...(feedData.carrierAsnFiles || []).map(f => String(f.poRef || '')),
-      ...cancelledItems.map(c => String(c.poId || ''))
-    ].filter(Boolean));
-    for (const po of effectivePoRefs) {
-      if (foundPoIds.has(String(po))) continue;
-      const logEntry = genLog.find(e => (e.poNumbers || []).map(String).includes(String(po)));
-      if (logEntry) {
-        cancelledItems.push({
-          type:   'ALREADY_BOOKED',
-          asnId:  null,
-          poId:   String(po),
-          vbRef:  logEntry.bookingRef || null,
-          reason: `PO ${po} — VB already generated${logEntry.bookingRef ? ` (${logEntry.bookingRef})` : ''}${logEntry.filename ? `, file: ${logEntry.filename}` : ''}`
+      if (!effectivePoRefs.length) {
+        const detail = resolverErrors.length
+          ? ` | ${resolverErrors.join(' ; ')}`
+          : '';
+        return res.status(400).json({
+          error: `poRefs required (or resolvable asnRefs)${detail}`,
+          resolverErrors
         });
       }
-    }
 
-    res.json({
-      success: true,
-      carrierAsnCount: (feedData.carrierAsnFiles || []).length,
-      localMode: feedData.localMode || false,
-      errors: feedData.errors || [],
-      cancelledItems,
-      feedsSummary: [],
-      carrierAsnFiles: (feedData.carrierAsnFiles || []).map(f => ({
-        filename:  f.filename,
-        poRef:     f.poRef,
-        blobPath:  f.blobPath || null,
-        asnGroups: (f.parsed || []).map(g => ({
-          asnId:    g.asnId,
-          fcId:     g.fcId,
-          shipDate: g.shipDate,
-          supplier: g.supplier,
-          supplierCode:  g.supplierCode,
-          shippingPoint: g.shippingPoint,
-          shippingTerms: g.shippingTerms,
-          lines:    (g.lines || []).map(l => ({
-            sku:         l.sku,
-            ean:         l.ean,
-            description: l.description,
-            size:        l.size,
-            colour:      l.colour,
-            quantity:    l.quantity,
-            country:     l.country,
-            packFormat:  l.packFormat
+      const useDb = (process.env.ASN_SOURCE || '').toLowerCase() === 'databricks';
+      const feedData = useDb
+        ? await databricksAsnReader.fetchAsnsByPoRefs(effectivePoRefs)
+        : await blobClient.fetchCarrierFeedsOnly(effectivePoRefs);
+      sessionState.feedData = feedData;
+
+      // Enrich ALREADY_BOOKED items with the VB Ref from our generation log
+      const cancelledItems = feedData.cancelledItems || [];
+      const genLog = bibleBuilder.getGenerationLog() || [];
+      const supplierRows = sessionState.supplierData?.rows || [];
+      for (const item of cancelledItems) {
+        // Attach supplier from log entry or current supplier data
+        const logEntry = genLog.find(e =>
+          (e.asnRefs  || []).map(String).includes(String(item.asnId || '')) ||
+          (e.poNumbers|| []).map(String).includes(String(item.poId  || ''))
+        );
+        if (logEntry) item.supplier = logEntry.supplier || null;
+        if (!item.supplier) {
+          const supRow = supplierRows.find(r => String(r.PO_Number || '').trim() === String(item.poId || '').trim());
+          if (supRow) item.supplier = supRow.Supplier || supRow.Supplier_Name || supRow.supplierName || null;
+        }
+        if (item.type === 'ALREADY_BOOKED' && item.asnId && logEntry) {
+          item.vbRef  = logEntry.bookingRef || null;
+          item.reason = `ASN ${item.asnId} (PO ${item.poId}) already has a carrier booking — ${logEntry.bookingRef ? `VB Ref: ${logEntry.bookingRef}` : 'submitted previously'}`;
+        }
+      }
+
+      // If Databricks has dropped rows for a PO that we already generated a VB for
+      // (serve-layer snapshot lifecycle), surface it as ALREADY_BOOKED rather than
+      // letting the pipeline fail with a generic "No active ASN records found" error.
+      const foundPoIds = new Set([
+        ...(feedData.carrierAsnFiles || []).map(f => String(f.poRef || '')),
+        ...cancelledItems.map(c => String(c.poId || ''))
+      ].filter(Boolean));
+      for (const po of effectivePoRefs) {
+        if (foundPoIds.has(String(po))) continue;
+        const logEntry = genLog.find(e => (e.poNumbers || []).map(String).includes(String(po)));
+        if (logEntry) {
+          cancelledItems.push({
+            type:   'ALREADY_BOOKED',
+            asnId:  null,
+            poId:   String(po),
+            vbRef:  logEntry.bookingRef || null,
+            reason: `PO ${po} — VB already generated${logEntry.bookingRef ? ` (${logEntry.bookingRef})` : ''}${logEntry.filename ? `, file: ${logEntry.filename}` : ''}`
+          });
+        }
+      }
+
+      return res.json({
+        success: true,
+        carrierAsnCount: (feedData.carrierAsnFiles || []).length,
+        localMode: feedData.localMode || false,
+        errors: feedData.errors || [],
+        cancelledItems,
+        feedsSummary: [],
+        carrierAsnFiles: (feedData.carrierAsnFiles || []).map(f => ({
+          filename:  f.filename,
+          poRef:     f.poRef,
+          blobPath:  f.blobPath || null,
+          asnGroups: (f.parsed || []).map(g => ({
+            asnId:    g.asnId,
+            fcId:     g.fcId,
+            shipDate: g.shipDate,
+            supplier: g.supplier,
+            supplierCode:  g.supplierCode,
+            shippingPoint: g.shippingPoint,
+            shippingTerms: g.shippingTerms,
+            lines:    (g.lines || []).map(l => ({
+              sku:         l.sku,
+              ean:         l.ean,
+              description: l.description,
+              size:        l.size,
+              colour:      l.colour,
+              quantity:    l.quantity,
+              country:     l.country,
+              packFormat:  l.packFormat
+            }))
           }))
         }))
-      }))
-    });
-  } catch (err) {
-    console.error('fetch-feeds error:', err);
-    res.status(500).json({ error: err.message });
-  }
+      });
+    } catch (err) {
+      console.error('fetch-feeds error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
 });
 
 // ─────────────────────────────────────────────
@@ -457,67 +515,68 @@ app.post('/api/build-bible', async (req, res) => {
 // Build VBKREQ XML from MASTER data
 // ─────────────────────────────────────────────
 app.post('/api/generate-vbkreq', async (req, res) => {
-  try {
-    if (!sessionState.masterData) return res.status(400).json({ error: 'No master data. Run build-bible first.' });
+  return enqueueSessionJob('generate-vbkreq', req, async () => {
+    try {
+      if (!sessionState.masterData) return res.status(400).json({ error: 'No master data. Run build-bible first.' });
 
-    const purposeCd = req.body.purposeCd || '13';
-    const overrideCargoReady     = req.body.overrideCargoReady     || '';
-    const overrideBookingReqDate = req.body.overrideBookingReqDate || '';
-    // Optional map { [PO_Number]: bookingRef } sent by the UI when user selects a specific VB to re-submit
-    const overrideBookingRefs    = req.body.overrideBookingRefs    || null;
+      const purposeCd = req.body.purposeCd || '13';
+      const overrideCargoReady     = req.body.overrideCargoReady     || '';
+      const overrideBookingReqDate = req.body.overrideBookingReqDate || '';
+      // Optional map { [PO_Number]: bookingRef } sent by the UI when user selects a specific VB to re-submit
+      const overrideBookingRefs    = req.body.overrideBookingRefs    || null;
 
-    // Apply optional date overrides to a working copy of master rows
-    const workingRows = sessionState.masterData.map(row => {
-      if (!overrideCargoReady && !overrideBookingReqDate) return row;
-      const r = { ...row };
-      if (overrideCargoReady)     r.Cargo_Ready_Planned_Collection_Date = overrideCargoReady;
-      if (overrideBookingReqDate) r.Carrier_Booking_Request_Date        = overrideBookingReqDate;
-      return r;
-    });
+      // Apply optional date overrides to a working copy of master rows
+      const workingRows = sessionState.masterData.map(row => {
+        if (!overrideCargoReady && !overrideBookingReqDate) return row;
+        const r = { ...row };
+        if (overrideCargoReady)     r.Cargo_Ready_Planned_Collection_Date = overrideCargoReady;
+        if (overrideBookingReqDate) r.Carrier_Booking_Request_Date        = overrideBookingReqDate;
+        return r;
+      });
 
-    // For cancellations AND re-submissions, reuse the correct bookingRef per PO from the generation log
-    if (purposeCd === '01' || purposeCd === '15') {
-      const logEntries = readGenerationLog();
-      // Build most-recent map as fallback
-      const poRefMap = {};
-      for (const entry of logEntries) {
-        for (const po of (entry.poNumbers || [])) {
-          const key = String(po).trim();
-          if (!poRefMap[key] || new Date(entry.timestamp) > new Date(poRefMap[key].timestamp)) {
-            poRefMap[key] = { bookingRef: entry.bookingRef, timestamp: entry.timestamp };
+      // For cancellations AND re-submissions, reuse the correct bookingRef per PO from the generation log
+      if (purposeCd === '01' || purposeCd === '15') {
+        const logEntries = readGenerationLog();
+        // Build most-recent map as fallback
+        const poRefMap = {};
+        for (const entry of logEntries) {
+          for (const po of (entry.poNumbers || [])) {
+            const key = String(po).trim();
+            if (!poRefMap[key] || new Date(entry.timestamp) > new Date(poRefMap[key].timestamp)) {
+              poRefMap[key] = { bookingRef: entry.bookingRef, timestamp: entry.timestamp };
+            }
           }
         }
+        for (const row of workingRows) {
+          const poKey = String(row.PO_Number || '').trim();
+          // UI-selected override takes priority; otherwise use the most-recent from the log
+          const chosen = (overrideBookingRefs && overrideBookingRefs[poKey])
+            ? overrideBookingRefs[poKey]
+            : (poRefMap[poKey] ? poRefMap[poKey].bookingRef : null);
+          if (chosen) row.Booking_Ref = chosen;
+        }
       }
+
+      // Derive a grouping key from Booking_Group:
+      //   "Single Booking"      → one VBKREQ per PO  (key = PO_Number)
+      //   "Multiple POs-BKxxx"  → all rows with same code in one VBKREQ (key = BKxxx)
+      //   "Multiple"            → everything in one VBKREQ (key = __ALL__)
+      //   blank / unknown       → treat as Single Booking for safety
+      function resolveGroupKey(row) {
+        const bg = String(row.Booking_Group || '').trim();
+        if (bg === 'Multiple') return '__ALL__';
+        const multiMatch = bg.match(/^Multiple POs-(BK\d+)$/i);
+        if (multiMatch) return multiMatch[1].toUpperCase();
+        // "Single Booking" or blank/legacy → one VBKREQ per PO
+        return `PO__${String(row.PO_Number || '').trim()}`;
+      }
+
+      const groupMap = new Map();
       for (const row of workingRows) {
-        const poKey = String(row.PO_Number || '').trim();
-        // UI-selected override takes priority; otherwise use the most-recent from the log
-        const chosen = (overrideBookingRefs && overrideBookingRefs[poKey])
-          ? overrideBookingRefs[poKey]
-          : (poRefMap[poKey] ? poRefMap[poKey].bookingRef : null);
-        if (chosen) row.Booking_Ref = chosen;
+        const group = resolveGroupKey(row);
+        if (!groupMap.has(group)) groupMap.set(group, []);
+        groupMap.get(group).push(row);
       }
-    }
-
-    // Derive a grouping key from Booking_Group:
-    //   "Single Booking"      → one VBKREQ per PO  (key = PO_Number)
-    //   "Multiple POs-BKxxx"  → all rows with same code in one VBKREQ (key = BKxxx)
-    //   "Multiple"            → everything in one VBKREQ (key = __ALL__)
-    //   blank / unknown       → treat as Single Booking for safety
-    function resolveGroupKey(row) {
-      const bg = String(row.Booking_Group || '').trim();
-      if (bg === 'Multiple') return '__ALL__';
-      const multiMatch = bg.match(/^Multiple POs-(BK\d+)$/i);
-      if (multiMatch) return multiMatch[1].toUpperCase();
-      // "Single Booking" or blank/legacy → one VBKREQ per PO
-      return `PO__${String(row.PO_Number || '').trim()}`;
-    }
-
-    const groupMap = new Map();
-    for (const row of workingRows) {
-      const group = resolveGroupKey(row);
-      if (!groupMap.has(group)) groupMap.set(group, []);
-      groupMap.get(group).push(row);
-    }
 
     const RESUB_FIELDS = [
       { key: 'Header_Booking_Qty',                  label: 'Total Units'          },
@@ -785,12 +844,13 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       }
     }
 
-    res.json({ success: true, generations, skippedGroups });
-    sessionState.skippedGroups = skippedGroups;
-  } catch (err) {
-    console.error('generate-vbkreq error:', err);
-    res.status(500).json({ error: err.message });
-  }
+      res.json({ success: true, generations, skippedGroups });
+      sessionState.skippedGroups = skippedGroups;
+    } catch (err) {
+      console.error('generate-vbkreq error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
 });
 
 // ─────────────────────────────────────────────
@@ -828,69 +888,71 @@ app.post('/api/upload-sftp', async (req, res) => {
 // Upload multiple XMLs over a single shared SFTP connection
 // ─────────────────────────────────────────────
 app.post('/api/upload-sftp-batch', async (req, res) => {
-  try {
-    const { files } = req.body; // [{ filename, xmlContent }]
-    if (!Array.isArray(files) || files.length === 0) {
-      return res.status(400).json({ error: 'files array is required' });
-    }
-
-    const results = await sftpUploader.uploadBatch(files);
-
-    // Update generation log for each uploaded file
-    for (const r of results) {
-      const gen = (sessionState.lastGenerations || []).find(g => g.filename === r.filename);
-      const ctrlNum = gen?.ctrlNumber || null;
-      if (r.filename && ctrlNum !== undefined) {
-        bibleBuilder.updateGenerationLog(r.filename, ctrlNum, {
-          sftp:       r.ok ? (r.localMode ? 'local' : 'uploaded') : 'error',
-          sftpEnv:    r.sftpEnv || null,
-          sftpPath:   r.remotePath || null,
-          uploadedAt: r.uploadedAt || new Date().toISOString()
-        });
+  return enqueueSessionJob('upload-sftp-batch', req, async () => {
+    try {
+      const { files } = req.body; // [{ filename, xmlContent }]
+      if (!Array.isArray(files) || files.length === 0) {
+        return res.status(400).json({ error: 'files array is required' });
       }
+
+      const results = await sftpUploader.uploadBatch(files);
+
+      // Update generation log for each uploaded file
+      for (const r of results) {
+        const gen = (sessionState.lastGenerations || []).find(g => g.filename === r.filename);
+        const ctrlNum = gen?.ctrlNumber || null;
+        if (r.filename && ctrlNum !== undefined) {
+          bibleBuilder.updateGenerationLog(r.filename, ctrlNum, {
+            sftp:       r.ok ? (r.localMode ? 'local' : 'uploaded') : 'error',
+            sftpEnv:    r.sftpEnv || null,
+            sftpPath:   r.remotePath || null,
+            uploadedAt: r.uploadedAt || new Date().toISOString()
+          });
+        }
+      }
+
+      res.json({ results });
+
+      // Send booking report email immediately after manual pipeline upload
+      reportSender.sendScheduledReport({
+        supplierBuffers:      sessionState.supplierBuffers,
+        lastGenerations:      sessionState.lastGenerations,
+        supplierHeaderPoRefs: sessionState.supplierHeaderPoRefs,
+        skippedGroups:        sessionState.skippedGroups,
+        cancelledItems:       sessionState.feedData?.cancelledItems,
+        isAdHocRun:           sessionState.isAdHocRun
+      }).catch(err =>
+        console.error('[Report] Post-upload send failed:', err.message)
+      );
+
+      // Fire-and-forget report webhook if configured
+      const webhookUrl = process.env.PIPELINE_REPORT_WEBHOOK;
+      if (webhookUrl) {
+        const generations = sessionState.lastGenerations || [];
+        const payload = {
+          runAt:        new Date().toISOString(),
+          poRefs:       sessionState.supplierHeaderPoRefs || [],
+          generations:  generations.map(g => ({
+            bookingRef: g.bookingRef || g.ctrlNumber,
+            poNumbers:  g.poNumbers || [],
+            filename:   g.filename,
+            uploaded:   results.find(r => r.filename === g.filename)?.ok || false,
+            sftpEnv:    results.find(r => r.filename === g.filename)?.sftpEnv || null
+          })),
+          skippedCount: (sessionState.skippedGroups || []).length,
+          errorMessage: null
+        };
+        fetch(webhookUrl, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload)
+        }).catch(err => console.error('[Report Webhook] Failed:', err.message));
+      }
+    } catch (err) {
+      console.error('upload-sftp-batch error:', err);
+      return res.status(500).json({ error: err.message });
     }
-
-    res.json({ results });
-
-    // Send booking report email immediately after manual pipeline upload
-    reportSender.sendScheduledReport({
-      supplierBuffers:      sessionState.supplierBuffers,
-      lastGenerations:      sessionState.lastGenerations,
-      supplierHeaderPoRefs: sessionState.supplierHeaderPoRefs,
-      skippedGroups:        sessionState.skippedGroups,
-      cancelledItems:       sessionState.feedData?.cancelledItems,
-      isAdHocRun:           sessionState.isAdHocRun
-    }).catch(err =>
-      console.error('[Report] Post-upload send failed:', err.message)
-    );
-
-    // Fire-and-forget report webhook if configured
-    const webhookUrl = process.env.PIPELINE_REPORT_WEBHOOK;
-    if (webhookUrl) {
-      const generations = sessionState.lastGenerations || [];
-      const payload = {
-        runAt:        new Date().toISOString(),
-        poRefs:       sessionState.supplierHeaderPoRefs || [],
-        generations:  generations.map(g => ({
-          bookingRef: g.bookingRef || g.ctrlNumber,
-          poNumbers:  g.poNumbers || [],
-          filename:   g.filename,
-          uploaded:   results.find(r => r.filename === g.filename)?.ok || false,
-          sftpEnv:    results.find(r => r.filename === g.filename)?.sftpEnv || null
-        })),
-        skippedCount: (sessionState.skippedGroups || []).length,
-        errorMessage: null
-      };
-      fetch(webhookUrl, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload)
-      }).catch(err => console.error('[Report Webhook] Failed:', err.message));
-    }
-  } catch (err) {
-    console.error('upload-sftp-batch error:', err);
-    res.status(500).json({ error: err.message });
-  }
+  });
 });
 
 // ─────────────────────────────────────────────
@@ -1153,6 +1215,15 @@ app.get('/api/generation-log', async (req, res) => {
     console.error('generation-log error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/api/job-status', (req, res) => {
+  const { key } = req.query;
+  const status = sessionState.jobStatus || {};
+  if (key) {
+    return res.json({ success: true, status: status[key] || null });
+  }
+  return res.json({ success: true, status });
 });
 
 // ─────────────────────────────────────────────

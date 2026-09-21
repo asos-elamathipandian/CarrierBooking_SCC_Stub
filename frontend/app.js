@@ -92,6 +92,42 @@ function renderPoTags(poRefs) {
   if (details) details.removeAttribute('open');
 }
 
+function renderJobStatusPanel(statusMap = {}) {
+  const panel = document.getElementById('jobStatusPanel');
+  if (!panel) return;
+  const entries = Object.entries(statusMap || {}).slice().sort((a, b) => new Date(b[1].updatedAt || 0) - new Date(a[1].updatedAt || 0));
+  if (!entries.length) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+
+  const rows = entries.slice(0, 6).map(([key, info]) => {
+    const label = String(key).split(':').slice(0, 2).join(':');
+    const status = info?.status || 'unknown';
+    const color = status === 'completed' ? '#15803D' : status === 'processing' ? '#B45309' : status === 'failed' ? '#B91C1C' : status === 'queued' ? '#1D4ED8' : '#64748B';
+    const badge = `<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:${color}22;color:${color};font-size:11px;font-weight:700">${status}</span>`;
+    const detail = info?.error ? ` — ${escapeHtml(info.error)}` : '';
+    return `<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:7px 0;border-bottom:1px solid #E2E8F0;font-size:12px"><div style="color:#334155;overflow-wrap:anywhere">${escapeHtml(label)}${detail}</div><div>${badge}</div></div>`;
+  }).join('');
+
+  panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="font-size:12px;color:#374151">Processing status</strong><span style="font-size:11px;color:#64748B">live</span></div>${rows}`;
+  panel.style.display = 'block';
+}
+
+async function refreshJobStatus() {
+  try {
+    const res = await fetch(`${API}/job-status`);
+    if (!res.ok) return;
+    const data = await res.json();
+    renderJobStatusPanel(data.status || {});
+  } catch (err) {
+    // Quietly ignore polling errors; the user can still see the main status box.
+  }
+}
+
+setInterval(refreshJobStatus, 2500);
+
 // ── Drop zone & file input ────────────────────────────────────────────────────
 function applyFilesToZone(files) {
   if (!files || files.length === 0) return;
