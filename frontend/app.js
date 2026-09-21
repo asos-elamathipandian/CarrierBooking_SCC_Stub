@@ -92,6 +92,23 @@ function renderPoTags(poRefs) {
   if (details) details.removeAttribute('open');
 }
 
+function renderWorkflowState(message, type = 'info') {
+  const banner = document.getElementById('workflowStateBanner');
+  if (!banner) return;
+  const colors = {
+    info: { bg: '#EFF6FF', border: '#BFDBFE', text: '#1D4ED8' },
+    success: { bg: '#ECFDF5', border: '#A7F3D0', text: '#065F46' },
+    warning: { bg: '#FFFBEB', border: '#FCD34D', text: '#92400E' },
+    error: { bg: '#FEF2F2', border: '#FECACA', text: '#991B1B' }
+  };
+  const c = colors[type] || colors.info;
+  banner.style.display = 'block';
+  banner.style.background = c.bg;
+  banner.style.borderColor = c.border;
+  banner.style.color = c.text;
+  banner.innerHTML = message;
+}
+
 function renderJobStatusPanel(statusMap = {}) {
   const panel = document.getElementById('jobStatusPanel');
   if (!panel) return;
@@ -244,6 +261,7 @@ btnParseSupplier.addEventListener('click', async () => {
     const badge = document.getElementById('badgePipeline');
     if (badge) badge.className = 'step-badge active';
     if (btnRunPipeline) btnRunPipeline.disabled = false;
+    renderWorkflowState('ACK received — supplier file accepted and pipeline is now being processed.', 'info');
     // Auto-trigger pipeline after brief delay
     scheduleAutoPipeline('Parsed from manual upload');
   } catch (err) {
@@ -569,6 +587,7 @@ if (btnRunPipeline) {
       const doneExtras = [alreadyBooked.length ? `${alreadyBooked.length} already booked skipped` : '', cancelled.length ? `${cancelled.length} cancelled skipped` : ''].filter(Boolean).join(', ');
       const allSkipped = totalActiveGroups === 0;
       progSet(1, allSkipped ? 'warn' : 'done', `📡 ASN ${allSkipped ? '⚠️' : '✅'}${doneExtras ? ` (${doneExtras})` : ''}`);
+      renderWorkflowState(allSkipped ? 'Pipeline active — ASN scan complete, but the submission is skipped due to no active records.' : 'Pipeline active — ASN lookup complete and booking generation is in progress.', allSkipped ? 'warning' : 'info');
       state.feedsFetched = true;
 
       // All POs were cancelled or already booked — skip remaining stages
@@ -587,6 +606,7 @@ if (btnRunPipeline) {
       const buildData = await buildRes.json();
       if (!buildRes.ok) throw new Error(buildData.error || 'Build failed');
       state.biblBuilt = true;
+      renderWorkflowState('Pipeline active — master file built, now generating VBKREQs.', 'info');
       let warningsHtml = '';
       if (buildData.warnings?.length) {
         warningsHtml += `<div style="margin-bottom:8px;padding:8px;background:#FEF9E7;border-left:3px solid #F39C12;border-radius:4px;font-size:12px">⚠️ <strong>${buildData.warnings.length} SKU(s) excluded</strong> — not on carrier ASN:<br/>${buildData.warnings.map(w => `&nbsp;• ${w}`).join('<br/>')}</div>`;
@@ -611,6 +631,7 @@ if (btnRunPipeline) {
       state.lastXml      = state.generations[0]?.xml      || null;
       state.lastFilename = state.generations[0]?.filename || null;
 
+      renderWorkflowState(state.generations.length ? 'Pipeline active — VBKREQs generated and being uploaded to SFTP.' : 'Pipeline active — no new bookings generated; waiting for final status.', state.generations.length ? 'info' : 'warning');
       progSet(3, 'done', '⚡ Generated ✅');
 
       // ── 4. Upload ─────────────────────────────────────────────────────────
@@ -639,6 +660,7 @@ if (btnRunPipeline) {
         }));
         const ok   = results.filter(r => r.ok);
         const fail = results.filter(r => !r.ok);
+        renderWorkflowState(fail.length === 0 ? 'Final report queued and upload complete — booking run finished.' : 'Upload finished with warnings — final report may still be queued for review.', fail.length === 0 ? 'success' : 'warning');
         progSet(4, fail.length === 0 ? 'done' : 'error', fail.length === 0 ? '🚀 Uploaded ✅' : '🚀 Upload ⚠️');
         const _elapsed = Date.now() - pipelineStart;
         const _elStr = _elapsed < 60000 ? `${(_elapsed/1000).toFixed(1)}s` : `${Math.floor(_elapsed/60000)}m ${Math.round((_elapsed%60000)/1000)}s`;
@@ -661,6 +683,7 @@ if (btnRunPipeline) {
         psSetResult('psFetchResult', (document.getElementById('psFetchResult').innerHTML || '') +
           `<div style="color:#6B7280;font-size:13px;margin-top:6px">⏹ Pipeline stopped by user.</div>`);
       } else {
+        renderWorkflowState('Pipeline failed — the carrier booking flow stopped before final report generation.', 'error');
         psSetResult('psFetchResult', (document.getElementById('psFetchResult').innerHTML || '') +
           `<div style="color:#922B21;font-size:13px;margin-top:6px">❌ ${err.message}</div>`);
       }
