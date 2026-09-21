@@ -459,8 +459,10 @@ async function sendScheduledReport(sessionCtx = {}) {
 
   const allEntries = readLog();
   const newEntries = allEntries.filter(e => new Date(e.timestamp) > lastReportTime);
+  const hasExcludedItems = (sessionCtx.skippedGroups || []).length > 0 ||
+    (sessionCtx.cancelledItems || []).length > 0;
 
-  if (newEntries.length === 0) {
+  if (newEntries.length === 0 && !(sessionCtx.reportOnEmptyRun && hasExcludedItems)) {
     console.log('[Report] No new entries since last report — skipping.');
     return;
   }

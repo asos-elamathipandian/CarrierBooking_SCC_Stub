@@ -72,6 +72,7 @@ async function runSync(sessionState) {
   let allRows = [];
   let allValidationErrors = [];
   let allHeaderPoRefs = [];
+  let allHeaderAsnRefs = [];
   let allSupplierBuffers = [];
   const processed = [];
 
@@ -84,6 +85,7 @@ async function runSync(sessionState) {
         (parsed.validationErrors || []).map(e => `[${file.name}] ${e}`)
       );
       allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
+      allHeaderAsnRefs.push(...(parsed.headerAsnRefs || []));
       allSupplierBuffers.push({ name: file.name, buffer });
       processed.push({ name: file.name, size: file.size, lastModified: file.lastModified });
       await blob.archiveBlob(file.name);
@@ -100,6 +102,7 @@ async function runSync(sessionState) {
 
   sessionState.supplierData         = { rows: allRows, validationErrors: allValidationErrors };
   sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
+  sessionState.supplierHeaderAsnRefs = allHeaderAsnRefs;
   sessionState.supplierBuffers      = allSupplierBuffers;
   sessionState.feedData             = null;
   sessionState.masterData           = null;
@@ -133,6 +136,7 @@ async function runSync(sessionState) {
     writeStatus({
       pipelineError:    null,
       lastPipelineRun:  now.toISOString(),
+      poRefs:           result.poRefs,
       generationCount:  result.generations.length,
       skippedCount:     result.skippedGroups.length,
     });
@@ -156,6 +160,7 @@ async function runScheduledPipeline(sessionState) {
     writeStatus({
       pipelineError:   null,
       lastPipelineRun: now.toISOString(),
+      poRefs:          result.poRefs,
       generationCount: result.generations.length,
       skippedCount:    result.skippedGroups.length,
     });

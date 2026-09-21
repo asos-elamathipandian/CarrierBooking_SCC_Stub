@@ -302,9 +302,26 @@ async function generateVbkreqs(sessionState) {
  * Returns a summary object: { poRefs, generations, skippedGroups, sftpResults, error }
  */
 async function run(sessionState) {
-  const poRefs = [...new Set(
+  let poRefs = [...new Set(
     (sessionState.supplierHeaderPoRefs || []).map(p => String(p).trim()).filter(Boolean)
   )];
+
+  // Ideateks files are ASN-anchored and may not contain PO_Number. Resolve
+  // those ASN refs before starting the normal PO-based pipeline.
+  if (!poRefs.length && (sessionState.supplierHeaderAsnRefs || []).length) {
+    try {
+      const resolved = await databricksAsnReader.resolvePoRefsByAsnRefs(sessionState.supplierHeaderAsnRefs);
+      poRefs = resolved.poRefs || [];
+      sessionState.supplierHeaderPoRefs = poRefs;
+      if (resolved.errors?.length) {
+        console.warn('[Pipeline] ASN-to-PO resolution warnings:', resolved.errors.join('; '));
+      }
+      console.log(`[Pipeline] Resolved ${poRefs.length} PO(s) from ${(sessionState.supplierHeaderAsnRefs || []).length} ASN ref(s)`);
+    } catch (err) {
+      console.error('[Pipeline] ASN-to-PO resolution failed:', err.message);
+      return { poRefs: [], generations: [], skippedGroups: [], sftpResults: [], error: `ASN resolution: ${err.message}` };
+    }
+  }
 
   if (!poRefs.length) {
     console.warn('[Pipeline] No PO refs in session — aborting.');
@@ -353,6 +370,11 @@ async function run(sessionState) {
 
   if (!masterRows.length) {
     console.warn('[Pipeline] No master rows after bible build — all ASNs may be cancelled/skipped.');
+    sessionState.lastGenerations = [];
+    sessionState.skippedGroups = [];
+    sessionState.lastXml = null;
+    sessionState.lastFilename = null;
+    reportSender.sendScheduledReport(buildSessionCtx(sessionState)).catch(e => console.error('[Pipeline] Report failed:', e.message));
     return { poRefs, generations: [], skippedGroups: [], sftpResults: [], error: null };
   }
 
@@ -420,7 +442,8 @@ function buildSessionCtx(sessionState) {
     lastGenerations:      sessionState.lastGenerations,
     supplierHeaderPoRefs: sessionState.supplierHeaderPoRefs,
     skippedGroups:        sessionState.skippedGroups,
-    cancelledItems:       sessionState.feedData?.cancelledItems
+    cancelledItems:       sessionState.feedData?.cancelledItems,
+    reportOnEmptyRun:     true
   };
 }
 
