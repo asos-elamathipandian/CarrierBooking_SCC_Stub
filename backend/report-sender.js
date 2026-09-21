@@ -113,7 +113,8 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
   const suppliers       = [...new Set(entries.map(e => e.supplier).filter(Boolean))];
   const isMultiSupplier = suppliers.length > 1;
 
-  const hasAttachment = !!(sessionCtx.supplierBuffers?.length && sessionCtx.lastGenerations?.length);
+  const hasAttachment = !!(sessionCtx.supplierBuffers?.length &&
+    (sessionCtx.lastGenerations?.length || sessionCtx.skippedGroups?.length || sessionCtx.cancelledItems?.length));
 
   const row = (label, value, color = '#222') =>
     `<tr><td style="padding:7px 16px 7px 0;color:#555;white-space:nowrap">${label}</td>` +
@@ -291,25 +292,39 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
  * Non-fatal: returns [] if tagging fails.
  */
 async function buildTaggedSupplierAttachments(supplierBuffers, generations, logEntries = [], exclusions = {}) {
-  if (!supplierBuffers?.length || !generations?.length) return [];
+  if (!supplierBuffers?.length ||
+      !(generations?.length || exclusions.skippedGroups?.length || exclusions.cancelledItems?.length)) return [];
+
+  const poToDetail = {};
 
   // Build per-PO exclusion reason map (skipped / cancelled / ASN-cancelled POs)
   const poToExclusionReason = {};
   for (const sg of (exclusions.skippedGroups || [])) {
     const label = `Skipped – no changes (already booked: ${sg.bookingRef || 'n/a'})`;
-    for (const po of (sg.poNumbers || [])) poToExclusionReason[String(po).trim()] = label;
+    for (const po of (sg.poNumbers || [])) {
+      const key = String(po).trim();
+      poToExclusionReason[key] = label;
+      if (sg.bookingRef) poToDetail[key] = { ref: sg.bookingRef };
+    }
   }
   for (const ci of (exclusions.cancelledItems || [])) {
+    const reason = ci.reason ||
+      (ci.type === 'ALREADY_BOOKED' ? `Already booked externally${ci.vbRef ? ` (${ci.vbRef})` : ''}` :
+       ci.type === 'ASN'            ? `ASN ${ci.asnId || ''} cancelled` :
+       ci.type === 'PO'             ? 'PO cancelled (Status=C)' : 'Excluded from this run');
     if (ci.poId) {
-      poToExclusionReason[String(ci.poId).trim()] = ci.reason ||
-        (ci.type === 'ALREADY_BOOKED' ? `Already booked externally${ci.vbRef ? ` (${ci.vbRef})` : ''}` :
-         ci.type === 'ASN'            ? `ASN ${ci.asnId || ''} cancelled` :
-         ci.type === 'PO'             ? `PO cancelled (Status=C)` : 'Excluded from this run');
+      const key = String(ci.poId).trim();
+      poToExclusionReason[key] = reason;
+      if (ci.vbRef) poToDetail[key] = { ref: ci.vbRef };
+    }
+    if (ci.asnId) {
+      const key = String(ci.asnId).trim();
+      poToExclusionReason[key] = reason;
+      if (ci.vbRef) poToDetail[key] = { ref: ci.vbRef };
     }
   }
 
   // Build per-PO detail map from log entries (richer than generations array)
-  const poToDetail = {};
   for (const e of logEntries) {
     const detail = {
       ref:           e.bookingRef || '',
@@ -321,6 +336,7 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
       sftp:          e.sftp || ''
     };
     for (const po of (e.poNumbers || [])) poToDetail[String(po).trim()] = detail;
+    for (const asn of (e.asnRefs || [])) poToDetail[String(asn).trim()] = detail;
   }
   // Fallback: fill any POs only in generations (no log entry yet)
   const poToRef = {};
@@ -330,6 +346,13 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
       poToRef[String(po).trim()] = ref;
       if (!poToDetail[String(po).trim()]) {
         poToDetail[String(po).trim()] = { ref, filename: gen.filename || '', asnRefs: (gen.asnRefs || []).join(', '), noOfCartons: '', cargoReadyDate: '', purposeCd: '13', sftp: '' };
+      }
+    }
+    for (const asn of (gen.asnRefs || [])) {
+      const key = String(asn).trim();
+      poToRef[key] = ref;
+      if (!poToDetail[key]) {
+        poToDetail[key] = { ref, filename: gen.filename || '', asnRefs: (gen.asnRefs || []).join(', '), noOfCartons: '', cargoReadyDate: '', purposeCd: '13', sftp: '' };
       }
     }
   }
@@ -357,18 +380,23 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
       const wsH = wb.getWorksheet('PO Header') || wb.getWorksheet('BOOKING_HEADER') ||
         wb.worksheets.find(ws => {
           let found = false;
-          ws.eachRow((row) => { row.eachCell(c => { if (String(c.value||'').trim()==='PO_Number') found=true; }); });
+          ws.eachRow((row) => { row.eachCell(c => {
+            const header = String(c.value || '').replace(/\s*\(.*?\)/, '').trim();
+            if (header === 'PO_Number' || header === 'ASN_Number' || header === 'ASN Number') found = true;
+          }); });
           return found;
         });
       if (!wsH) { console.warn(`[Report] No PO Header sheet in ${file.name} — skipping attachment`); continue; }
 
-      let headerRowNum = 1, poColIdx = 1;
+      let headerRowNum = 1, poColIdx = 0, asnColIdx = 0;
       wsH.eachRow((row, rowNum) => {
         row.eachCell((cell, colNum) => {
           const v = String(cell.value || '').replace(/\s*\(.*?\)/, '').trim();
           if (v === 'PO_Number') { headerRowNum = rowNum; poColIdx = colNum; }
+          if (v === 'ASN_Number' || v === 'ASN Number') { headerRowNum = rowNum; asnColIdx = colNum; }
         });
       });
+      if (!poColIdx && !asnColIdx) { console.warn(`[Report] No PO/ASN column in ${file.name} — skipping attachment`); continue; }
 
       const baseColIdx = wsH.columnCount + 1;
       const allNewCols  = ['VBKREQ_Ref', ...EXTRA_COLS.map(c => c.header)];
@@ -387,16 +415,18 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
 
       wsH.eachRow((row, rowNum) => {
         if (rowNum <= headerRowNum) return;
-        const po     = String(row.getCell(poColIdx).value || '').trim();
-        if (!po) return;
-        const detail = poToDetail[po];
+        const po     = poColIdx ? String(row.getCell(poColIdx).value || '').trim() : '';
+        const asn    = asnColIdx ? String(row.getCell(asnColIdx).value || '').trim() : '';
+        const key    = po || asn;
+        if (!key) return;
+        const detail = poToDetail[po] || poToDetail[asn];
         const refCell = row.getCell(baseColIdx);
         if (detail?.ref) {
           refCell.value = detail.ref;
           refCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
           refCell.font  = { color: { argb: 'FF1B5E20' }, bold: true, size: 10 };
         } else {
-          const exclusionReason = poToExclusionReason[po] || 'Not generated';
+          const exclusionReason = poToExclusionReason[po] || poToExclusionReason[asn] || 'Not generated';
           refCell.value = exclusionReason;
           refCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE8E8' } };
           refCell.font  = { color: { argb: 'FF7B1F1F' }, size: 10 };

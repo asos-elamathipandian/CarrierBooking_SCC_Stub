@@ -341,6 +341,21 @@ async function run(sessionState) {
       feedData = await databricksAsnReader.fetchAsnsByPoRefs(poRefs);
     }
     sessionState.feedData = feedData;
+
+    // Add the tool's existing VB ref to already-booked exclusions so the
+    // exclusion report and tagged supplier workbook can map each item back.
+    const generationLog = bibleBuilder.getGenerationLog() || [];
+    for (const item of (feedData.cancelledItems || [])) {
+      const logEntry = generationLog.find(entry =>
+        (entry.asnRefs || []).map(String).includes(String(item.asnId || '')) ||
+        (entry.poNumbers || []).map(String).includes(String(item.poId || ''))
+      );
+      if (item.type === 'ALREADY_BOOKED' && logEntry) {
+        item.vbRef = logEntry.bookingRef || null;
+        item.reason = `ASN ${item.asnId || ''} (PO ${item.poId || ''}) already has a carrier booking` +
+          (item.vbRef ? ` — VB Ref: ${item.vbRef}` : '');
+      }
+    }
     console.log(`[Pipeline] ASN fetch complete — ${(feedData.carrierAsnFiles || []).length} file(s), ` +
       `${(feedData.cancelledItems || []).length} cancelled/booked item(s)`);
     if ((feedData.carrierAsnFiles || []).length === 0 && (feedData.errors || []).length > 0) {
