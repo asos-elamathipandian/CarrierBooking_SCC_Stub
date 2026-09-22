@@ -209,7 +209,9 @@ async function build(supplierData, feedData) {
           const fc   = FC_MASTER[fcId] || {};
           return {
             FC_ID:              fcId,
-            FC_Name:            fc.name    || '',
+            FC_Name:            carrierPoMeta[poNum]?.finalDestinationName || fc.name || '',
+            FS_ID:              carrierPoMeta[poNum]?.firstDestination || '',
+            FS_Name:            carrierPoMeta[poNum]?.firstDestinationName || '',
             FC_Street1:         fc.street1 || '',
             FC_Street2:         fc.street2 || '',
             FC_Street3:         '',
@@ -333,7 +335,9 @@ async function build(supplierData, feedData) {
             const fc   = FC_MASTER[fcId] || {};
             return {
               FC_ID:              fcId,
-              FC_Name:            fc.name    || '',
+              FC_Name:            carrierPoMeta[poNum]?.finalDestinationName || fc.name || '',
+              FS_ID:              carrierPoMeta[poNum]?.firstDestination || carrierLine.firstDestination || '',
+              FS_Name:            carrierPoMeta[poNum]?.firstDestinationName || carrierLine.firstDestinationName || '',
               FC_Street1:         fc.street1 || '',
               FC_Street2:         fc.street2 || '',
               FC_Street3:         '',

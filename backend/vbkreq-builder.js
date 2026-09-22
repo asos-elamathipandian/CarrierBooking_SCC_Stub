@@ -459,7 +459,7 @@ async function build(masterRows, purposeCd, options = {}) {
       const packType     = row.Pack_Type || 'Bulk Flat';
       const productStyle = row.Product_Style || '';
       const hazRef2      = row.Hazardous || 'N/A';
-      const lineFC       = row.FC_ID || fcId;
+      const lineFC       = row.FS_ID || row.FC_ID || fcId;
 
       const li = order.ele('LineItem', { Key: lineKey });
       li.ele('LineItemDescription').txt(description);

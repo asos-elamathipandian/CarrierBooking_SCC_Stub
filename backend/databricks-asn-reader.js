@@ -72,8 +72,8 @@ async function fetchAsnsByPoRefs(poRefs) {
         f.dim_purchase_order_sk                                                    AS poId,
         f.dim_advanced_shipment_notice_sk                                          AS asnId,
         f.dim_product_sk                                                           AS sku,
-        CAST(f.dim_first_warehouse_sk AS STRING)                                   AS firstDestination,
-        CAST(f.dim_final_warehouse_sk  AS STRING)                                  AS finalDestination,
+        CAST(f.dim_first_warehouse_sk AS STRING)                                   AS firstDestinationKey,
+        CAST(f.dim_final_warehouse_sk  AS STRING)                                  AS finalDestinationKey,
         f.dim_purchase_order_status_sk                                             AS poStatus,
         f.is_booked_by_carrier,
         f.quantity                                                                 AS bookedQty,
@@ -94,8 +94,10 @@ async function fetchAsnsByPoRefs(poRefs) {
       lf.poId,
       lf.asnId,
       lf.sku,
-      lf.firstDestination,
-      lf.finalDestination,
+      first_wh.warehouse_code AS firstWarehouseCode,
+      first_wh.warehouse_reference AS firstWarehouseName,
+      final_wh.warehouse_code AS finalWarehouseCode,
+      final_wh.warehouse_reference AS finalWarehouseName,
       lf.poStatus,
       lf.is_booked_by_carrier    AS isBookedByCarrier,
       lf.bookedQty,
@@ -124,6 +126,12 @@ async function fetchAsnsByPoRefs(poRefs) {
            ON lf.dim_factory_sk = fac.dim_factory_sk
     LEFT JOIN sourcingandbuying.serve.dim_purchase_order_v1 po
            ON lf.poId = po.dim_purchase_order_sk
+        LEFT JOIN supplychain.conformed.ref_warehouse_v1 first_wh
+          ON CAST(first_wh.warehouse_id AS STRING) = lf.firstDestinationKey
+         AND first_wh._is_deleted_flag = 'N'
+        LEFT JOIN supplychain.conformed.ref_warehouse_v1 final_wh
+          ON CAST(final_wh.warehouse_id AS STRING) = lf.finalDestinationKey
+         AND final_wh._is_deleted_flag = 'N'
     WHERE asn.asn_id IS NOT NULL
     ORDER BY lf.asnId, lf.poId, lf.sku
   `;
@@ -166,8 +174,11 @@ async function fetchAsnsByPoRefs(poRefs) {
       asnPoMap[key] = {
         asnId:            String(row.asn_id   || row.asnId  || ''),
         poId:             String(row.poId                   || ''),
-        pofc:             row.firstDestination              || '',
-        finalDestination: row.finalDestination              || '',
+        pofc:             row.firstWarehouseCode             || '',
+        finalDestination: row.finalWarehouseCode             || '',
+        firstDestination: row.firstWarehouseCode              || '',
+        finalDestinationName: row.finalWarehouseName          || '',
+        firstDestinationName: row.firstWarehouseName           || '',
         poStatus:         row.poStatus                      || '',
         isBookedByCarrier: (row.isBookedByCarrier || 'No'),
         // bookingRequested mirrors isBookedByCarrier for downstream compatibility
