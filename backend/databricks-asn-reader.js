@@ -188,7 +188,6 @@ async function fetchAsnsByPoRefs(poRefs) {
         factoryCity:      '',
         factoryPostal:    '',
         factoryCountry:   '',
-        mode:             row.carrier_code                  || '',
         carrier:          row.carrier_code                  || '',
         expectedDeliveryDate: row.poDeliveryDate || toDateStr(row.expectedDeliveryDate),
         lines: []

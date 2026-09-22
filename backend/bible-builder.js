@@ -257,7 +257,7 @@ async function build(supplierData, feedData) {
         Collection_Type: sRow.Collection_Type  || 'Delivery',
         Hazardous:       sRow.Hazardous        || 'N/A',
         Traffic_Mode:    sRow.Traffic_Mode     || '',
-        Mode_Of_Transport: carrierPoMeta[poNum]?.mode || sRow.Mode_Of_Transport || 'Sea',
+        Mode_Of_Transport: sRow.Mode_Of_Transport || po?.lineItems?.[0]?.mode || 'Sea',
         Cargo_Ready_Planned_Collection_Date: sRow.Cargo_Ready_Planned_Collection_Date || '',
         Carrier_Booking_Request_Date:        sRow.Carrier_Booking_Request_Date        || '',
         Ship_Date:                           carrierLine?.shipDate              || '',
@@ -269,7 +269,7 @@ async function build(supplierData, feedData) {
         ASOS_Intake_Week:    sRow.ASOS_Intake_Week || '',
         Collection_Time:     sRow.Collection_Time  || '',
         Incoterms:           carrierPoMeta[poNum]?.shippingTerms || '',
-        Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || carrierPoMeta[poNum]?.mode || '30'
+        Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || '30'
       });
   }
 
@@ -381,8 +381,8 @@ async function build(supplierData, feedData) {
           Pack_Type:       carrierLine.packFormat === 'H' ? 'Hanging' : (poHdr.Pack_Type || 'Bulk Flat'),
           Collection_Type: poHdr.Collection_Type || 'Delivery',
           Hazardous:       poHdr.Hazardous       || 'N/A',
-          Traffic_Mode:    poHdr.Traffic_Mode || po?.lineItems?.[0]?.mode || '',
-          Mode_Of_Transport: carrierPoMeta[poNum]?.mode || poHdr.Mode_Of_Transport || 'Sea',
+          Traffic_Mode:    poHdr.Traffic_Mode || '',
+          Mode_Of_Transport: poHdr.Mode_Of_Transport || po?.lineItems?.[0]?.mode || 'Sea',
           Cargo_Ready_Planned_Collection_Date: poHdr.Cargo_Ready_Planned_Collection_Date || '',
           Carrier_Booking_Request_Date:        poHdr.Carrier_Booking_Request_Date        || '',
           Ship_Date:                           carrierLine.shipDate || '',
@@ -394,7 +394,7 @@ async function build(supplierData, feedData) {
           ASOS_Intake_Week:    '',
           Collection_Time:     '',
           Incoterms:           carrierPoMeta[poNum]?.shippingTerms || '',
-          Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || carrierPoMeta[poNum]?.mode || '30'
+          Transport_Mode_Code: poLine?.line?.mode || po?.lineItems?.[0]?.mode || '30'
         });
       }
     }
