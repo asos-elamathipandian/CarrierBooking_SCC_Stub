@@ -610,9 +610,9 @@ Grain: PO + ASN + SKU (snapshot). Latest row per PO+ASN+SKU selected via `ROW_NU
 | `sourcingandbuying.serve.dim_supplier_v1` | `supplier_id`, `supplier` (name) |
 | `sourcingandbuying.serve.dim_factory_v1` | `factory_id`, `factory_name`, `factory_country_code` |
 | `sourcingandbuying.serve.dim_purchase_order_v1` | `po_number`, `inco_terms`, `origin_country_code` |
-| `supplychain.conformed.ref_warehouse_v1` | `warehouse_id` → `warehouse_code` and `warehouse_reference` for FS/FD |
+| `supplychain.serve.dim_warehouse_v1` | `dim_warehouse_sk` → `warehouse_code` and `warehouse` for FS/FD |
 
-> Warehouse surrogate keys are not written directly to VBKREQ. The query resolves them through `ref_warehouse_v1`; for example, key `4001` is resolved from the table's `warehouse_code`, rather than being locally mapped. Dates in the fact table are native `date` type — no minus-one-day correction is applied. `1900-01-01` is the null sentinel.
+> Warehouse surrogate keys are not written directly to VBKREQ. The query resolves them through the permitted serve-layer `dim_warehouse_v1`; for example, key `4001` is resolved from the table's `warehouse_code`, rather than being locally mapped. Dates in the fact table are native `date` type — no minus-one-day correction is applied. `1900-01-01` is the null sentinel.
 
 ---
 

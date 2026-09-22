@@ -95,9 +95,9 @@ async function fetchAsnsByPoRefs(poRefs) {
       lf.asnId,
       lf.sku,
       first_wh.warehouse_code AS firstWarehouseCode,
-      first_wh.warehouse_reference AS firstWarehouseName,
+      first_wh.warehouse AS firstWarehouseName,
       final_wh.warehouse_code AS finalWarehouseCode,
-      final_wh.warehouse_reference AS finalWarehouseName,
+      final_wh.warehouse AS finalWarehouseName,
       lf.poStatus,
       lf.is_booked_by_carrier    AS isBookedByCarrier,
       lf.bookedQty,
@@ -126,12 +126,10 @@ async function fetchAsnsByPoRefs(poRefs) {
            ON lf.dim_factory_sk = fac.dim_factory_sk
     LEFT JOIN sourcingandbuying.serve.dim_purchase_order_v1 po
            ON lf.poId = po.dim_purchase_order_sk
-        LEFT JOIN supplychain.conformed.ref_warehouse_v1 first_wh
-          ON CAST(first_wh.warehouse_id AS STRING) = lf.firstDestinationKey
-         AND first_wh._is_deleted_flag = 'N'
-        LEFT JOIN supplychain.conformed.ref_warehouse_v1 final_wh
-          ON CAST(final_wh.warehouse_id AS STRING) = lf.finalDestinationKey
-         AND final_wh._is_deleted_flag = 'N'
+            LEFT JOIN supplychain.serve.dim_warehouse_v1 first_wh
+              ON CAST(first_wh.dim_warehouse_sk AS STRING) = lf.firstDestinationKey
+            LEFT JOIN supplychain.serve.dim_warehouse_v1 final_wh
+              ON CAST(final_wh.dim_warehouse_sk AS STRING) = lf.finalDestinationKey
     WHERE asn.asn_id IS NOT NULL
     ORDER BY lf.asnId, lf.poId, lf.sku
   `;
