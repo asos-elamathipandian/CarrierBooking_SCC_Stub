@@ -270,7 +270,15 @@ function parseHeaderOnlySheet(wsHdr, options = {}) {
   }
 
   const { rows: rawRows, headerRowNum, headers } = source;
-  const usesAsnAnchor = hasRequiredHeaders(headers, ['ASN_Number']) && !hasRequiredHeaders(headers, ['PO_Number']);
+  // Ideateks workbooks are ASN-driven. Some versions also contain a PO-like
+  // column, but omit both booking dates; treat those as ASN-based as well so
+  // the receiving-date defaults are applied.
+  const hasAsn = hasRequiredHeaders(headers, ['ASN_Number']);
+  const hasPo = hasRequiredHeaders(headers, ['PO_Number']);
+  const hasBookingDates = hasRequiredHeaders(headers, [
+    'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date'
+  ]);
+  const usesAsnAnchor = hasAsn && (!hasPo || !hasBookingDates);
 
   const requiredCols = usesAsnAnchor ? IDEATEKS_REQUIRED_COLS : REQUIRED_HEADER_COLS;
   if (!hasRequiredHeaders(headers, requiredCols)) {
