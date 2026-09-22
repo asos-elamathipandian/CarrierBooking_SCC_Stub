@@ -63,8 +63,9 @@ const IDEATEKS_REQUIRED_COLS = [
   'Unit_Weight_KG'
 ];
 
-function isoTodayPlus(daysToAdd) {
-  const d = new Date();
+function isoDatePlus(baseDate, daysToAdd) {
+  const d = new Date(baseDate);
+  if (Number.isNaN(d.getTime())) return '';
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() + daysToAdd);
   const yyyy = d.getFullYear();
@@ -73,12 +74,13 @@ function isoTodayPlus(daysToAdd) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function applyIdeateksDefaults(obj) {
+function applyIdeateksDefaults(obj, receivedDate = new Date()) {
+  const receivingDate = isoDatePlus(receivedDate, 0) || isoDatePlus(new Date(), 0);
   if (!obj.Cargo_Ready_Planned_Collection_Date) {
-    obj.Cargo_Ready_Planned_Collection_Date = isoTodayPlus(0);
+    obj.Cargo_Ready_Planned_Collection_Date = receivingDate;
   }
   if (!obj.Carrier_Booking_Request_Date) {
-    obj.Carrier_Booking_Request_Date = isoTodayPlus(1);
+    obj.Carrier_Booking_Request_Date = isoDatePlus(receivingDate, 1);
   }
   obj.Booking_Group = 'Single Booking';
   if (!obj.Traffic_Mode) obj.Traffic_Mode = 'CFS';
@@ -258,7 +260,7 @@ function parseSingleSheet(sheet) {
  * Each row becomes a header-only placeholder (_headerOnly: true).
  * SKU lines are NOT expected — they will be auto-booked from the carrier ASN feed.
  */
-function parseHeaderOnlySheet(wsHdr) {
+function parseHeaderOnlySheet(wsHdr, options = {}) {
   const poRead  = readSheet(wsHdr, 'PO_Number');
   const asnRead = poRead.headerFound ? null : readSheet(wsHdr, 'ASN_Number');
   const source  = poRead.headerFound ? poRead : asnRead;
@@ -283,7 +285,7 @@ function parseHeaderOnlySheet(wsHdr) {
 
   for (const obj of rawRows) {
     if (usesAsnAnchor) {
-      applyIdeateksDefaults(obj);
+      applyIdeateksDefaults(obj, options.receivedDate);
       const asn = String(obj.ASN_Number || '').trim();
       if (!asn) continue;
       headerAsnRefs.push(asn);
@@ -335,7 +337,7 @@ function parseHeaderOnlySheet(wsHdr) {
  * Current format: PO Header sheet only — SKUs auto-booked from ASN feed.
  * Legacy fallback: SUPPLIER_INPUT single-sheet format.
  */
-async function parse(buffer) {
+async function parse(buffer, options = {}) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
 
@@ -349,7 +351,7 @@ async function parse(buffer) {
 
   for (const ws of orderedSheets) {
     try {
-      return parseHeaderOnlySheet(ws);
+      return parseHeaderOnlySheet(ws, options);
     } catch (_) {
       // Try next sheet.
     }

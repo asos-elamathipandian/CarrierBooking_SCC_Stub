@@ -165,7 +165,7 @@ async function runSync(sessionState) {
 
   for (const f of buffers) {
     try {
-      const parsed = await supplierReader.parse(f.buffer);
+      const parsed = await supplierReader.parse(f.buffer, { receivedDate: f.lastModifiedDateTime });
       allRows               = allRows.concat(parsed.rows);
       allValidationErrors   = allValidationErrors.concat(
         (parsed.validationErrors || []).map(e => `[${f.name}] ${e}`)

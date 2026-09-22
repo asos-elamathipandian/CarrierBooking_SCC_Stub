@@ -79,7 +79,7 @@ async function runSync(sessionState) {
   for (const file of files) {
     try {
       const buffer = await blob.downloadBlob(file.name);
-      const parsed = await supplierReader.parse(buffer);
+      const parsed = await supplierReader.parse(buffer, { receivedDate: file.lastModified });
       allRows = allRows.concat(parsed.rows);
       allValidationErrors = allValidationErrors.concat(
         (parsed.validationErrors || []).map(e => `[${file.name}] ${e}`)
