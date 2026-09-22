@@ -118,6 +118,7 @@ async function runSync(sessionState) {
     error:    null,
     files:    processed,
     poRefs,
+    asnRefs:  [...new Set(allHeaderAsnRefs.map(a => String(a).trim()).filter(Boolean))],
     rowCount: allRows.length
   });
 

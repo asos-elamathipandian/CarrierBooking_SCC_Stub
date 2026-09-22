@@ -918,11 +918,13 @@ async function loadBlobStatus() {
     banner.style.display = '';
     const lastSync = data.lastSync ? new Date(data.lastSync).toLocaleString('en-GB') : 'Never';
     const poCount  = (data.poRefs && data.poRefs.length) || 0;
+    const asnCount = (data.asnRefs && data.asnRefs.length) || 0;
     const rowCount = data.rowCount || 0;
     statusEl.innerHTML = data.error
       ? `<span style="color:#B91C1C">❌ ${data.error}</span>`
       : `Last sync: <strong>${lastSync}</strong>`
-        + (rowCount ? ` &nbsp;·&nbsp; <strong>${rowCount}</strong> rows, <strong>${poCount}</strong> POs loaded` : '');
+        + (rowCount ? ` &nbsp;·&nbsp; <strong>${rowCount}</strong> rows, <strong>${poCount}</strong> POs, <strong>${asnCount}</strong> ASNs loaded` : '')
+        + (data.pipelineError ? `<br><span style="color:#B91C1C">Pipeline: ${escapeHtml(data.pipelineError)}</span>` : '');
     if (histBody && data.syncHistory) {
       histDet.style.display = '';
       histBody.innerHTML = (data.syncHistory || []).slice(-10).reverse().map(h => {
@@ -1103,12 +1105,15 @@ async function checkBlobAutoSync_check(skipAutoTrigger = false) {
   if (!res.ok || !data.configured) return;
   const rowCount = data.rowCount || 0;
   const poCount  = (data.poRefs && data.poRefs.length) || 0;
-  if (rowCount === 0 && poCount === 0) return;
+  const asnCount = (data.asnRefs && data.asnRefs.length) || 0;
+  if (rowCount === 0 && poCount === 0 && asnCount === 0) return;
   setStatus(1, 'success',
     `✅ Auto-loaded: <strong>${poCount}</strong> PO${poCount !== 1 ? 's' : ''}, ` +
+    `<strong>${asnCount}</strong> ASN${asnCount !== 1 ? 's' : ''}, ` +
     `<strong>${rowCount}</strong> row${rowCount !== 1 ? 's' : ''}.`);
   setBadge(1, 'done');
   state.poRefs = data.poRefs || [];
+  state.asnRefs = data.asnRefs || [];
   renderPoTags(data.poRefs || []);
   const pipelineCard = document.getElementById('pipelineCard');
   if (pipelineCard) pipelineCard.style.display = '';
