@@ -69,8 +69,8 @@ Sends summary email report to InboundService@asos.com at 09:00 and 13:00
 ### Skipped POs — what does ⚠ mean?
 
 A PO is skipped (not sent to E2open) when:
-- The ASN is **cancelled** (`D` status in Databricks)
-- The PO is **cancelled** (`Status=C` in Databricks)
+- The ASN is **cancelled** (`asn_status_code = D` in the serve layer)
+- The PO is **cancelled** according to the serve-layer PO status
 - A carrier booking **already exists** for that ASN/PO
 
 This is expected behaviour. Expand the skipped section in the UI for details.
@@ -81,7 +81,7 @@ This is expected behaviour. Expand the skipped section in the UI for details.
 
 ### Standard supplier (same column headers as ASOS template)
 
-No config needed — just upload their `.xlsx` file.
+No filename convention is required. Upload an `.xlsx` or `.xlsm` workbook. The parser checks `PO Header` and `BOOKING_HEADER` first, then any visible sheet whose headers match. A legacy `SUPPLIER_INPUT` single-sheet layout is also supported.
 
 ### Supplier with different column names (e.g. different header labels)
 
@@ -98,8 +98,10 @@ No config needed — just upload their `.xlsx` file.
    ```
 3. Save and restart the app. The parser picks it up automatically.
 
-**Minimum required fields to map:**
-`PO_Number`, `Cargo_Ready_Planned_Collection_Date`, `Carrier_Booking_Request_Date`, `Booking_Group`, `No_of_Cartons`, `Unit_Weight_KG`
+**Header-only fields required by the parser:**
+`PO_Number`, `Cargo_Ready_Planned_Collection_Date`, `Carrier_Booking_Request_Date`, `No_of_Cartons`
+
+The generated ASOS template also supplies/defaults `Header_Booking_Qty`, `Unit_Weight_KG`, `Booking_Group`, `Carton_Type`, `Pack_Type`, `Collection_Type`, `Hazardous`, and `Traffic_Mode`. Map those fields when the supplier workbook does not use the canonical headers.
 
 ### ASN-based supplier (e.g. Ideateks — template has ASN numbers, not PO numbers)
 
@@ -107,9 +109,15 @@ Use `ASN_Number` in the mapping instead of `PO_Number`. The tool automatically r
 
 Ideateks defaults applied automatically:
 - `Booking_Group` → `Single Booking`
-- `Cargo_Ready_Planned_Collection_Date` → today
-- `Carrier_Booking_Request_Date` → tomorrow
+- `Cargo_Ready_Planned_Collection_Date` → the file receiving date
+- `Carrier_Booking_Request_Date` → the next calendar date after the receiving date
 - `Traffic_Mode` → `CFS`
+- `Carton_Type` → `BDCM1`
+- `Pack_Type` → `Bulk Flat`
+- `Collection_Type` → `Delivery`
+- `Hazardous` → `N/A`
+
+The receiving date comes from SharePoint/Blob file metadata. For a direct browser upload, the current system date is used. Existing supplier-provided dates are preserved.
 
 ---
 
@@ -352,16 +360,25 @@ node backend/test-databricks.js   # test Databricks connection
 
 | Feature | Description |
 |---|---|
-| **Supplier Template Upload** | Parse single-sheet Excel (PO Header) emailed by suppliers to InboundService@asos.com; mandatory fields: PO_Number, Booking_Group, dates, Total booked units, cartons, weight; defaulted: Carton_Type (BDCM1), Pack_Type, Collection_Type, Hazardous, Traffic_Mode (CFS) |
+| **Supplier Template Upload** | Parse `.xlsx`/`.xlsm` workbooks from any filename; supports `PO Header`, `BOOKING_HEADER`, visible-sheet header detection, and legacy `SUPPLIER_INPUT` layouts |
 | **SharePoint Auto-Sync** | Scheduled pull of the latest supplier Excel from a SharePoint folder (Graph API) |
 | **ASN Enrichment** | Fetches shipment and PO detail from Azure Databricks (ADE) |
 | **Bible Build** | Merges supplier template rows with ASN/PO data into a master dataset |
 | **VBKREQ Generation** | Produces E2open-compliant XML with purpose codes: 13 (New), 15 (Re-Submission), 01 (Cancellation) |
-| **Smart Skip** | No VBKREQ raised for cancelled ASNs (`_notification_type=D` in bam036e), cancelled POs (`Status=C`), or ASNs/POs that already have a carrier booking request (`bookingRequested` populated) |
+| **Smart Skip** | No VBKREQ raised for cancelled ASNs (`asn_status_code=D`), cancelled POs, or ASNs/POs already marked booked (`is_booked_by_carrier=Yes`) |
 | **SFTP Upload** | Transmits XML files directly to E2open/Davis Turner SFTP endpoint |
 | **Re-Submit / Cancel** | Standalone card to look up previous VB Refs by PO and re-submit or cancel without re-uploading a template |
 | **Booking History** | Rolling 3-day log of all generated VBKREQs with download links |
 | **Local Mode** | SFTP_HOST can be left blank to save XML files locally for testing |
+
+### Duplicate and re-submission handling
+
+- A new submission uses purpose code `13`.
+- If the same PO was previously generated and tracked by this tool, the latest stored master row is compared with the new data.
+- No changed booking fields means the PO is skipped and no duplicate VBKREQ is generated.
+- Changes to booking quantity, cartons, weight, cargo-ready date, booking-request date, traffic mode, or carton type automatically generate purpose code `15` using the original VB Ref and incremented version.
+- If Databricks says the PO is already booked, the tool compares the incoming supplier values with the stored booking. Changed values raise `15`; unchanged values remain skipped. A booking made outside this tool is not automatically re-submitted because there is no stored VB Ref.
+- Manual cancellation uses purpose code `01` and reuses the most recent stored booking reference.
 
 ---
 
@@ -377,11 +394,11 @@ node backend/test-databricks.js   # test Databricks connection
 4. Step 1 — Parse supplier template (PO refs, booking qty, carton data extracted)
           ↓
 5. Step 2 — Pipeline:
-     a. Fetch ASN from Databricks (aim_shipment_detail_v1)
-     b. Enrich with PO data + per-SKU quantities (bam033j_purchase_order_v1)
-     c. Fetch ASN cancellation status + booked unit_qty (bam036e_asn_v1)
-     d. Build master dataset (Bible)
-     e. Generate VBKREQ XML (purposeCd = 13)
+    a. Fetch ASN, PO, supplier, factory, and per-SKU quantities from the serve layer
+    b. Resolve first/final warehouse IDs through `ref_warehouse_v1` for FS/FD trade partners
+    c. Read cancellation and booked status from the latest serve-layer snapshot
+    d. Build master dataset (Bible)
+    e. Generate VBKREQ XML (purposeCd = 13)
         - Header BKQ = supplier "Total booked units" field (flags discrepancy vs ASN line sum)
         - Line-level N, G, VOL, QUR computed from carton type dimensions
      f. Upload to E2open SFTP
@@ -420,7 +437,7 @@ node backend/test-databricks.js   # test Databricks connection
 ### Azure Services
 | Service | Purpose |
 |---|---|
-| **Azure Databricks (ADE)** | Source of ASN and PO data (`aim_shipment_detail_v1`, `bam033j_purchase_order_v1`, `bam036e_asn_v1`) |
+| **Azure Databricks (ADE)** | Source of ASN/PO data and warehouse references (`fact_purchase_order_commitment_v1`, serve dimensions, `ref_warehouse_v1`) |
 | **Azure Blob Storage** | Legacy PO/ASN XML feed source (`bam033v`, `bam036` containers) |
 | **Microsoft SharePoint** | Supplier template storage (auto-synced via Graph API) |
 | **Microsoft Graph API** | SharePoint file access (`Sites.Read.All` app permission) |
@@ -476,7 +493,7 @@ CarrierBookingStub/
 │   └── sharepoint-sync/           # Locally cached SharePoint downloads
 ├── output/                        # Generated VBKREQ XML files (local mode)
 ├── samples/
-│   └── Supplier PO sheet-DDMMYYYY.xlsx  # Blank template to share with suppliers
+│   └── feeds/                       # Local sample ASN/PO feed files
 ├── config/
 │   └── sftp.config.example.json   # SFTP config reference
 │   └── supplier-column-mapping.example.json # Optional column alias mapping for non-standard supplier templates
@@ -540,16 +557,18 @@ or
 }
 ```
 
-Minimum mapped fields for header-only files are:
-`PO_Number`, `Cargo_Ready_Planned_Collection_Date`, `Carrier_Booking_Request_Date`, `Booking_Group`, `No_of_Cartons`, `Unit_Weight_KG`.
+Minimum mapped fields for standard header-only files are:
+`PO_Number`, `Cargo_Ready_Planned_Collection_Date`, `Carrier_Booking_Request_Date`, `No_of_Cartons`.
+
+`Header_Booking_Qty`, `Unit_Weight_KG`, `Booking_Group`, and the defaulted carton/collection fields are strongly recommended for a complete booking row, but are not the parser's structural header requirement.
 
 For ASN-based files (for example Ideateks), use `ASN_Number` instead of `PO_Number`.
 The backend resolves POs from ASN IDs using Databricks automatically.
 
 Ideateks defaults applied when `ASN_Number` is used:
 - `Booking_Group` forced to `Single Booking`
-- `Cargo_Ready_Planned_Collection_Date` defaults to system date (today)
-- `Carrier_Booking_Request_Date` defaults to next day
+- `Cargo_Ready_Planned_Collection_Date` defaults to the file receiving date
+- `Carrier_Booking_Request_Date` defaults to the next calendar date after receiving
 - `Traffic_Mode` defaults to `CFS` if not supplied
 
 ### Run
@@ -581,17 +600,19 @@ Grain: PO + ASN + SKU (snapshot). Latest row per PO+ASN+SKU selected via `ROW_NU
 | `quantity` | Booking_Qty (BKQ) per SKU |
 | `asn_status_code = 'D'` | Smart Skip — ASN cancelled |
 | `is_booked_by_carrier = 'Yes'` | Smart Skip — booking already exists |
+| `quantity` | Line-level booking quantity |
 
 ### Dimension tables joined
 
 | Table | Key fields |
 |---|---|
-| `supplychain.serve.dim_advanced_shipment_notice_v1` | `asn_id`, `lading_port_code`, `mode_of_transport`, ship/delivery dates |
+| `supplychain.serve.dim_advanced_shipment_notice_v1` | `asn_id`, `lading_port_code`, carrier code, ASN status |
 | `sourcingandbuying.serve.dim_supplier_v1` | `supplier_id`, `supplier` (name) |
 | `sourcingandbuying.serve.dim_factory_v1` | `factory_id`, `factory_name`, `factory_country_code` |
 | `sourcingandbuying.serve.dim_purchase_order_v1` | `po_number`, `inco_terms`, `origin_country_code` |
+| `supplychain.conformed.ref_warehouse_v1` | `warehouse_id` → `warehouse_code` and `warehouse_reference` for FS/FD |
 
-> Dates in the fact table are native `date` type — no −1 day correction needed. `1900-01-01` = null sentinel.
+> Warehouse surrogate keys are not written directly to VBKREQ. The query resolves them through `ref_warehouse_v1`; for example, key `4001` is resolved from the table's `warehouse_code`, rather than being locally mapped. Dates in the fact table are native `date` type — no minus-one-day correction is applied. `1900-01-01` is the null sentinel.
 
 ---
 
@@ -601,11 +622,12 @@ Grain: PO + ASN + SKU (snapshot). Latest row per PO+ASN+SKU selected via `ROW_NU
 - VB Refs format: `VB-{incrementingCounter}` (persisted in `ctrl-counter.json`)
 - Version increments on re-submission (1.0 → 2.0 → 3.0…)
 - Booking grouping: `Single Booking` (one VBKREQ per PO), `Multiple POs-BKxxx` (grouped), `Multiple` (all in one)
-- Databricks dates are stored 1 day ahead — subtracted automatically before use
+- Transport mode comes from the supplier/PO transport-mode field; carrier code is not used as transport mode. Sea defaults to code `10`, road to `30`, air to `40`, rail to `50`, and eco to `70`.
+- FD and FS trade-partner IDs come from Databricks warehouse codes; FC address details use the configured FC address data when available.
 - **Cancelled / already-booked items are skipped automatically** — no VBKREQ is generated for:
-  - ASNs where the latest `_notification_type` in `bam036e_asn_v1` is `D` (deleted/cancelled)
-  - POs where `Status = C` in `bam033j_purchase_order_v1`
-  - ASNs/POs where `bookingRequested` is already populated (booking already exists)
+  - ASNs where the latest serve-layer `asn_status_code` is `D` (deleted/cancelled)
+  - POs marked cancelled by the serve-layer status
+  - ASNs/POs where `is_booked_by_carrier = Yes`
   - Skipped items are reported in the UI with reason details and do not block other POs from proceeding
 
 ---
