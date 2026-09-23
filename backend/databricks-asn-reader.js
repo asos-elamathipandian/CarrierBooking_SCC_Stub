@@ -266,9 +266,16 @@ async function fetchAsnsByPoRefs(poRefs) {
   });
 
   const foundPOs = new Set(allGroups.map(g => g.poId));
-  const errors   = safePOs
-    .filter(p => !foundPOs.has(p))
-    .map(p => `Databricks: no shipment record found for PO ${p}`);
+  const missingPOs = safePOs.filter(p => !foundPOs.has(p));
+  const errors = missingPOs.map(p => `Databricks: no shipment record found for PO ${p}`);
+  for (const poId of missingPOs) {
+    cancelledItems.push({
+      type: 'NOT_FOUND',
+      asnId: null,
+      poId,
+      reason: `PO ${poId} was not found in the Databricks shipment data`
+    });
+  }
 
   console.log(`[Databricks Serve] ${parsed.length} active group(s), ${cancelledItems.length} cancelled, for ${safePOs.length} PO ref(s)`);
   if (parsed.length > 0) {

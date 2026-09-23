@@ -94,9 +94,20 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
   const totalSubmitted = isAdHocRun ? 0 : (sessionCtx.supplierHeaderPoRefs || []).length;
   const skippedGroups  = isAdHocRun ? [] : (sessionCtx.skippedGroups  || []);
   const cancelledItems = isAdHocRun ? [] : (sessionCtx.cancelledItems || []);
-  const skippedCount     = skippedGroups.length;
-  const alreadyBooked    = cancelledItems.filter(c => c.type === 'ALREADY_BOOKED').length;
-  const asnCancelled     = cancelledItems.filter(c => c.type !== 'ALREADY_BOOKED').length;
+    const skippedPoSet = new Set(skippedGroups.flatMap(g => (g.poNumbers || []).map(String)));
+    const alreadyBookedPoSet = new Set(cancelledItems
+      .filter(c => c.type === 'ALREADY_BOOKED' && c.poId)
+      .map(c => String(c.poId)));
+    const cancelledPoSet = new Set(cancelledItems
+      .filter(c => (c.type === 'ASN' || c.type === 'PO') && c.poId)
+      .map(c => String(c.poId)));
+    const notFoundPoSet = new Set(cancelledItems
+      .filter(c => c.type === 'NOT_FOUND' && c.poId)
+      .map(c => String(c.poId)));
+    const skippedCount     = skippedPoSet.size;
+    const alreadyBooked    = alreadyBookedPoSet.size;
+    const asnCancelled     = cancelledPoSet.size;
+    const notFoundCount     = notFoundPoSet.size;
 
   // Booked vs skipped PO reconciliation — unique PO numbers actually booked this run
   const bookedPoSet    = new Set(entries.flatMap(e => e.poNumbers || []).map(p => String(p).trim()));
@@ -137,7 +148,8 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
       ${cn  ? row('Cancellations',                  cn, '#c0392b') : ''}
       ${sk  ? row('Skipped (no changes)',           sk, '#888')    : ''}
       ${ab  ? row('Already booked externally',      ab, '#888')    : ''}
-      ${ac  ? row('ASN cancelled / no ASN',         ac, '#888')    : ''}
+      ${ac  ? row('ASN / PO cancelled',             ac, '#888')    : ''}
+      ${notFoundCount ? row('PO not found in Databricks', notFoundCount, '#c0392b') : ''}
     </table>
   </div>`;
   }
@@ -155,14 +167,15 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
       );
     }).join('');
     // Combined totals card for cross-supplier counts
-    const combinedRow = (skippedCount || alreadyBooked || asnCancelled) ? `
+    const combinedRow = (skippedCount || alreadyBooked || asnCancelled || notFoundCount) ? `
   <div class="card" style="margin-right:12px;margin-bottom:8px;vertical-align:top">
     <table style="border-collapse:collapse">
       ${row('Suppliers', suppliers.length)}
       ${totalSubmitted  ? row('Total POs submitted', totalSubmitted) : ''}
       ${skippedCount  ? row('Skipped (no changes)',       skippedCount,  '#888') : ''}
       ${alreadyBooked ? row('Already booked externally',  alreadyBooked, '#888') : ''}
-      ${asnCancelled  ? row('ASN cancelled / no ASN',     asnCancelled,  '#888') : ''}
+      ${asnCancelled  ? row('ASN / PO cancelled',          asnCancelled,  '#888') : ''}
+      ${notFoundCount ? row('PO not found in Databricks',  notFoundCount, '#c0392b') : ''}
     </table>
   </div>` : '';
     cardsHtml = `<div style="display:flex;flex-wrap:wrap;align-items:flex-start;margin-top:12px">${perSupplierCards}${combinedRow}</div>`;
@@ -227,6 +240,7 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
         (ci.type === 'ALREADY_BOOKED' ? 'Already booked externally'
           : ci.type === 'ASN'         ? `ASN ${ci.asnId || ''} cancelled`
           : ci.type === 'PO'          ? 'PO cancelled (Status=C)'
+          : ci.type === 'NOT_FOUND'   ? 'PO not found in Databricks shipment data'
           :                             'Excluded from this run'),
       vbRef:    ci.vbRef    || '',
       supplier: ci.supplier || '',
