@@ -278,7 +278,11 @@ function parseHeaderOnlySheet(wsHdr, options = {}) {
   const hasBookingDates = hasRequiredHeaders(headers, [
     'Cargo_Ready_Planned_Collection_Date', 'Carrier_Booking_Request_Date'
   ]);
-  const usesAsnAnchor = hasAsn && (!hasPo || !hasBookingDates);
+  const hasPopulatedBookingDate = rawRows.some(row =>
+    String(row.Cargo_Ready_Planned_Collection_Date || '').trim() !== '' ||
+    String(row.Carrier_Booking_Request_Date || '').trim() !== ''
+  );
+  const usesAsnAnchor = hasAsn && (!hasPo || !hasBookingDates || !hasPopulatedBookingDate);
 
   const requiredCols = usesAsnAnchor ? IDEATEKS_REQUIRED_COLS : REQUIRED_HEADER_COLS;
   if (!hasRequiredHeaders(headers, requiredCols)) {
