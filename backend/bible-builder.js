@@ -284,8 +284,14 @@ async function build(supplierData, feedData) {
   // Seed from header-only placeholders first (POs with no SKU lines supplied),
   // then supplement with any rows built in the first pass.
   const poHeaderByPO = {};
+  const asnHeaderByASN = {};
   for (const sRow of supplierRows) {
-    if (sRow._headerOnly) poHeaderByPO[String(sRow.PO_Number || '').trim()] = sRow;
+    if (sRow._headerOnly) {
+      const poKey = String(sRow.PO_Number || '').trim();
+      const asnKey = String(sRow.ASN_Number || '').trim();
+      if (poKey) poHeaderByPO[poKey] = sRow;
+      if (asnKey) asnHeaderByASN[asnKey] = sRow;
+    }
   }
   for (const r of masterRows) {
     if (!poHeaderByPO[r.PO_Number]) poHeaderByPO[r.PO_Number] = r;
@@ -294,10 +300,10 @@ async function build(supplierData, feedData) {
   if (hasCarrierData) {
     for (const [poNum, skuMap] of Object.entries(carrierAsnIndex)) {
       const po = poByOrderId[poNum];
-      const poHdr = poHeaderByPO[poNum] || {};
       for (const [sku, carrierLine] of Object.entries(skuMap)) {
         if (coveredKeys.has(`${poNum}_${sku}`)) continue; // already in master rows
         // SKU is on carrier feed but supplier didn't include it — auto-book from ASN
+        const poHdr = poHeaderByPO[poNum] || asnHeaderByASN[String(carrierLine.asnId || '').trim()] || {};
         const poLine = poByLinesku[`${poNum}_${sku}`];
         // Use header-level carton fields if provided, otherwise fall back to BDCM1 defaults
         const hdrCartonType = String(poHdr.Carton_Type || 'BDCM1').trim();
