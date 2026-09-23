@@ -75,6 +75,7 @@ async function fetchAsnsByPoRefs(poRefs) {
         CAST(f.dim_first_warehouse_sk AS STRING)                                   AS firstDestinationKey,
         CAST(f.dim_final_warehouse_sk  AS STRING)                                  AS finalDestinationKey,
         f.dim_purchase_order_status_sk                                             AS poStatus,
+        CAST(f.dim_purchase_order_shipping_method_sk AS STRING)                    AS transportModeCode,
         f.is_booked_by_carrier,
         f.quantity                                                                 AS bookedQty,
         CAST(f.dim_expected_factory_date_sk                                AS STRING) AS exFactoryDate,
@@ -99,6 +100,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       final_wh.warehouse_code AS finalWarehouseCode,
       final_wh.warehouse AS finalWarehouseName,
       lf.poStatus,
+      lf.transportModeCode,
       lf.is_booked_by_carrier    AS isBookedByCarrier,
       lf.bookedQty,
       lf.exFactoryDate,
@@ -178,6 +180,7 @@ async function fetchAsnsByPoRefs(poRefs) {
         finalDestinationName: row.finalWarehouseName          || '',
         firstDestinationName: row.firstWarehouseName           || '',
         poStatus:         row.poStatus                      || '',
+        mode:             row.transportModeCode             || '',
         isBookedByCarrier: (row.isBookedByCarrier || 'No'),
         // bookingRequested mirrors isBookedByCarrier for downstream compatibility
         bookingRequested: row.isBookedByCarrier === 'Yes' ? 'booked' : null,
