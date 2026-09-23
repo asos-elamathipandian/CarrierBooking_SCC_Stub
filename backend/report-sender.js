@@ -362,6 +362,7 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
 
   // Extra columns appended after VBKREQ_Ref
   const EXTRA_COLS = [
+    { header: 'Exclusion_Reason', key: 'exclusionReason', width: 48 },
     { header: 'VBKREQ_File',    key: 'filename',       width: 55 },
     { header: 'ASN_Refs',       key: 'asnRefs',        width: 30 },
     { header: 'Cartons',        key: 'noOfCartons',    width: 10 },
@@ -420,22 +421,28 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
         const key    = po || asn;
         if (!key) return;
         const detail = poToDetail[po] || poToDetail[asn];
+        const exclusionReason = poToExclusionReason[po] || poToExclusionReason[asn] || '';
         const refCell = row.getCell(baseColIdx);
         if (detail?.ref) {
           refCell.value = detail.ref;
           refCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
           refCell.font  = { color: { argb: 'FF1B5E20' }, bold: true, size: 10 };
         } else {
-          const exclusionReason = poToExclusionReason[po] || poToExclusionReason[asn] || 'Not generated';
-          refCell.value = exclusionReason;
+          refCell.value = 'Not generated';
           refCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE8E8' } };
           refCell.font  = { color: { argb: 'FF7B1F1F' }, size: 10 };
           refCell.alignment = { wrapText: true };
         }
-        // Write extra detail columns (blank for excluded POs — no transform on empty)
+        // Write detail columns; excluded rows retain their explicit reason.
         EXTRA_COLS.forEach((col, i) => {
           const ci   = baseColIdx + 1 + i;
           const cell = row.getCell(ci);
+          if (col.key === 'exclusionReason') {
+            cell.value = exclusionReason;
+            cell.font = { size: 10, color: { argb: exclusionReason ? 'FF7B1F1F' : 'FF222222' } };
+            cell.alignment = { wrapText: true, vertical: 'top' };
+            return;
+          }
           if (!detail) { cell.value = ''; cell.font = { size: 10 }; return; }
           const raw  = detail[col.key] ?? '';
           cell.value = col.transform ? col.transform(raw) : raw;
