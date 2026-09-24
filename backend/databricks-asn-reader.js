@@ -151,7 +151,13 @@ async function fetchAsnsByPoRefs(poRefs) {
   if (!rows || rows.length === 0) {
     return {
       poFeeds: [], asnFeeds: [], carrierAsnFiles: [],
-      errors: safePOs.map(p => `Databricks: no shipment record found for PO ${p}`)
+      errors: safePOs.map(p => `Databricks: no shipment record found for PO ${p}`),
+      cancelledItems: safePOs.map(p => ({
+        type: 'NOT_FOUND',
+        asnId: null,
+        poId: p,
+        reason: `PO ${p} was not found in the Databricks shipment data`
+      }))
     };
   }
 

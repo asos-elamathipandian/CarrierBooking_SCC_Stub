@@ -361,6 +361,11 @@ async function run(sessionState) {
     if ((feedData.carrierAsnFiles || []).length === 0 && (feedData.errors || []).length > 0) {
       const errMsg = feedData.errors.join('; ');
       console.error('[Pipeline] Databricks returned no records:', errMsg);
+      sessionState.lastGenerations = [];
+      sessionState.skippedGroups = [];
+      sessionState.lastXml = null;
+      sessionState.lastFilename = null;
+      reportSender.sendScheduledReport(buildSessionCtx(sessionState)).catch(e => console.error('[Pipeline] Report failed:', e.message));
       return { poRefs, generations: [], skippedGroups: [], sftpResults: [], error: `Databricks: ${errMsg}` };
     }
   } catch (err) {
