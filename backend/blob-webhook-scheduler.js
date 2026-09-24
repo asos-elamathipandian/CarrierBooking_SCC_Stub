@@ -74,6 +74,7 @@ async function runSync(sessionState) {
   let allHeaderPoRefs = [];
   let allHeaderAsnRefs = [];
   let allSupplierBuffers = [];
+  let fileGroups = []; // [{ fileName, poRefs }] — used to split the report per input file
   const processed = [];
 
   for (const file of files) {
@@ -87,6 +88,7 @@ async function runSync(sessionState) {
       allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
       allHeaderAsnRefs.push(...(parsed.headerAsnRefs || []));
       allSupplierBuffers.push({ name: file.name, buffer });
+      fileGroups.push({ fileName: file.name, poRefs: [...new Set((parsed.headerPoRefs || []).map(p => String(p).trim()).filter(Boolean))] });
       processed.push({ name: file.name, size: file.size, lastModified: file.lastModified });
       await blob.archiveBlob(file.name);
       console.log(`[Blob Sync] Ingested and archived "${file.name}" — ${parsed.rows.length} row(s)`);
@@ -104,6 +106,7 @@ async function runSync(sessionState) {
   sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
   sessionState.supplierHeaderAsnRefs = allHeaderAsnRefs;
   sessionState.supplierBuffers      = allSupplierBuffers;
+  sessionState.fileGroups           = fileGroups;
   sessionState.feedData             = null;
   sessionState.masterData           = null;
   sessionState.lastXml              = null;

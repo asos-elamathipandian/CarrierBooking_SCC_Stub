@@ -463,6 +463,7 @@ function buildSessionCtx(sessionState) {
     supplierHeaderPoRefs: sessionState.supplierHeaderPoRefs,
     skippedGroups:        sessionState.skippedGroups,
     cancelledItems:       sessionState.feedData?.cancelledItems,
+    fileGroups:           sessionState.fileGroups,
     reportOnEmptyRun:     true
   };
 }

@@ -154,6 +154,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
       let allValidationErrors = [];
       let allHeaderPoRefs = [];
       let allHeaderAsnRefs = [];
+      let fileGroups = []; // [{ fileName, poRefs }] — used to split the report per input file
 
       for (const file of files) {
         const parsed = await supplierReader.parse(file.buffer);
@@ -169,6 +170,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
         );
         allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
         allHeaderAsnRefs.push(...(parsed.headerAsnRefs || []));
+        fileGroups.push({ fileName: file.originalname, poRefs: [...new Set((parsed.headerPoRefs || []).map(p => String(p).trim()).filter(Boolean))] });
       }
 
       // NOTE: ASN->PO resolution is intentionally deferred to /api/fetch-feeds
@@ -177,6 +179,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
       sessionState.supplierData = { rows: allRows, validationErrors: allValidationErrors };
       sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
       sessionState.supplierBuffers = files.map(f => ({ name: f.originalname, buffer: f.buffer }));
+      sessionState.fileGroups = fileGroups;
       sessionState.feedData = null;
       sessionState.masterData = null;
       sessionState.lastXml = null;
@@ -920,6 +923,7 @@ app.post('/api/upload-sftp-batch', async (req, res) => {
         supplierHeaderPoRefs: sessionState.supplierHeaderPoRefs,
         skippedGroups:        sessionState.skippedGroups,
         cancelledItems:       sessionState.feedData?.cancelledItems,
+        fileGroups:           sessionState.fileGroups,
         isAdHocRun:           sessionState.isAdHocRun
       }).catch(err =>
         console.error('[Report] Post-upload send failed:', err.message)

@@ -495,8 +495,44 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
+ * Sends one email for a (possibly filtered) slice of entries/exclusions. Returns true on success.
+ */
+async function dispatchReport(sessionCtx, entries, now, fromMailbox, toList, fileName) {
+  const nowGb    = now.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
+  const filePart = fileName ? ` [${fileName}]` : '';
+  const subject  = `ASOS Automated- Carrier Booking Report${filePart} — ${nowGb} (${entries.length} booking${entries.length !== 1 ? 's' : ''})`;
+  const html     = buildSummaryHtml(entries, now.toISOString(), sessionCtx);
+
+  const attachments = await buildTaggedSupplierAttachments(
+    sessionCtx.supplierBuffers,
+    sessionCtx.lastGenerations,
+    entries,
+    { skippedGroups: sessionCtx.skippedGroups, cancelledItems: sessionCtx.cancelledItems }
+  );
+
+  try {
+    await graphPost(`/users/${encodeURIComponent(fromMailbox)}/sendMail`, {
+      message: {
+        subject,
+        body: { contentType: 'HTML', content: html },
+        toRecipients: toList.map(addr => ({ emailAddress: { address: addr } })),
+        ...(attachments.length ? { attachments } : {})
+      },
+      saveToSentItems: false
+    });
+    console.log(`[Report] Sent to ${toList.join(', ')}${filePart} — ${entries.length} booking(s) reported${attachments.length ? `, ${attachments.length} attachment(s)` : ''}.`);
+    return true;
+  } catch (err) {
+    console.error(`[Report] Failed to send${filePart}:`, err.message);
+    return false;
+  }
+}
+
+/**
  * Send a report email covering all generation-log entries since the last report.
  * Pass sessionCtx = { supplierBuffers, lastGenerations } to attach tagged supplier Excel files.
+ * Pass sessionCtx.fileGroups = [{ fileName, poRefs }] to split into one email per input file
+ * (only applies when more than one file contributed to this run).
  */
 async function sendScheduledReport(sessionCtx = {}) {
   if (!isConfigured()) {
@@ -526,33 +562,29 @@ async function sendScheduledReport(sessionCtx = {}) {
     return;
   }
 
-  const nowGb   = now.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
-  const subject = `Carrier Booking Report — ${nowGb} (${newEntries.length} booking${newEntries.length !== 1 ? 's' : ''})`;
-  const html    = buildSummaryHtml(newEntries, now.toISOString(), sessionCtx);
+  const fileGroups = (sessionCtx.fileGroups || []).filter(fg => (fg.poRefs || []).length);
 
-  const attachments = await buildTaggedSupplierAttachments(
-    sessionCtx.supplierBuffers,
-    sessionCtx.lastGenerations,
-    newEntries,
-    { skippedGroups: sessionCtx.skippedGroups, cancelledItems: sessionCtx.cancelledItems }
-  );
-
-  try {
-    await graphPost(`/users/${encodeURIComponent(fromMailbox)}/sendMail`, {
-      message: {
-        subject,
-        body: { contentType: 'HTML', content: html },
-        toRecipients: toList.map(addr => ({ emailAddress: { address: addr } })),
-        ...(attachments.length ? { attachments } : {})
-      },
-      saveToSentItems: false
-    });
-    console.log(`[Report] Sent to ${toList.join(', ')} — ${newEntries.length} booking(s) reported${attachments.length ? `, ${attachments.length} attachment(s)` : ''}.`);
-    writeState({ lastReportTime: now.toISOString() });
-  } catch (err) {
-    console.error('[Report] Failed to send:', err.message);
-    // Non-fatal — do not throw; scheduler continues regardless
+  if (fileGroups.length > 1) {
+    let anySent = false;
+    for (const fg of fileGroups) {
+      const poSet       = new Set(fg.poRefs.map(String));
+      const fgEntries   = newEntries.filter(e => (e.poNumbers || []).some(p => poSet.has(String(p))));
+      const fgSkipped   = (sessionCtx.skippedGroups  || []).filter(g => (g.poNumbers || []).some(p => poSet.has(String(p))));
+      const fgCancelled = (sessionCtx.cancelledItems || []).filter(c => poSet.has(String(c.poId)));
+      if (!fgEntries.length && !fgSkipped.length && !fgCancelled.length) continue;
+      const fgBuffers = (sessionCtx.supplierBuffers || []).filter(b => b.name === fg.fileName);
+      const sent = await dispatchReport(
+        { ...sessionCtx, skippedGroups: fgSkipped, cancelledItems: fgCancelled, supplierBuffers: fgBuffers },
+        fgEntries, now, fromMailbox, toList, fg.fileName
+      );
+      anySent = anySent || sent;
+    }
+    if (anySent) writeState({ lastReportTime: now.toISOString() });
+    return;
   }
+
+  const sent = await dispatchReport(sessionCtx, newEntries, now, fromMailbox, toList, null);
+  if (sent) writeState({ lastReportTime: now.toISOString() });
 }
 
 module.exports = { isConfigured, sendScheduledReport };
