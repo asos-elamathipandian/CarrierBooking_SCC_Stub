@@ -110,12 +110,20 @@ async function generateVbkreqs(sessionState) {
   const skippedGroups = [];
   // A booking is dead if EITHER source says so: our own log (we sent a Cd 01) or
   // Databricks (is_booked_by_carrier went Yes -> No, i.e. the carrier withdrew it).
-  const carrierCancelledPos = new Set(
-    (sessionState.feedData?.carrierCancelledRefs || []).map(r => String(r.poId))
+  const carrierCancelledOn = new Map(
+    (sessionState.feedData?.carrierCancelledRefs || []).map(r => [String(r.poId), r.lastBookedDate || ''])
   );
   const historyFor = poNums => logEntries
     .filter(e => (e.poNumbers || []).some(p => poNums.includes(String(p))))
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  // A 'No' only means the carrier cancelled if our latest live booking predates the
+  // last 'Yes' snapshot — otherwise Databricks just hasn't caught up with our new booking yet.
+  const isCarrierCancelled = (poNums, poHistory) => poNums.some(p => {
+    if (!carrierCancelledOn.has(String(p))) return false;
+    const latest = poHistory[0];
+    if (!latest || latest.purposeCd === '01') return true;
+    return String(latest.timestamp).slice(0, 10) < carrierCancelledOn.get(String(p));
+  });
 
   for (const [group, groupRows] of groupMap) {
     const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
@@ -125,7 +133,7 @@ async function generateVbkreqs(sessionState) {
 
     const poHistory          = historyFor(poNumbers.map(String));
     const cancelledByTool    = poHistory[0]?.purposeCd === '01';
-    const cancelledByCarrier = poNumbers.some(p => carrierCancelledPos.has(String(p)));
+    const cancelledByCarrier = isCarrierCancelled(poNumbers, poHistory);
     if (cancelledByTool || cancelledByCarrier) {
       const source = cancelledByTool && cancelledByCarrier ? 'tool + carrier'
                    : cancelledByTool ? 'cancelled by this tool'
