@@ -791,13 +791,14 @@ app.post('/api/generate-vbkreq', async (req, res) => {
           // Detect changed fields between new supplier row and stored master row
           const prevFirst = prevEntry.masterRows[0];
           const newFirst  = abRows[0];
+          // normField: supplier rows hold Date objects, logged rows hold ISO strings
           const changes = RESUB_FIELDS
             .filter(f => {
-              const nv = String(newFirst[f.key] || '').trim();
-              const pv = String(prevFirst[f.key] || '').trim();
+              const nv = normField(newFirst[f.key]);
+              const pv = normField(prevFirst[f.key]);
               return nv && pv && nv !== pv;
             })
-            .map(f => `${f.label}: ${String(prevFirst[f.key] || '').trim()} -> ${String(newFirst[f.key] || '').trim()}`);
+            .map(f => `${f.label}: ${normField(prevFirst[f.key])} -> ${normField(newFirst[f.key])}`);
 
           if (changes.length === 0) {
             console.log(`[Auto-resub] PO ${abPONums.join(',')} already booked — no changes detected, staying skipped`);

@@ -108,6 +108,14 @@ async function generateVbkreqs(sessionState) {
 
   const generations   = [];
   const skippedGroups = [];
+  // A booking is dead if EITHER source says so: our own log (we sent a Cd 01) or
+  // Databricks (is_booked_by_carrier went Yes -> No, i.e. the carrier withdrew it).
+  const carrierCancelledPos = new Set(
+    (sessionState.feedData?.carrierCancelledRefs || []).map(r => String(r.poId))
+  );
+  const historyFor = poNums => logEntries
+    .filter(e => (e.poNumbers || []).some(p => poNums.includes(String(p))))
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   for (const [group, groupRows] of groupMap) {
     const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
@@ -115,10 +123,21 @@ async function generateVbkreqs(sessionState) {
     let effectivePurposeCd = '13';
     let autoResubmitReason = null;
 
+    const poHistory          = historyFor(poNumbers.map(String));
+    const cancelledByTool    = poHistory[0]?.purposeCd === '01';
+    const cancelledByCarrier = poNumbers.some(p => carrierCancelledPos.has(String(p)));
+    if (cancelledByTool || cancelledByCarrier) {
+      const source = cancelledByTool && cancelledByCarrier ? 'tool + carrier'
+                   : cancelledByTool ? 'cancelled by this tool'
+                   : 'cancelled by carrier/E2open';
+      console.log(`[Pipeline] PO ${poNumbers.join(',')} — previous booking ${poHistory[0]?.bookingRef || 'n/a'} is no longer live (${source}), issuing a new VB ref`);
+      groupRows.forEach(r => { r.Booking_Ref = ''; });
+    }
+
     // Auto-upgrade to Cd 15 if previously submitted with different field values
-    const prevEntry = logEntries
-      .filter(e => e.purposeCd !== '01' && (e.poNumbers || []).some(p => poNumbers.includes(String(p))))
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+    const prevEntry = (cancelledByTool || cancelledByCarrier)
+      ? null
+      : poHistory.find(e => e.purposeCd !== '01');
 
     if (prevEntry?.masterRows?.length) {
       const prevFirst = prevEntry.masterRows[0];
@@ -207,9 +226,12 @@ async function generateVbkreqs(sessionState) {
 
     for (const [abGroup, abRows] of abGroupMap) {
       const abPONums = [...new Set(abRows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))];
-      const prevEntry = logEntries
-        .filter(e => e.purposeCd !== '01' && (e.poNumbers || []).some(p => abPONums.includes(String(p))))
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+      const abHistory = historyFor(abPONums);
+      if (abHistory[0]?.purposeCd === '01') {
+        console.log(`[Pipeline] PO ${abPONums.join(',')} last booking was cancelled — skipping auto re-sub`);
+        continue;
+      }
+      const prevEntry = abHistory.find(e => e.purposeCd !== '01');
 
       if (!prevEntry?.masterRows?.length) {
         console.log(`[Pipeline] PO ${abPONums.join(',')} booked outside tool — skipping auto re-sub`);
@@ -218,13 +240,14 @@ async function generateVbkreqs(sessionState) {
 
       const prevFirst = prevEntry.masterRows[0];
       const newFirst  = abRows[0];
+      // normField: supplier rows hold Date objects, logged rows hold ISO strings
       const changes   = RESUB_FIELDS_AB
         .filter(f => {
-          const nv = String(newFirst[f.key] || '').trim();
-          const pv = String(prevFirst[f.key] || '').trim();
+          const nv = normField(newFirst[f.key]);
+          const pv = normField(prevFirst[f.key]);
           return nv && pv && nv !== pv;
         })
-        .map(f => `${f.label}: ${String(prevFirst[f.key] || '').trim()} -> ${String(newFirst[f.key] || '').trim()}`);
+        .map(f => `${f.label}: ${normField(prevFirst[f.key])} -> ${normField(newFirst[f.key])}`);
 
       if (changes.length === 0) {
         console.log(`[Pipeline] PO ${abPONums.join(',')} already booked, no changes — staying skipped`);
@@ -306,20 +329,31 @@ async function run(sessionState) {
     (sessionState.supplierHeaderPoRefs || []).map(p => String(p).trim()).filter(Boolean)
   )];
 
-  // Ideateks files are ASN-anchored and may not contain PO_Number. Resolve
-  // those ASN refs before starting the normal PO-based pipeline.
-  if (!poRefs.length && (sessionState.supplierHeaderAsnRefs || []).length) {
+  // Ideateks files are ASN-anchored and may not contain PO_Number. Resolve their
+  // ASN refs even when other files in the same batch do carry POs.
+  const headerAsnRefs = [...new Set(
+    (sessionState.supplierHeaderAsnRefs || []).map(a => String(a).trim()).filter(Boolean)
+  )];
+  if (headerAsnRefs.length) {
     try {
-      const resolved = await databricksAsnReader.resolvePoRefsByAsnRefs(sessionState.supplierHeaderAsnRefs);
-      poRefs = resolved.poRefs || [];
+      const resolved = await databricksAsnReader.resolvePoRefsByAsnRefs(headerAsnRefs);
+      const asnToPo  = resolved.asnToPoMap || {};
+      poRefs = [...new Set([...poRefs, ...(resolved.poRefs || []).map(String)])];
       sessionState.supplierHeaderPoRefs = poRefs;
+      // Attribute resolved POs back to their source file so the per-file report can match them
+      for (const fg of (sessionState.fileGroups || [])) {
+        const extra = (fg.asnRefs || []).flatMap(a => asnToPo[a] || []).map(String);
+        if (extra.length) fg.poRefs = [...new Set([...(fg.poRefs || []), ...extra])];
+      }
       if (resolved.errors?.length) {
         console.warn('[Pipeline] ASN-to-PO resolution warnings:', resolved.errors.join('; '));
       }
-      console.log(`[Pipeline] Resolved ${poRefs.length} PO(s) from ${(sessionState.supplierHeaderAsnRefs || []).length} ASN ref(s)`);
+      console.log(`[Pipeline] Resolved ${(resolved.poRefs || []).length} PO(s) from ${headerAsnRefs.length} ASN ref(s)`);
     } catch (err) {
       console.error('[Pipeline] ASN-to-PO resolution failed:', err.message);
-      return { poRefs: [], generations: [], skippedGroups: [], sftpResults: [], error: `ASN resolution: ${err.message}` };
+      if (!poRefs.length) {
+        return { poRefs: [], generations: [], skippedGroups: [], sftpResults: [], error: `ASN resolution: ${err.message}` };
+      }
     }
   }
 
@@ -346,11 +380,13 @@ async function run(sessionState) {
     // exclusion report and tagged supplier workbook can map each item back.
     const generationLog = bibleBuilder.getGenerationLog() || [];
     for (const item of (feedData.cancelledItems || [])) {
-      const logEntry = generationLog.find(entry =>
-        (entry.asnRefs || []).map(String).includes(String(item.asnId || '')) ||
-        (entry.poNumbers || []).map(String).includes(String(item.poId || ''))
-      );
-      if (item.type === 'ALREADY_BOOKED' && logEntry) {
+      const logEntry = generationLog
+        .filter(entry =>
+          (item.asnId && (entry.asnRefs   || []).map(String).includes(String(item.asnId))) ||
+          (item.poId  && (entry.poNumbers || []).map(String).includes(String(item.poId)))
+        )
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+      if (item.type === 'ALREADY_BOOKED' && logEntry && logEntry.purposeCd !== '01') {
         item.vbRef = logEntry.bookingRef || null;
         item.reason = `ASN ${item.asnId || ''} (PO ${item.poId || ''}) already has a carrier booking` +
           (item.vbRef ? ` — VB Ref: ${item.vbRef}` : '');

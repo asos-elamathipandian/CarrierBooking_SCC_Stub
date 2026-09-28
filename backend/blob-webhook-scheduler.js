@@ -43,8 +43,34 @@ function writeStatus(patch) {
  * List new/updated blobs, parse them, and merge rows into sessionState.
  * Successfully processed blobs are deleted so the container only ever
  * holds unprocessed files.
+ *
+ * Power Automate fires one HTTP trigger per email, often milliseconds apart.
+ * Runs are serialised: a trigger that arrives mid-run queues one follow-up
+ * run instead of racing the first over the same blobs and shared sessionState.
  */
-async function runSync(sessionState) {
+let _inFlight    = null;
+let _rerunQueued = false;
+
+function runSync(sessionState) {
+  if (_inFlight) {
+    _rerunQueued = true;
+    console.log('[Blob Sync] Sync already running — queued a follow-up run.');
+    return _inFlight;
+  }
+  _inFlight = (async () => {
+    try {
+      do {
+        _rerunQueued = false;
+        await runSyncOnce(sessionState);
+      } while (_rerunQueued);
+    } finally {
+      _inFlight = null;
+    }
+  })();
+  return _inFlight;
+}
+
+async function runSyncOnce(sessionState) {
   if (!blob.isConfigured()) {
     writeStatus({ error: 'Blob webhook storage not configured in .env', running: false });
     return;
