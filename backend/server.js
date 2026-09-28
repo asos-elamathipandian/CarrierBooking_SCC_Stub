@@ -154,7 +154,7 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
       let allValidationErrors = [];
       let allHeaderPoRefs = [];
       let allHeaderAsnRefs = [];
-      let fileGroups = []; // [{ fileName, poRefs }] — used to split the report per input file
+      let fileGroups = []; // [{ fileName, poRefs, asnRefs }] — used to split the report per input file
 
       for (const file of files) {
         const parsed = await supplierReader.parse(file.buffer);
@@ -170,7 +170,11 @@ app.post('/api/parse-supplier', upload.array('supplierFiles', 20), async (req, r
         );
         allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
         allHeaderAsnRefs.push(...(parsed.headerAsnRefs || []));
-        fileGroups.push({ fileName: file.originalname, poRefs: [...new Set((parsed.headerPoRefs || []).map(p => String(p).trim()).filter(Boolean))] });
+        fileGroups.push({
+          fileName: file.originalname,
+          poRefs:  [...new Set((parsed.headerPoRefs  || []).map(p => String(p).trim()).filter(Boolean))],
+          asnRefs: [...new Set((parsed.headerAsnRefs || []).map(a => String(a).trim()).filter(Boolean))]
+        });
       }
 
       // NOTE: ASN->PO resolution is intentionally deferred to /api/fetch-feeds
@@ -287,18 +291,23 @@ app.post('/api/fetch-feeds', async (req, res) => {
       const cancelledItems = feedData.cancelledItems || [];
       const genLog = bibleBuilder.getGenerationLog() || [];
       const supplierRows = sessionState.supplierData?.rows || [];
+      // Most recent log entry per PO/ASN — a Cd 01 on top means the booking is dead,
+      // so the PO is free to be booked again rather than reported as already booked.
+      const latestLogEntry = (asnId, poId) => genLog
+        .filter(e =>
+          (asnId && (e.asnRefs   || []).map(String).includes(String(asnId))) ||
+          (poId  && (e.poNumbers || []).map(String).includes(String(poId)))
+        )
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
       for (const item of cancelledItems) {
         // Attach supplier from log entry or current supplier data
-        const logEntry = genLog.find(e =>
-          (e.asnRefs  || []).map(String).includes(String(item.asnId || '')) ||
-          (e.poNumbers|| []).map(String).includes(String(item.poId  || ''))
-        );
+        const logEntry = latestLogEntry(item.asnId, item.poId);
         if (logEntry) item.supplier = logEntry.supplier || null;
         if (!item.supplier) {
           const supRow = supplierRows.find(r => String(r.PO_Number || '').trim() === String(item.poId || '').trim());
           if (supRow) item.supplier = supRow.Supplier || supRow.Supplier_Name || supRow.supplierName || null;
         }
-        if (item.type === 'ALREADY_BOOKED' && item.asnId && logEntry) {
+        if (item.type === 'ALREADY_BOOKED' && item.asnId && logEntry && logEntry.purposeCd !== '01') {
           item.vbRef  = logEntry.bookingRef || null;
           item.reason = `ASN ${item.asnId} (PO ${item.poId}) already has a carrier booking — ${logEntry.bookingRef ? `VB Ref: ${logEntry.bookingRef}` : 'submitted previously'}`;
         }
@@ -313,8 +322,8 @@ app.post('/api/fetch-feeds', async (req, res) => {
       ].filter(Boolean));
       for (const po of effectivePoRefs) {
         if (foundPoIds.has(String(po))) continue;
-        const logEntry = genLog.find(e => (e.poNumbers || []).map(String).includes(String(po)));
-        if (logEntry) {
+        const logEntry = latestLogEntry(null, po);
+        if (logEntry && logEntry.purposeCd !== '01') {
           cancelledItems.push({
             type:   'ALREADY_BOOKED',
             asnId:  null,
@@ -615,6 +624,11 @@ app.post('/api/generate-vbkreq', async (req, res) => {
 
     const generations   = [];
     const skippedGroups = []; // same PO, no field changes — skip entirely
+    // A booking is dead if EITHER source says so: our own log (we sent a Cd 01) or
+    // Databricks (is_booked_by_carrier went Yes -> No, i.e. the carrier withdrew it).
+    const carrierCancelledPos = new Set(
+      (sessionState.feedData?.carrierCancelledRefs || []).map(r => String(r.poId))
+    );
     for (const [group, groupRows] of groupMap) {
       const poNumbers = [...new Set(groupRows.map(r => r.PO_Number).filter(Boolean))];
 
@@ -623,9 +637,20 @@ app.post('/api/generate-vbkreq', async (req, res) => {
       let autoResubmitReason = null;
       if (purposeCd === '13') {
         const logEntries = bibleBuilder.getGenerationLog();
-        const prevEntry  = logEntries
-          .filter(e => e.purposeCd !== '01' && (e.poNumbers || []).some(p => poNumbers.includes(String(p))))
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+        const poHistory  = logEntries
+          .filter(e => (e.poNumbers || []).some(p => poNumbers.includes(String(p))))
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        const cancelledByTool    = poHistory[0]?.purposeCd === '01';
+        const cancelledByCarrier = poNumbers.some(p => carrierCancelledPos.has(String(p)));
+        const cancelledLast      = cancelledByTool || cancelledByCarrier;
+        if (cancelledLast) {
+          const source = cancelledByTool && cancelledByCarrier ? 'tool + carrier'
+                       : cancelledByTool ? 'cancelled by this tool'
+                       : 'cancelled by carrier/E2open';
+          console.log(`[New booking] PO ${poNumbers.join(',')} — previous booking ${poHistory[0]?.bookingRef || 'n/a'} is no longer live (${source}), issuing a new VB ref`);
+          groupRows.forEach(r => { r.Booking_Ref = ''; });
+        }
+        const prevEntry = cancelledLast ? null : poHistory.find(e => e.purposeCd !== '01');
         if (prevEntry?.masterRows?.length) {
           const prevFirst = prevEntry.masterRows[0];
           const newFirst  = groupRows[0] || {};
@@ -747,10 +772,16 @@ app.post('/api/generate-vbkreq', async (req, res) => {
         for (const [abGroup, abRows] of abGroupMap) {
           const abPONums = [...new Set(abRows.map(r => String(r.PO_Number || '').trim()).filter(Boolean))];
 
-          // Find most recent non-cancelled log entry for these POs
-          const prevEntry = logEntries
-            .filter(e => e.purposeCd !== '01' && (e.poNumbers || []).some(p => abPONums.includes(String(p))))
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+          // Find most recent log entry for these POs; a cancellation on top means
+          // the booking is dead — no re-submit, the PO gets a fresh booking instead.
+          const poHistory = logEntries
+            .filter(e => (e.poNumbers || []).some(p => abPONums.includes(String(p))))
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          if (poHistory[0]?.purposeCd === '01') {
+            console.log(`[Auto-resub] PO ${abPONums.join(',')} last booking was cancelled — skipping auto re-sub`);
+            continue;
+          }
+          const prevEntry = poHistory.find(e => e.purposeCd !== '01');
 
           if (!prevEntry?.masterRows?.length) {
             console.log(`[Auto-resub] PO ${abPONums.join(',')} booked outside this tool — skipping auto re-sub`);
@@ -1350,6 +1381,11 @@ app.post('/api/webhook/sharepoint-file', async (req, res) => {
     );
     sessionState.supplierHeaderPoRefs = (sessionState.supplierHeaderPoRefs || []).concat(parsed.headerPoRefs || []);
     sessionState.supplierBuffers = (sessionState.supplierBuffers || []).concat([{ name: fileName, buffer, supplierFolder: supplierFolder || '' }]);
+    sessionState.fileGroups = (sessionState.fileGroups || []).concat([{
+      fileName,
+      poRefs:  [...new Set((parsed.headerPoRefs  || []).map(p => String(p).trim()).filter(Boolean))],
+      asnRefs: [...new Set((parsed.headerAsnRefs || []).map(a => String(a).trim()).filter(Boolean))]
+    }]);
     sessionState.feedData     = null;
     sessionState.masterData   = null;
     sessionState.lastXml      = null;

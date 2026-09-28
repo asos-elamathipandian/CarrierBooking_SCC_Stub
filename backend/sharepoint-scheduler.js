@@ -162,6 +162,7 @@ async function runSync(sessionState) {
   let allRows = [];
   let allValidationErrors = [];
   let allHeaderPoRefs = [];
+  const fileGroups = []; // [{ fileName, poRefs, asnRefs }] — used to split the report per input file
 
   for (const f of buffers) {
     try {
@@ -171,6 +172,11 @@ async function runSync(sessionState) {
         (parsed.validationErrors || []).map(e => `[${f.name}] ${e}`)
       );
       allHeaderPoRefs.push(...(parsed.headerPoRefs || []));
+      fileGroups.push({
+        fileName: f.name,
+        poRefs:  [...new Set((parsed.headerPoRefs  || []).map(p => String(p).trim()).filter(Boolean))],
+        asnRefs: [...new Set((parsed.headerAsnRefs || []).map(a => String(a).trim()).filter(Boolean))]
+      });
       // Mark as processed
       processedMap[f.id] = f.lastModifiedDateTime;
       console.log(`[SP Scheduler] Parsed ${f.name}: ${parsed.rows.length} row(s)`);
@@ -183,6 +189,7 @@ async function runSync(sessionState) {
   sessionState.supplierData         = { rows: allRows, validationErrors: allValidationErrors };
   sessionState.supplierHeaderPoRefs = allHeaderPoRefs;
   sessionState.supplierBuffers      = buffers;
+  sessionState.fileGroups           = fileGroups;
   sessionState.feedData             = null;
   sessionState.masterData           = null;
   sessionState.lastXml              = null;
@@ -217,7 +224,8 @@ async function runSync(sessionState) {
     lastGenerations:      sessionState.lastGenerations,
     supplierHeaderPoRefs: sessionState.supplierHeaderPoRefs,
     skippedGroups:        sessionState.skippedGroups,
-    cancelledItems:       sessionState.feedData?.cancelledItems
+    cancelledItems:       sessionState.feedData?.cancelledItems,
+    fileGroups:           sessionState.fileGroups
   }).catch(err =>
     console.error('[SP Scheduler] Report send failed:', err.message)
   );

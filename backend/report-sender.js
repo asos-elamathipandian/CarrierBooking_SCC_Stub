@@ -92,8 +92,17 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
   // pipeline run don't apply here, so skip the total-submitted reconciliation for them.
   const isAdHocRun     = !!sessionCtx.isAdHocRun;
   const totalSubmitted = isAdHocRun ? 0 : (sessionCtx.supplierHeaderPoRefs || []).length;
-  const skippedGroups  = isAdHocRun ? [] : (sessionCtx.skippedGroups  || []);
-  const cancelledItems = isAdHocRun ? [] : (sessionCtx.cancelledItems || []);
+
+  // Unique PO numbers actually booked this run — an already-booked PO that was
+  // auto-upgraded to a Cd 15 re-submit must not also appear as "non-generated".
+  const bookedPoSet   = new Set(entries.flatMap(e => e.poNumbers || []).map(p => String(p).trim()));
+  const bookedPoCount = bookedPoSet.size;
+
+  const skippedGroups  = isAdHocRun ? [] : (sessionCtx.skippedGroups  || [])
+    .map(g => ({ ...g, poNumbers: (g.poNumbers || []).filter(p => !bookedPoSet.has(String(p).trim())) }))
+    .filter(g => g.poNumbers.length);
+  const cancelledItems = isAdHocRun ? [] : (sessionCtx.cancelledItems || [])
+    .filter(c => !bookedPoSet.has(String(c.poId || '').trim()));
     const skippedPoSet = new Set(skippedGroups.flatMap(g => (g.poNumbers || []).map(String)));
     const alreadyBookedPoSet = new Set(cancelledItems
       .filter(c => c.type === 'ALREADY_BOOKED' && c.poId)
@@ -109,9 +118,6 @@ function buildSummaryHtml(entries, runTime, sessionCtx) {
     const asnCancelled     = cancelledPoSet.size;
     const notFoundCount     = notFoundPoSet.size;
 
-  // Booked vs skipped PO reconciliation — unique PO numbers actually booked this run
-  const bookedPoSet    = new Set(entries.flatMap(e => e.poNumbers || []).map(p => String(p).trim()));
-  const bookedPoCount  = bookedPoSet.size;
   const skippedPoCount = Math.max(0, totalSubmitted - bookedPoCount);
   const poStatusNote = isAdHocRun
     ? `&#8505;&#65039; Ad-hoc action: ${bookedPoCount} PO(s) processed this run (Re-Submit/Cancel).`
@@ -349,8 +355,16 @@ async function buildTaggedSupplierAttachments(supplierBuffers, generations, logE
       purposeCd:     e.purposeCd || '13',
       sftp:          e.sftp || ''
     };
-    for (const po of (e.poNumbers || [])) poToDetail[String(po).trim()] = detail;
-    for (const asn of (e.asnRefs || [])) poToDetail[String(asn).trim()] = detail;
+    for (const po of (e.poNumbers || [])) {
+      const key = String(po).trim();
+      poToDetail[key] = detail;
+      delete poToExclusionReason[key]; // generated this run — not an exclusion
+    }
+    for (const asn of (e.asnRefs || [])) {
+      const key = String(asn).trim();
+      poToDetail[key] = detail;
+      delete poToExclusionReason[key];
+    }
   }
   // Fallback: fill any POs only in generations (no log entry yet)
   const poToRef = {};
@@ -562,19 +576,35 @@ async function sendScheduledReport(sessionCtx = {}) {
     return;
   }
 
-  const fileGroups = (sessionCtx.fileGroups || []).filter(fg => (fg.poRefs || []).length);
+  const allFileGroups = sessionCtx.fileGroups || [];
+  // ASN-only supplier files carry no PO numbers until Databricks resolves them,
+  // so a file group counts as contributing if it has either PO or ASN refs.
+  const fileGroups    = allFileGroups.filter(fg => (fg.poRefs || []).length || (fg.asnRefs || []).length);
 
   if (fileGroups.length > 1) {
     let anySent = false;
     for (const fg of fileGroups) {
-      const poSet       = new Set(fg.poRefs.map(String));
-      const fgEntries   = newEntries.filter(e => (e.poNumbers || []).some(p => poSet.has(String(p))));
-      const fgSkipped   = (sessionCtx.skippedGroups  || []).filter(g => (g.poNumbers || []).some(p => poSet.has(String(p))));
-      const fgCancelled = (sessionCtx.cancelledItems || []).filter(c => poSet.has(String(c.poId)));
+      const poSet       = new Set((fg.poRefs  || []).map(String));
+      const asnSet      = new Set((fg.asnRefs || []).map(String));
+      const matches     = (pos, asns) =>
+        (pos  || []).some(p => poSet.has(String(p))) ||
+        (asns || []).some(a => asnSet.has(String(a)));
+      const fgEntries   = newEntries.filter(e => matches(e.poNumbers, e.asnRefs));
+      const fgSkipped   = (sessionCtx.skippedGroups  || []).filter(g => matches(g.poNumbers, g.asnRefs));
+      const fgCancelled = (sessionCtx.cancelledItems || []).filter(c => matches([c.poId], [c.asnId]));
       if (!fgEntries.length && !fgSkipped.length && !fgCancelled.length) continue;
       const fgBuffers = (sessionCtx.supplierBuffers || []).filter(b => b.name === fg.fileName);
+      // Scope the "Total POs submitted" reconciliation to this file; for ASN-only
+      // files the PO numbers only exist on the resolved entries/exclusions.
+      const fgPoRefs = [...new Set([
+        ...(fg.poRefs || []).map(String),
+        ...fgEntries.flatMap(e => (e.poNumbers || []).map(String)),
+        ...fgSkipped.flatMap(g => (g.poNumbers || []).map(String)),
+        ...fgCancelled.map(c => String(c.poId || ''))
+      ].map(p => p.trim()).filter(Boolean))];
       const sent = await dispatchReport(
-        { ...sessionCtx, skippedGroups: fgSkipped, cancelledItems: fgCancelled, supplierBuffers: fgBuffers },
+        { ...sessionCtx, skippedGroups: fgSkipped, cancelledItems: fgCancelled,
+          supplierBuffers: fgBuffers, supplierHeaderPoRefs: fgPoRefs },
         fgEntries, now, fromMailbox, toList, fg.fileName
       );
       anySent = anySent || sent;
@@ -583,7 +613,15 @@ async function sendScheduledReport(sessionCtx = {}) {
     return;
   }
 
-  const sent = await dispatchReport(sessionCtx, newEntries, now, fromMailbox, toList, null);
+  // Single-file (or only one file contributed POs) — don't attach files that
+  // contributed nothing to this run.
+  const singleCtx = allFileGroups.length
+    ? { ...sessionCtx,
+        supplierBuffers: (sessionCtx.supplierBuffers || [])
+          .filter(b => fileGroups.some(fg => fg.fileName === b.name)) }
+    : sessionCtx;
+
+  const sent = await dispatchReport(singleCtx, newEntries, now, fromMailbox, toList, null);
   if (sent) writeState({ lastReportTime: now.toISOString() });
 }
 

@@ -6,25 +6,35 @@ const db   = require('./databricks-client');
 
 const GEN_LOG_PATH = path.join(__dirname, '..', 'bible', 'generation-log.json');
 
-function getToolCancelledAsnIds() {
+/**
+ * ASN / PO refs whose most recent VBKREQ from this tool was a cancellation (Cd 01).
+ * The serve layer has no carrier-booking status column, so `is_booked_by_carrier`
+ * stays 'Yes' after a cancel — this log is the only signal that the booking is dead.
+ */
+function getToolCancelledRefs() {
   try {
-    if (!fs.existsSync(GEN_LOG_PATH)) return new Set();
+    if (!fs.existsSync(GEN_LOG_PATH)) return { asns: new Set(), pos: new Set() };
     const log     = JSON.parse(fs.readFileSync(GEN_LOG_PATH, 'utf8'));
     const entries = Array.isArray(log) ? log : (log.entries || []);
     const latestByAsn = {};
+    const latestByPo  = {};
     for (const e of entries) {
       for (const asn of (e.asnRefs || [])) {
         const key = String(asn);
         if (!latestByAsn[key] || e.timestamp > latestByAsn[key].timestamp)
           latestByAsn[key] = e;
       }
+      for (const po of (e.poNumbers || [])) {
+        const key = String(po);
+        if (!latestByPo[key] || e.timestamp > latestByPo[key].timestamp)
+          latestByPo[key] = e;
+      }
     }
-    return new Set(
-      Object.entries(latestByAsn)
-        .filter(([, e]) => e.purposeCd === '01')
-        .map(([asn]) => asn)
+    const cancelledKeys = map => new Set(
+      Object.entries(map).filter(([, e]) => e.purposeCd === '01').map(([k]) => k)
     );
-  } catch (_) { return new Set(); }
+    return { asns: cancelledKeys(latestByAsn), pos: cancelledKeys(latestByPo) };
+  } catch (_) { return { asns: new Set(), pos: new Set() }; }
 }
 
 /** Normalise a date value to YYYY-MM-DD; returns '' for nulls and 1900-01-01 sentinels. */
@@ -90,6 +100,15 @@ async function fetchAsnsByPoRefs(poRefs) {
         PARTITION BY f.dim_purchase_order_sk, f.dim_advanced_shipment_notice_sk, f.dim_product_sk
         ORDER BY f.dim_date_sk DESC
       ) = 1
+    ),
+    booking_history AS (
+      SELECT
+        f.dim_purchase_order_sk           AS poId,
+        f.dim_advanced_shipment_notice_sk AS asnId,
+        MAX(CASE WHEN f.is_booked_by_carrier = 'Yes' THEN f.dim_date_sk END) AS lastCarrierBookedDate
+      FROM sourcingandbuying.serve.fact_purchase_order_commitment_v1 f
+      WHERE f.dim_purchase_order_sk IN (${poList})
+      GROUP BY 1, 2
     )
     SELECT
       lf.poId,
@@ -102,6 +121,7 @@ async function fetchAsnsByPoRefs(poRefs) {
       lf.poStatus,
       lf.transportModeCode,
       lf.is_booked_by_carrier    AS isBookedByCarrier,
+      CAST(bh.lastCarrierBookedDate AS STRING) AS lastCarrierBookedDate,
       lf.bookedQty,
       lf.exFactoryDate,
       lf.expectedShipmentDate,
@@ -120,6 +140,8 @@ async function fetchAsnsByPoRefs(poRefs) {
       DATE_FORMAT(po.dim_original_purchase_order_shipment_date_sk,           'yyyy-MM-dd') AS poShipDate,
       DATE_FORMAT(po.dim_current_requested_intake_first_destination_date_sk, 'yyyy-MM-dd') AS poDeliveryDate
     FROM latest_facts lf
+    LEFT JOIN booking_history bh
+           ON lf.poId = bh.poId AND lf.asnId = bh.asnId
     LEFT JOIN supplychain.serve.dim_advanced_shipment_notice_v1 asn
            ON lf.asnId = asn.dim_advanced_shipment_notice_sk
     LEFT JOIN sourcingandbuying.serve.dim_supplier_v1 sup
@@ -188,6 +210,7 @@ async function fetchAsnsByPoRefs(poRefs) {
         poStatus:         row.poStatus                      || '',
         mode:             row.transportModeCode             || '',
         isBookedByCarrier: (row.isBookedByCarrier || 'No'),
+        lastCarrierBookedDate: toDateStr(row.lastCarrierBookedDate),
         // bookingRequested mirrors isBookedByCarrier for downstream compatibility
         bookingRequested: row.isBookedByCarrier === 'Yes' ? 'booked' : null,
         bookingCanceled:  null,
@@ -226,8 +249,9 @@ async function fetchAsnsByPoRefs(poRefs) {
   }
 
   // Separate active vs cancelled ASN/PO groups
-  const toolCancelledAsnIds = getToolCancelledAsnIds();
+  const toolCancelled = getToolCancelledRefs();
   const cancelledItems = [];
+  const carrierCancelledRefs = []; // booked by the carrier at some point, no longer booked
   const allGroups      = Object.values(asnPoMap);
 
   const parsed = allGroups.filter(group => {
@@ -243,8 +267,9 @@ async function fetchAsnsByPoRefs(poRefs) {
     }
 
     if (group.isBookedByCarrier === 'Yes') {
-      const toolCancelled = toolCancelledAsnIds.has(String(group.asnId));
-      if (!toolCancelled) {
+      const wasCancelledByTool = toolCancelled.asns.has(String(group.asnId)) ||
+                                 toolCancelled.pos.has(String(group.poId));
+      if (!wasCancelledByTool) {
         console.warn(`[Databricks Serve] SKIPPED — ASN ${group.asnId} / PO ${group.poId} already booked by carrier`);
         cancelledItems.push({
           type:   'ALREADY_BOOKED',
@@ -254,7 +279,13 @@ async function fetchAsnsByPoRefs(poRefs) {
         });
         return false;
       }
-      console.log(`[Databricks Serve] ASN ${group.asnId} booked but tool-cancelled — allowing re-book`);
+      console.log(`[Databricks Serve] ASN ${group.asnId} / PO ${group.poId} booked but tool-cancelled — allowing a new booking`);
+    } else if (group.lastCarrierBookedDate) {
+      // Flag was 'Yes' on an earlier snapshot and is 'No' now — the carrier/E2open
+      // withdrew the booking, so this PO needs a brand new one, not a re-submit.
+      group.carrierCancelled = true;
+      carrierCancelledRefs.push({ asnId: group.asnId, poId: group.poId, lastBookedDate: group.lastCarrierBookedDate });
+      console.log(`[Databricks Serve] ASN ${group.asnId} / PO ${group.poId} was booked on ${group.lastCarrierBookedDate} but is no longer booked by carrier — treating as a new booking`);
     }
 
     if (group.poStatus === 'C') {
@@ -308,6 +339,7 @@ async function fetchAsnsByPoRefs(poRefs) {
     poFeeds: [], asnFeeds: [],
     carrierAsnFiles,
     cancelledItems,
+    carrierCancelledRefs,
     errors
   };
 }
