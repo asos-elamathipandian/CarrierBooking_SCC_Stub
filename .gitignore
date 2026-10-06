@@ -3,7 +3,8 @@ config/sftp.config.json
 keys/
 *.pem
 ctrl-counter.json
-.env
+.env*
+!.env.example
 bible/
 output/
 # Office temporary lock files (created when a file is open)
