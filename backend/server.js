@@ -4,6 +4,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -1443,14 +1444,35 @@ app.get('/api/blob-sync/status', async (req, res) => {
   res.json(status);
 });
 
-app.post('/api/blob-sync', async (req, res) => {
+function startBlobSync(res) {
   if (!blobWebhook.isConfigured()) {
     return res.status(400).json({ error: 'Blob webhook storage not configured. Fill in AZURE_WEBHOOK_* vars in .env and restart.' });
   }
   blobWebhookScheduler.runSync(sessionState).catch(err =>
     console.error('[Blob sync] Error:', err.message)
   );
-  res.json({ success: true, message: 'Sync started — poll /api/blob-sync/status for progress.' });
+  return res.json({ success: true, message: 'Sync started — poll /api/blob-sync/status for progress.' });
+}
+
+app.post('/api/blob-sync', (req, res) => startBlobSync(res));
+
+app.post('/api/integrations/blob-sync-hook', (req, res) => {
+  const expectedToken = process.env.BLOB_SYNC_WEBHOOK_TOKEN;
+  const authorization = req.get('authorization') || '';
+  const match = /^Bearer\s+(.+)$/i.exec(authorization);
+  if (!expectedToken) {
+    return res.status(503).json({ error: 'Blob sync webhook authentication is not configured.' });
+  }
+  if (!match) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const expected = Buffer.from(expectedToken);
+  const provided = Buffer.from(match[1]);
+  if (expected.length !== provided.length || !crypto.timingSafeEqual(expected, provided)) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  return startBlobSync(res);
 });
 
 // ─────────────────────────────────────────────

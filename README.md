@@ -172,11 +172,25 @@ az webapp deployment source config-zip \
 
 Or use the Azure Portal → App Service → Deployment Center if connected to this repo.
 
+### Node.js security baseline
+
+GitHub Actions selects the latest available Node.js 24 patch, with a minimum of 24.22.1. Local development also supports Node.js 26.12.1 or later within the 26.x release line.
+
+Azure App Service must use Node.js 24 LTS with an actual running version of 24.22.1 or later. The `NODE|24-lts` setting alone does not confirm the patch version, and deploying code does not itself upgrade the managed runtime. Verify `node --version` in the running application's container through App Service SSH after deployment. If it is older, arrange a platform/runtime update before closing the security finding. This matters because HTTP clients can automatically decompress Brotli responses.
+
 ### Adding / changing environment variables
 
 Azure Portal → App Service `as-carrierbookingstub` → **Configuration** → Application settings → Add/Edit → Save → Restart.
 
 > Never put secrets in code or commit `.env` to git. All secrets live in App Service Configuration only.
+
+### Restricting public app access
+
+App Service → **Authentication**: configure Microsoft Entra ID for the current workforce tenant, require authentication, and restrict the Enterprise Application to assigned users/groups. The browser UI and its API calls then use the signed-in session.
+
+Power Automate still needs to trigger blob ingestion. Change its HTTP action to `POST /api/integrations/blob-sync-hook` and send `Authorization: Bearer <BLOB_SYNC_WEBHOOK_TOKEN>`. Store the token in App Service application settings and in the flow's secure configuration; enable **Secure Inputs** and **Secure Outputs** on the HTTP action. Do not put the token in a URL or log it.
+
+Exclude only `/api/integrations/blob-sync-hook` from App Service Authentication (`globalValidation.excludedPaths` in the Authentication v2 settings). The endpoint independently requires the bearer token; keep `/api/blob-sync/status` and all other routes behind sign-in. Configure the flow and verify the hook before enforcing authentication, or the current `/api/blob-sync` call will stop working.
 
 ### Checking the app is running
 
@@ -271,6 +285,7 @@ All variables go in `.env` locally, or Azure App Service → Configuration on Az
 | `EMAIL_READONLY_MODE` | No | `true` = use watermark (default); `false` = mark as read |
 | `AZURE_WEBHOOK_STORAGE_CONNECTION_STRING` | Yes | Blob storage connection string |
 | `AZURE_WEBHOOK_CONTAINER_NAME` | No | Blob container name, default `supplier-uploads` |
+| `BLOB_SYNC_WEBHOOK_TOKEN` | Yes on Azure | Long random bearer token required by the Power Automate blob-sync hook |
 | `NODE_ENV` | Azure only | Set to `production` on Azure (auto-set via web.config) |
 
 ---
@@ -278,7 +293,7 @@ All variables go in `.env` locally, or Azure App Service → Configuration on Az
 ## Local Development Setup
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 24.22.1+ (24.x LTS), or 26.12.1+ (26.x)
 - Azure CLI (`az login` with your ASOS account)
 - Access to Azure Databricks warehouse `9d9de70087d062a5`
 
@@ -431,7 +446,7 @@ node backend/test-databricks.js   # test Databricks connection
 ### Runtime & Framework
 | Software | Version | Purpose |
 |---|---|---|
-| **Node.js** | 18+ | Server runtime |
+| **Node.js** | 24.22.1+ (24.x LTS) or 26.12.1+ (26.x) | Server runtime |
 | **Express** | ^4.18 | HTTP server / REST API |
 
 ### Azure Services
@@ -506,7 +521,7 @@ CarrierBookingStub/
 ## Setup & Running
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 24.22.1+ (24.x LTS), or 26.12.1+ (26.x)
 - Access to Azure Databricks warehouse
 - E2open SFTP credentials
 - Azure AD App Registration with `Sites.Read.All` (for SharePoint sync)
